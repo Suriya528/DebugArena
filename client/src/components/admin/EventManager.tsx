@@ -144,7 +144,7 @@ export const EventManager: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                Multi-Tenant Architecture
+                Institutional Championship Platform
               </span>
               {activeEvent?.status === 'frozen' && (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1">
@@ -153,7 +153,7 @@ export const EventManager: React.FC = () => {
               )}
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight">
-              {activeEvent?.name || 'Competition Events & Colleges'}
+              {activeEvent?.name || 'Institutional Championship & Events'}
             </h1>
             <p className="text-xs text-slate-400">
               Host institutional hackathons with dynamic round sequences and audit control
@@ -162,19 +162,27 @@ export const EventManager: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* College Filter */}
-          <select
-            value={selectedCollegeId}
-            onChange={e => setSelectedCollegeId(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-          >
-            <option value="">All Colleges ({colleges.length})</option>
-            {colleges.map(c => (
-              <option key={c._id} value={c._id}>
-                {c.name} ({c.code})
-              </option>
-            ))}
-          </select>
+          {/* College Badge or Filter */}
+          {colleges.length > 1 ? (
+            <select
+              value={selectedCollegeId}
+              onChange={e => setSelectedCollegeId(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-2xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">All Colleges ({colleges.length})</option>
+              {colleges.map(c => (
+                <option key={c._id} value={c._id}>
+                  {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          ) : colleges.length === 1 ? (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+              <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-bold text-white">{colleges[0].name}</span>
+              <span className="text-[10px] font-mono text-slate-500">({colleges[0].code})</span>
+            </div>
+          ) : null}
 
           {/* New Event Button */}
           <button

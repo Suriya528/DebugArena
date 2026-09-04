@@ -43,9 +43,18 @@ async function recordAudit(
 // -------------------- COLLEGES --------------------
 
 // GET /api/admin/events/colleges
-adminEventRouter.get('/colleges', async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+adminEventRouter.get('/colleges', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const colleges = await College.find().sort({ name: 1 });
+    // Multi-Tenant Isolation: Non-global admins can NEVER see other colleges!
+    const filter: Record<string, any> = {};
+    if (req.user?.collegeId) {
+      filter._id = req.user.collegeId;
+    } else if (req.user?.role !== 'super_admin') {
+      const defaultCol = await College.findOne().sort({ createdAt: 1 });
+      if (defaultCol) filter._id = defaultCol._id;
+    }
+
+    const colleges = await College.find(filter).sort({ name: 1 });
     res.json({ colleges });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch colleges' });
@@ -55,6 +64,12 @@ adminEventRouter.get('/colleges', async (_req: AuthenticatedRequest, res: Respon
 // POST /api/admin/events/colleges
 adminEventRouter.post('/colleges', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    // Strict Tenant Isolation: Only unconstrained global root operators can add colleges
+    if (req.user?.role !== 'super_admin' || req.user?.collegeId) {
+      res.status(403).json({ error: 'Tenant restriction: Multi-tenant college registration is restricted to root platform operators.' });
+      return;
+    }
+
     const { name, code, logoUrl, primaryColor, secondaryColor, contactEmail, website } = req.body;
     if (!name || !code) {
       res.status(400).json({ error: 'College name and code are required' });
@@ -89,9 +104,16 @@ adminEventRouter.post('/colleges', async (req: AuthenticatedRequest, res: Respon
 // GET /api/admin/events
 adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { collegeId } = req.query;
     const filter: Record<string, any> = {};
-    if (collegeId) filter.collegeId = collegeId;
+    // Multi-Tenant Isolation: Strictly isolate events by college
+    if (req.user?.collegeId) {
+      filter.collegeId = req.user.collegeId;
+    } else if (req.query.collegeId && req.user?.role === 'super_admin') {
+      filter.collegeId = req.query.collegeId;
+    } else if (req.user?.role !== 'super_admin') {
+      const defaultCol = await College.findOne().sort({ createdAt: 1 });
+      if (defaultCol) filter.collegeId = defaultCol._id;
+    }
 
     const events = await Event.find(filter).populate('collegeId', 'name code logoUrl primaryColor').sort({ createdAt: -1 });
     res.json({ events });
@@ -115,25 +137,28 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       initialRounds
     } = req.body;
 
-    if (!collegeId || !name || !code) {
+    // Multi-Tenant Isolation: Force collegeId to user's assigned college
+    const effectiveCollegeId = req.user?.collegeId || collegeId;
+
+    if (!effectiveCollegeId || !name || !code) {
       res.status(400).json({ error: 'collegeId, event name, and event code are required' });
       return;
     }
 
-    const college = await College.findById(collegeId);
+    const college = await College.findById(effectiveCollegeId);
     if (!college) {
       res.status(404).json({ error: 'College not found' });
       return;
     }
 
-    const existing = await Event.findOne({ collegeId, code: code.toUpperCase().trim() });
+    const existing = await Event.findOne({ collegeId: effectiveCollegeId, code: code.toUpperCase().trim() });
     if (existing) {
       res.status(400).json({ error: `Event with code ${code} already exists for this college` });
       return;
     }
 
     const event = await Event.create({
-      collegeId,
+      collegeId: effectiveCollegeId,
       name: name.trim(),
       code: code.toUpperCase().trim(),
       description: description || '',
@@ -240,6 +265,15 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
+    // Multi-Tenant Isolation: Ensure event belongs to user's college
+    if (req.user?.collegeId) {
+      const evCollegeId = typeof event.collegeId === 'object' ? (event.collegeId as any)._id : event.collegeId;
+      if (evCollegeId && evCollegeId.toString() !== req.user.collegeId.toString()) {
+        res.status(404).json({ error: 'Event not found' });
+        return;
+      }
+    }
+
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
     res.json({ event, rounds });
   } catch (err) {
@@ -255,6 +289,12 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
 
     const event = await Event.findById(eventId);
     if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Multi-Tenant Isolation: Ensure event belongs to user's college
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
       res.status(404).json({ error: 'Event not found' });
       return;
     }
@@ -303,6 +343,12 @@ adminEventRouter.post('/:eventId/freeze', async (req: AuthenticatedRequest, res:
       return;
     }
 
+    // Multi-Tenant Isolation: Ensure event belongs to user's college
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
     event.status = 'frozen';
     await event.save();
     await DynamicRound.updateMany({ eventId }, { isFrozen: true });
@@ -327,6 +373,12 @@ adminEventRouter.post('/:eventId/unfreeze', async (req: AuthenticatedRequest, re
 
     const event = await Event.findById(eventId);
     if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Multi-Tenant Isolation: Ensure event belongs to user's college
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
       res.status(404).json({ error: 'Event not found' });
       return;
     }
@@ -368,6 +420,11 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
 
     const event = await Event.findById(eventId);
     if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
       res.status(404).json({ error: 'Event not found' });
       return;
     }
@@ -440,7 +497,17 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
     } = req.body;
 
     const event = await Event.findById(eventId);
-    if (event?.status === 'frozen' && !overrideReason) {
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (event.status === 'frozen' && !overrideReason) {
       res.status(403).json({ error: 'Event is frozen. Emergency override rationale required.' });
       return;
     }
@@ -466,7 +533,7 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
 
     await round.save();
 
-    await recordAudit(req, 'ROUND_UPDATED', 'DynamicRound', round._id.toString(), { changes: req.body }, overrideReason, event?.collegeId, eventId);
+    await recordAudit(req, 'ROUND_UPDATED', 'DynamicRound', round._id.toString(), { changes: req.body }, overrideReason, event.collegeId, eventId);
     res.json({ round });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update round' });
@@ -479,6 +546,17 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
     const { eventId, roundNumber } = req.params;
     const parsedRound = parseInt(roundNumber, 10);
 
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
     const round = await DynamicRound.findOne({ eventId, roundNumber: parsedRound });
     if (!round) {
       res.status(404).json({ error: 'Round not found' });
@@ -489,13 +567,10 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
     round.startedAt = new Date();
     await round.save();
 
-    const event = await Event.findById(eventId);
-    if (event) {
-      event.status = 'live';
-      await event.save();
-    }
+    event.status = 'live';
+    await event.save();
 
-    await recordAudit(req, 'ROUND_STARTED', 'DynamicRound', round._id.toString(), { roundNumber: parsedRound }, '', event?.collegeId, eventId);
+    await recordAudit(req, 'ROUND_STARTED', 'DynamicRound', round._id.toString(), { roundNumber: parsedRound }, '', event.collegeId, eventId);
 
     broadcastToAll('round:started', {
       eventId,
@@ -518,6 +593,18 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
 adminEventRouter.get('/:eventId/audit-logs', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { eventId } = req.params;
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
     const logs = await AuditLog.find({ eventId }).sort({ createdAt: -1 }).limit(100);
     res.json({ logs });
   } catch (err) {

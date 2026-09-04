@@ -72,6 +72,11 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
       return;
     }
 
+    if (req.user?.collegeId && user.collegeId && user.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
     const eventId = bodyEventId || user.eventId || req.user?.eventId;
     let effectiveTemplateUrl = bodyTemplateUrl;
     let effectiveUseCustom = bodyUseCustomTemplate;
@@ -79,15 +84,21 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
 
     if (eventId) {
       const event = await Event.findById(eventId);
-      if (event && event.certificateConfig) {
-        if (effectiveUseCustom === undefined) {
-          effectiveUseCustom = !event.certificateConfig.useDefaultTemplate;
+      if (event) {
+        if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+          res.status(404).json({ error: 'Event not found' });
+          return;
         }
-        if (!effectiveTemplateUrl) {
-          effectiveTemplateUrl = event.certificateConfig.customTemplateUrl;
-        }
-        if (!effectiveTextColorMode) {
-          effectiveTextColorMode = event.certificateConfig.textColorMode;
+        if (event.certificateConfig) {
+          if (effectiveUseCustom === undefined) {
+            effectiveUseCustom = !event.certificateConfig.useDefaultTemplate;
+          }
+          if (!effectiveTemplateUrl) {
+            effectiveTemplateUrl = event.certificateConfig.customTemplateUrl;
+          }
+          if (!effectiveTextColorMode) {
+            effectiveTextColorMode = event.certificateConfig.textColorMode;
+          }
         }
       }
     }

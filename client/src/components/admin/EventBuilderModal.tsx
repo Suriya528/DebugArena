@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Building2,
@@ -63,6 +63,12 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   onCollegeCreated
 }) => {
   const [collegeId, setCollegeId] = useState<string>(colleges[0]?._id || '');
+
+  useEffect(() => {
+    if (!collegeId && colleges.length > 0) {
+      setCollegeId(colleges[0]._id);
+    }
+  }, [colleges, collegeId]);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
@@ -521,7 +527,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
         </div>
 
         {/* Inline New College Creation */}
-        {showNewCollegeForm ? (
+        {showNewCollegeForm && colleges.length > 1 ? (
           <div className="mb-6 p-4 rounded-2xl bg-slate-950 border border-indigo-500/40 animate-in fade-in">
             <h3 className="text-sm font-bold text-indigo-400 mb-3 flex items-center gap-2">
               <Building2 className="w-4 h-4" /> Add New College Organization
@@ -587,7 +593,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs font-bold text-slate-300">Host College / Institution</label>
-                {!showNewCollegeForm && (
+                {!showNewCollegeForm && colleges.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setShowNewCollegeForm(true)}
@@ -597,18 +603,39 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                   </button>
                 )}
               </div>
-              <select
-                value={collegeId}
-                onChange={e => setCollegeId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                required
-              >
-                {colleges.map(col => (
-                  <option key={col._id} value={col._id}>
-                    {col.name} ({col.code})
-                  </option>
-                ))}
-              </select>
+              {colleges.length > 1 ? (
+                <select
+                  value={collegeId}
+                  onChange={e => setCollegeId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  required
+                >
+                  {colleges.map(col => (
+                    <option key={col._id} value={col._id}>
+                      {col.name} ({col.code})
+                    </option>
+                  ))}
+                </select>
+              ) : colleges.length === 1 ? (
+                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-white">{colleges[0].name}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">Code: {colleges[0].code}</div>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Verified Host
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3.5 text-xs text-slate-400 italic bg-slate-950 rounded-2xl border border-slate-800">
+                  No institutional profile bound.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
