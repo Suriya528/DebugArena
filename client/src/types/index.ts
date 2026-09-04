@@ -1,10 +1,94 @@
+export type UserRole =
+  | 'participant'
+  | 'admin'
+  | 'super_admin'
+  | 'college_admin'
+  | 'event_coordinator'
+  | 'question_manager'
+  | 'result_reviewer';
+
 export interface User {
   id: string;
   username: string;
   name: string;
-  role: 'participant' | 'admin';
+  role: UserRole;
+  collegeId?: string;
+  eventId?: string;
+  department?: string;
+  year?: string;
+  regNo?: string;
   isDisqualified?: boolean;
   disqualificationReason?: string;
+}
+
+export interface College {
+  _id: string;
+  name: string;
+  code: string;
+  logoUrl?: string;
+  primaryColor: string;
+  secondaryColor: string;
+  contactEmail?: string;
+  website?: string;
+  createdAt: string;
+}
+
+export interface Event {
+  _id: string;
+  collegeId: string | College;
+  name: string;
+  code: string;
+  description: string;
+  bannerUrl?: string;
+  status: 'draft' | 'registration' | 'ready' | 'live' | 'frozen' | 'completed';
+  rules: string[];
+  scoringConfig: {
+    negativeMarking: boolean;
+    tieBreakerPriority: ('codingScore' | 'debuggingScore' | 'totalTime' | 'earliestSubmit')[];
+    autoSubmitOnTimeUp: boolean;
+    violationLimit: number;
+    autoSubmitOnViolation: boolean;
+  };
+  branding: {
+    customTitle?: string;
+    certificateTitle?: string;
+    signatoryName?: string;
+    signatoryTitle?: string;
+  };
+  createdAt: string;
+}
+
+export interface DynamicRound {
+  _id: string;
+  eventId: string;
+  roundNumber: number;
+  title: string;
+  description: string;
+  type: 'mcq' | 'debugging' | 'coding' | 'sql' | 'aptitude' | 'custom';
+  durationMinutes: number;
+  questionCount: number;
+  totalMarks: number;
+  passingMarks: number;
+  negativeMarkValue: number;
+  status: 'pending' | 'active' | 'locked' | 'completed';
+  startedAt: string | null;
+  endedAt?: string | null;
+  isFrozen?: boolean;
+}
+
+export interface AuditLog {
+  _id: string;
+  adminId: string;
+  adminUsername: string;
+  collegeId?: string;
+  eventId?: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  details?: Record<string, any>;
+  reason?: string;
+  ipAddress?: string;
+  createdAt: string;
 }
 
 export interface Competition {
@@ -109,10 +193,8 @@ export interface LeaderboardRow {
   r2Score: number;
   r3Score: number;
   totalScore: number;
-  r1Time: number;
-  r2Time: number;
-  r3Time: number;
+  totalTimeTaken: number;
   totalTimeSeconds: number;
-  tieBreakRankOffset: number;
   lastStatus: string;
+  tieBreakRank?: number;
 }

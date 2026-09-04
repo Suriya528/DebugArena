@@ -32,8 +32,8 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
 
   io.on('connection', (socket: Socket) => {
     const user = (socket as any).user as AuthPayload;
-
-    if (user.role === 'admin') {
+    const isAdmin = user.role !== 'participant';
+    if (isAdmin) {
       socket.join('admin-room');
       // Send current active users immediately to admin
       socket.emit('admin:online_users', Array.from(onlineUsers.values()));
@@ -89,6 +89,12 @@ export function broadcastToAdmins(event: string, payload: any): void {
 }
 
 export function broadcastToParticipants(event: string, payload: any): void {
+  if (io) {
+    io.emit(event, payload);
+  }
+}
+
+export function broadcastToAll(event: string, payload: any): void {
   if (io) {
     io.emit(event, payload);
   }

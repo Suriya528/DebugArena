@@ -8,6 +8,8 @@ import { startServerTimerSweep } from './services/timerService.js';
 import { authRouter } from './routes/auth.js';
 import { participantRouter } from './routes/participant.js';
 import { adminRouter } from './routes/admin.js';
+import { adminEventRouter } from './routes/adminEvent.js';
+import { tenantContext } from './middleware/tenantContext.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -19,6 +21,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(tenantContext as any);
 
 // Health Check
 app.get('/api/health', (_req, res) => {
@@ -29,6 +32,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/participant', participantRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/events', adminEventRouter);
 
 // Initialize Socket.io
 initSocketIO(server);

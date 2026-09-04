@@ -1,7 +1,8 @@
 import React from 'react';
-import { Activity, PlaySquare, Trophy, Users, HelpCircle, Split, Award } from 'lucide-react';
+import { Activity, PlaySquare, Trophy, Users, HelpCircle, Split, Award, Building2 } from 'lucide-react';
 
 export type AdminTab =
+  | 'events'
   | 'monitor'
   | 'control'
   | 'results'
@@ -18,6 +19,7 @@ interface AdminNavProps {
 
 export const AdminNav: React.FC<AdminNavProps> = ({ activeTab, onTabChange, hasTies }) => {
   const tabs = [
+    { id: 'events', label: 'Event Builder & Tenancy', icon: Building2 },
     { id: 'monitor', label: 'Live Monitoring', icon: Activity },
     { id: 'control', label: 'Competition & Rounds', icon: PlaySquare },
     { id: 'results', label: 'Round Results & Advance', icon: Award },

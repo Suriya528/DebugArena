@@ -1,13 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env.js';
-import { User } from '../models/User.js';
+import { User, UserRole } from '../models/User.js';
 
 export interface AuthPayload {
   userId: string;
   username: string;
-  role: 'participant' | 'admin';
+  role: UserRole;
   name: string;
+  collegeId?: string;
+  eventId?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -31,18 +33,52 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
   }
 }
 
-export function requireRole(role: 'participant' | 'admin') {
+export function requireRole(allowedRoles: UserRole | UserRole[]) {
+  const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    if (req.user.role !== role) {
-      res.status(403).json({ error: `Forbidden: Requires ${role} role` });
+
+    // Super Admin and legacy admin have full permissions across all admin endpoints
+    if (req.user.role === 'super_admin' || req.user.role === 'admin') {
+      next();
       return;
     }
-    next();
+
+    if (roles.includes(req.user.role)) {
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      error: `Forbidden: Requires one of [${roles.join(', ')}] role`
+    });
   };
+}
+
+export function requireAnyAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const adminRoles: UserRole[] = [
+    'admin',
+    'super_admin',
+    'college_admin',
+    'event_coordinator',
+    'question_manager',
+    'result_reviewer'
+  ];
+
+  if (adminRoles.includes(req.user.role)) {
+    next();
+    return;
+  }
+
+  res.status(403).json({ error: 'Forbidden: Requires admin privileges' });
 }
 
 export async function checkNotDisqualified(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {

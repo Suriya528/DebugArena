@@ -40,7 +40,9 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       userId: user._id.toString(),
       username: user.username,
       role: user.role,
-      name: user.name
+      name: user.name,
+      collegeId: user.collegeId ? user.collegeId.toString() : undefined,
+      eventId: user.eventId ? user.eventId.toString() : undefined
     };
 
     const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
@@ -51,7 +53,11 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
         id: user._id,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        collegeId: user.collegeId,
+        eventId: user.eventId,
+        department: user.department,
+        regNo: user.regNo
       }
     });
   } catch (err: any) {

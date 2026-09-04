@@ -17,6 +17,7 @@ import { ParticipantManager } from './components/admin/ParticipantManager.js';
 import { QuestionManager } from './components/admin/QuestionManager.js';
 import { TieBreakManager } from './components/admin/TieBreakManager.js';
 import { LeaderboardView } from './components/admin/LeaderboardView.js';
+import { EventManager } from './components/admin/EventManager.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -387,13 +388,14 @@ export const App: React.FC = () => {
     );
   }
 
-  // 2. Admin Dashboard Application
-  if (user.role === 'admin') {
+  // 2. Admin Dashboard Application (Available to all admin roles)
+  if (user.role !== 'participant') {
     return (
       <div className="min-h-screen bg-[#090d16] flex flex-col">
         <Navbar />
         <AdminNav activeTab={adminTab} onTabChange={setAdminTab} />
         <main className="flex-1">
+          {adminTab === 'events' && <EventManager />}
           {adminTab === 'monitor' && <LiveMonitor />}
           {adminTab === 'control' && <CompetitionControl />}
           {adminTab === 'results' && <RoundResultsView />}

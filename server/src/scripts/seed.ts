@@ -8,6 +8,10 @@ import { Attempt } from '../models/Attempt.js';
 import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
+import { College } from '../models/College.js';
+import { Event } from '../models/Event.js';
+import { DynamicRound } from '../models/DynamicRound.js';
+import { AuditLog } from '../models/AuditLog.js';
 
 export async function seedData() {
   console.log('🌱 Connecting to database for seeding...');
@@ -22,8 +26,49 @@ export async function seedData() {
     Attempt.deleteMany({}),
     RoundProgress.deleteMany({}),
     ViolationLog.deleteMany({}),
-    TieBreak.deleteMany({})
+    TieBreak.deleteMany({}),
+    College.deleteMany({}),
+    Event.deleteMany({}),
+    DynamicRound.deleteMany({}),
+    AuditLog.deleteMany({})
   ]);
+
+  console.log('🏛️ Creating Default College and Event...');
+  const defaultCollege = await College.create({
+    name: 'ABC Institute of Technology',
+    code: 'ABC-TECH',
+    logoUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?w=128&auto=format&fit=crop&q=80',
+    primaryColor: '#6366f1',
+    secondaryColor: '#06b6d4',
+    contactEmail: 'debugarena@abctech.edu'
+  });
+
+  const defaultEvent = await Event.create({
+    collegeId: defaultCollege._id,
+    name: 'DebugX Championship 2026',
+    code: 'DX26',
+    description: 'Premier intercollegiate debugging and algorithmic bug-hunting championship.',
+    status: 'live',
+    rules: [
+      'Full-screen proctoring is strictly enforced throughout the competition.',
+      'Zero negative marking on all debugging challenges.',
+      'Tab switching and window minimization incur escalated security strikes.',
+      'All code submissions are evaluated server-side.'
+    ],
+    scoringConfig: {
+      negativeMarking: false,
+      tieBreakerPriority: ['codingScore', 'debuggingScore', 'totalTime', 'earliestSubmit'],
+      autoSubmitOnTimeUp: true,
+      violationLimit: 3,
+      autoSubmitOnViolation: true
+    },
+    branding: {
+      customTitle: 'DebugX 2026 | ABC Tech',
+      certificateTitle: 'Certificate of Achievement — DebugX 2026',
+      signatoryName: 'Dr. S. Ramanujan',
+      signatoryTitle: 'Head of Computer Science & Engineering'
+    }
+  });
 
   console.log('👤 Creating Admin and Demo Participants...');
   const adminPassword = await bcrypt.hash('admin123', 10);
@@ -33,16 +78,18 @@ export async function seedData() {
     username: 'admin',
     name: 'Tournament Director',
     passwordHash: adminPassword,
-    role: 'admin'
+    role: 'super_admin',
+    collegeId: defaultCollege._id,
+    eventId: defaultEvent._id
   });
 
   const participants = await User.create([
-    { username: 'team1', name: 'Binary Beasts', passwordHash: participantPassword, role: 'participant' },
-    { username: 'team2', name: 'Null Pointers', passwordHash: participantPassword, role: 'participant' },
-    { username: 'team3', name: 'Stack Overflows', passwordHash: participantPassword, role: 'participant' },
-    { username: 'team4', name: 'Byte Benders', passwordHash: participantPassword, role: 'participant' },
-    { username: 'team5', name: 'Logic Bombs', passwordHash: participantPassword, role: 'participant' },
-    { username: 'team6', name: 'Syntax Strikers', passwordHash: participantPassword, role: 'participant' }
+    { username: 'team1', name: 'Binary Beasts', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'CSE', year: '3rd Year', regNo: 'REG-2026-001' },
+    { username: 'team2', name: 'Null Pointers', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'IT', year: '3rd Year', regNo: 'REG-2026-002' },
+    { username: 'team3', name: 'Stack Overflows', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'CSE', year: '2nd Year', regNo: 'REG-2026-003' },
+    { username: 'team4', name: 'Byte Benders', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'ECE', year: '4th Year', regNo: 'REG-2026-004' },
+    { username: 'team5', name: 'Logic Bombs', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'CSE', year: '3rd Year', regNo: 'REG-2026-005' },
+    { username: 'team6', name: 'Syntax Strikers', passwordHash: participantPassword, role: 'participant', collegeId: defaultCollege._id, eventId: defaultEvent._id, department: 'IT', year: '2nd Year', regNo: 'REG-2026-006' }
   ]);
 
   console.log(`✅ Created Admin and ${participants.length} Participants.`);
@@ -55,6 +102,43 @@ export async function seedData() {
     violationLimit: 3,
     autoSubmitOnViolation: true
   });
+
+  await DynamicRound.create([
+    {
+      eventId: defaultEvent._id,
+      roundNumber: 1,
+      title: 'Round 1: Rapid-Fire Code Debugging MCQs',
+      description: 'Find subtle bugs in C, C++, Java, JavaScript, and Python snippets. 10 questions, strictly no negative marking.',
+      type: 'mcq',
+      durationMinutes: 15,
+      questionCount: 10,
+      totalMarks: 100,
+      status: 'active',
+      startedAt: new Date()
+    },
+    {
+      eventId: defaultEvent._id,
+      roundNumber: 2,
+      title: 'Round 2: Algorithmic Debugging & Code Patching',
+      description: '3 coding challenges with buggy starter implementations. Fix the logic to pass visible and hidden test cases.',
+      type: 'debugging',
+      durationMinutes: 45,
+      questionCount: 3,
+      totalMarks: 100,
+      status: 'pending'
+    },
+    {
+      eventId: defaultEvent._id,
+      roundNumber: 3,
+      title: 'Round 3: Advanced Optimization & Edge-Case Debugging',
+      description: '2 high-intensity debugging problems. Hunt down elusive race conditions, memory leaks, and off-by-one errors.',
+      type: 'coding',
+      durationMinutes: 30,
+      questionCount: 2,
+      totalMarks: 100,
+      status: 'pending'
+    }
+  ]);
 
   await Round.create([
     {

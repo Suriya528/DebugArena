@@ -10,5 +10,6 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/scripts/browser_verify.ts", "src/scripts/verify_all.ts"]
 }
