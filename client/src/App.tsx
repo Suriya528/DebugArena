@@ -18,6 +18,7 @@ import { QuestionManager } from './components/admin/QuestionManager.js';
 import { TieBreakManager } from './components/admin/TieBreakManager.js';
 import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
+import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -423,6 +424,7 @@ export const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#090d16] flex flex-col select-none relative overflow-hidden">
       {user && <SecurityWatermark username={user.username} />}
+      <OfflineSyncBanner />
 
       {/* When outside fullscreen: conceal all assessment content */}
       {!isFullscreen ? (

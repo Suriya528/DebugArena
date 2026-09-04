@@ -11,6 +11,7 @@ import { adminRouter } from './routes/admin.js';
 import { adminEventRouter } from './routes/adminEvent.js';
 import { adminQuestionBankRouter } from './routes/adminQuestionBank.js';
 import { adminControlRoomRouter } from './routes/adminControlRoom.js';
+import { timeSyncRouter } from './routes/timeSync.js';
 import { tenantContext } from './middleware/tenantContext.js';
 
 const app = express();
@@ -32,6 +33,7 @@ app.get('/api/health', (_req, res) => {
 
 // Mount Routes
 app.use('/api/auth', authRouter);
+app.use('/api/time', timeSyncRouter);
 app.use('/api/participant', participantRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/admin/events', adminEventRouter);

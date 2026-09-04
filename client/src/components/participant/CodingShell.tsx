@@ -15,7 +15,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
-import { api, queueOfflineUpdate } from '../../services/api.js';
+import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
 
 interface CodingShellProps {
@@ -83,16 +83,21 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     setRunResults(existingResults);
   }, [questions, initialAttempts]);
 
-  // Debounced save
+  // Debounced save with idempotent operation tracking
   const debouncedSaveCode = useDebouncedCallback(
     async (questionId: string, codeText: string, lang: string) => {
       setSaveStatus(prev => ({ ...prev, [questionId]: 'saving' }));
+      const opId = generateOperationId();
+      const seq = getNextSeqId();
       try {
         await api.post('/participant/save-answer', {
           questionId,
           roundNumber,
           code: codeText,
-          language: lang
+          language: lang,
+          operationId: opId,
+          seqId: seq,
+          clientTimestamp: Date.now()
         });
         setSaveStatus(prev => ({ ...prev, [questionId]: 'saved' }));
       } catch (err) {
@@ -101,7 +106,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           roundNumber,
           code: codeText,
           language: lang,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          operationId: opId,
+          seqId: seq
         });
         setSaveStatus(prev => ({ ...prev, [questionId]: 'offline' }));
       }
@@ -185,7 +192,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         questionId: qId,
         code,
         language: lang,
-        roundNumber
+        roundNumber,
+        operationId: generateOperationId(),
+        seqId: getNextSeqId(),
+        clientTimestamp: Date.now()
       });
       if (res.data.success) {
         setRunResults(prev => ({ ...prev, [qId]: res.data.results }));

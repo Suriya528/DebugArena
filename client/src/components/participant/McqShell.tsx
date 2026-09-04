@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bookmark, ChevronLeft, ChevronRight, Check, RotateCcw, Send, AlertCircle, HelpCircle } from 'lucide-react';
 import { Question, Attempt } from '../../types/index.js';
-import { api, queueOfflineUpdate } from '../../services/api.js';
+import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
 
 interface McqShellProps {
@@ -58,15 +58,20 @@ export const McqShell: React.FC<McqShellProps> = ({
     }
   }, [currentIndex, currentQ]);
 
-  // Debounced save to backend
+  // Debounced save to backend with idempotent operation tracking
   const debouncedSave = useDebouncedCallback(
     async (questionId: string, optionIndex: number | null) => {
       setSaveStatus(prev => ({ ...prev, [questionId]: 'saving' }));
+      const opId = generateOperationId();
+      const seq = getNextSeqId();
       try {
         await api.post('/participant/save-answer', {
           questionId,
           roundNumber,
-          selectedOption: optionIndex
+          selectedOption: optionIndex,
+          operationId: opId,
+          seqId: seq,
+          clientTimestamp: Date.now()
         });
         setSaveStatus(prev => ({ ...prev, [questionId]: 'saved' }));
       } catch (err) {
@@ -75,7 +80,9 @@ export const McqShell: React.FC<McqShellProps> = ({
           questionId,
           roundNumber,
           selectedOption: optionIndex,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          operationId: opId,
+          seqId: seq
         });
         setSaveStatus(prev => ({ ...prev, [questionId]: 'offline' }));
       }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { syncTimeWithServer, getCalibratedNow } from '../services/api.js';
 
 interface UseTimerProps {
   serverRemainingSeconds: number;
@@ -11,29 +12,42 @@ export function useTimer({ serverRemainingSeconds, isActive, onExpire }: UseTime
   const onExpireRef = useRef(onExpire);
   onExpireRef.current = onExpire;
 
+  const targetEndTimeRef = useRef<number>(Date.now() + serverRemainingSeconds * 1000);
+
+  // Sync server clock calibration on mount
+  useEffect(() => {
+    syncTimeWithServer().then(() => {
+      targetEndTimeRef.current = getCalibratedNow() + serverRemainingSeconds * 1000;
+    });
+  }, []);
+
   // Resync when server remaining time updates
   useEffect(() => {
+    targetEndTimeRef.current = getCalibratedNow() + serverRemainingSeconds * 1000;
     setRemainingSeconds(serverRemainingSeconds);
   }, [serverRemainingSeconds]);
 
   useEffect(() => {
-    if (!isActive || remainingSeconds <= 0) return;
+    if (!isActive) return;
 
+    // Periodic time tick against calibrated target end time
     const interval = setInterval(() => {
-      setRemainingSeconds(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          if (onExpireRef.current) {
-            onExpireRef.current();
-          }
-          return 0;
+      const calibratedNow = getCalibratedNow();
+      const diffMs = targetEndTimeRef.current - calibratedNow;
+      const diffSec = Math.max(0, Math.ceil(diffMs / 1000));
+
+      setRemainingSeconds(diffSec);
+
+      if (diffSec <= 0) {
+        clearInterval(interval);
+        if (onExpireRef.current) {
+          onExpireRef.current();
         }
-        return prev - 1;
-      });
+      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isActive, remainingSeconds]);
+  }, [isActive]);
 
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;

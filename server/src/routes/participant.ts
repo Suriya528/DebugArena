@@ -7,6 +7,7 @@ import { Attempt } from '../models/Attempt.js';
 import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
+import { ProcessedOperation } from '../models/ProcessedOperation.js';
 import { getRemainingSeconds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
@@ -225,11 +226,20 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
 participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.userId;
-    const { questionId, roundNumber, selectedOption, code, language } = req.body;
+    const { questionId, roundNumber, selectedOption, code, language, operationId, seqId, clientTimestamp } = req.body;
 
     if (!questionId || !roundNumber) {
       res.status(400).json({ error: 'questionId and roundNumber are required' });
       return;
+    }
+
+    // Idempotency check
+    if (operationId) {
+      const existingOp = await ProcessedOperation.findOne({ operationId });
+      if (existingOp) {
+        res.json({ ...existingOp.resultPayload, deduplicated: true });
+        return;
+      }
     }
 
     const round = await Round.findOne({ roundNumber });
@@ -262,7 +272,22 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
     attempt.lastSavedAt = new Date();
     await attempt.save();
 
-    res.json({ success: true, savedAt: attempt.lastSavedAt });
+    const responsePayload = { success: true, savedAt: attempt.lastSavedAt };
+
+    if (operationId) {
+      await ProcessedOperation.create({
+        operationId,
+        userId,
+        roundNumber,
+        questionId,
+        actionType: 'save_answer',
+        seqId,
+        clientTimestamp,
+        resultPayload: responsePayload
+      }).catch(() => {});
+    }
+
+    res.json(responsePayload);
   } catch (err) {
     console.error('Save answer error:', err);
     res.status(500).json({ error: 'Failed to save answer' });
@@ -333,7 +358,15 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
 participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.userId;
-    const { questionId, code, language, roundNumber } = req.body;
+    const { questionId, code, language, roundNumber, operationId, seqId, clientTimestamp } = req.body;
+
+    if (operationId) {
+      const existingOp = await ProcessedOperation.findOne({ operationId });
+      if (existingOp) {
+        res.json({ ...existingOp.resultPayload, deduplicated: true });
+        return;
+      }
+    }
 
     const round = await Round.findOne({ roundNumber });
     if (!round || round.status !== 'active') {
@@ -391,12 +424,27 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       totalCount: results.length
     });
 
-    res.json({
+    const responsePayload = {
       success: true,
       score: attempt.score,
       submissionScore: currentScore,
       results: sanitizeResultsForParticipant(results)
-    });
+    };
+
+    if (operationId) {
+      await ProcessedOperation.create({
+        operationId,
+        userId,
+        roundNumber,
+        questionId,
+        actionType: 'submit_code',
+        seqId,
+        clientTimestamp,
+        resultPayload: responsePayload
+      }).catch(() => {});
+    }
+
+    res.json(responsePayload);
   } catch (err) {
     console.error('Submit code error:', err);
     res.status(500).json({ error: 'Error submitting code' });
@@ -407,7 +455,15 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
 participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.userId;
-    const { roundNumber } = req.body;
+    const { roundNumber, operationId, seqId, clientTimestamp } = req.body;
+
+    if (operationId) {
+      const existingOp = await ProcessedOperation.findOne({ operationId });
+      if (existingOp) {
+        res.json({ ...existingOp.resultPayload, deduplicated: true });
+        return;
+      }
+    }
 
     const round = await Round.findOne({ roundNumber });
     if (!round) {
@@ -431,12 +487,26 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
 
     const { totalScore, timeTakenSeconds } = await finalizeParticipantRoundScore(userId, roundNumber);
 
-    res.json({
+    const responsePayload = {
       success: true,
       message: `Round ${roundNumber} submitted successfully`,
       totalScore,
       timeTakenSeconds
-    });
+    };
+
+    if (operationId) {
+      await ProcessedOperation.create({
+        operationId,
+        userId,
+        roundNumber,
+        actionType: 'submit_round',
+        seqId,
+        clientTimestamp,
+        resultPayload: responsePayload
+      }).catch(() => {});
+    }
+
+    res.json(responsePayload);
   } catch (err) {
     console.error('Submit round error:', err);
     res.status(500).json({ error: 'Failed to submit round' });
@@ -499,14 +569,22 @@ participantRouter.post('/log-violation', async (req: AuthenticatedRequest, res: 
   }
 });
 
-// POST /api/participant/sync-batch (Offline recovery endpoint)
+// POST /api/participant/sync-batch (Offline recovery endpoint with conflict-safe deduplication)
 participantRouter.post('/sync-batch', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.userId;
-    const { updates } = req.body; // Array of { questionId, roundNumber, selectedOption, code, language }
+    const { updates } = req.body; // Array of { questionId, roundNumber, selectedOption, code, language, operationId, seqId, timestamp }
 
+    let processedCount = 0;
     if (Array.isArray(updates)) {
       for (const item of updates) {
+        if (item.operationId) {
+          const existing = await ProcessedOperation.findOne({ operationId: item.operationId });
+          if (existing) {
+            continue; // Already processed, skip deduplicated
+          }
+        }
+
         let attempt = await Attempt.findOne({ userId, roundNumber: item.roundNumber, questionId: item.questionId });
         if (!attempt) {
           attempt = new Attempt({
@@ -519,12 +597,26 @@ participantRouter.post('/sync-batch', async (req: AuthenticatedRequest, res: Res
         if (item.selectedOption !== undefined) attempt.selectedOption = item.selectedOption;
         if (item.code !== undefined) attempt.code = item.code;
         if (item.language !== undefined) attempt.language = item.language;
-        attempt.lastSavedAt = new Date();
+        attempt.lastSavedAt = item.timestamp ? new Date(item.timestamp) : new Date();
         await attempt.save();
+
+        if (item.operationId) {
+          await ProcessedOperation.create({
+            operationId: item.operationId,
+            userId,
+            roundNumber: item.roundNumber,
+            questionId: item.questionId,
+            actionType: 'sync_item',
+            seqId: item.seqId,
+            clientTimestamp: item.timestamp,
+            resultPayload: { savedAt: attempt.lastSavedAt }
+          }).catch(() => {});
+        }
+        processedCount++;
       }
     }
 
-    res.json({ success: true, syncedCount: (updates || []).length });
+    res.json({ success: true, syncedCount: processedCount, totalReceived: (updates || []).length });
   } catch (err) {
     res.status(500).json({ error: 'Failed to sync offline batch' });
   }
