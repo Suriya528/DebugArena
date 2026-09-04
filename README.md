@@ -1,43 +1,140 @@
-# DebugArena — College Debugging & Timed Coding Challenge Platform
+# DebugArena — Enterprise Multi-College Coding & Debugging Tournament Platform
 
-DebugArena is a full-stack, live competition platform engineered for university hackathons and coding tournaments. It features a unified monorepo housing both the **Participant Assessment Portal** and the **Admin Command Dashboard**.
-
----
-
-## 🌟 Key Architecture & Highlights
-
-- **Server-Authoritative Timing & Auto-Submit**: Timer countdowns are computed strictly on the backend using server timestamps. Client clocks are never trusted. A background daemon sweeps expired rounds and auto-submits any active sessions automatically.
-- **Strict Anti-Cheat & Proctoring**: Mandatory full-screen mode on assessment entry. Fullscreen exits and tab switches trigger security warnings, increment violation strikes, and auto-submit upon exceeding limits (default: 3 strikes).
-- **Zero Data Loss & Offline Queue**: Real-time debounced saving (~1.5–2.5s) to the backend. In-progress states (selected options, code buffers, and review flags) survive browser reloads. If network drops, answers are queued locally and automatically synced upon reconnecting.
-- **Multi-Round Sequential Progression**:
-  - **Round 1 (MCQ)**: 10 code debugging questions. Instant auto-grading, strictly **no negative marking**.
-  - **Round 2 (Coding)**: 3 algorithmic debugging challenges with buggy starter code across Python, JavaScript, C, C++, and Java.
-  - **Round 3 (Coding)**: 2 advanced debugging challenges with visible sample cases and hidden test cases.
-- **Top Performer Manual Advancement**: After each round, administrators review a ranked leaderboard (points + time taken) and hand-pick or quick-select top performers (`Top N`) to advance. Non-selected participants are permanently locked out of subsequent rounds.
-- **Sudden-Death Tie-Break Engine**: Flags participants tied on *both* score AND time taken post-Round 3. Assigns an extra challenge to the tied subset to reorder the final podium without altering base scores.
-- **Real-Time Live Monitoring**: Socket.io gateway broadcasting participant logins, real-time code executions, submissions, and security strikes directly to the admin live feed.
-- **Zero-Friction Local Database**: Automatically utilizes `mongodb-memory-server` if external MongoDB URI is not set, guaranteeing instantaneous out-of-the-box local execution.
+DebugArena is an enterprise-grade, multi-tenant competition and assessment platform engineered for universities, hackathons, and national coding tournaments. It features a unified monorepo housing both the **Participant Proctored Assessment Portal** and the **Host College Command Center**.
 
 ---
 
-## 🚀 Quick Start
+## 🌟 Visual Showcase & Key Innovations
+
+### 1. Standardized Official QR Certificates with Dynamic College Color Combinations
+Issued certificates adhere to an authentic educational and government credential standard (aligned with NSDC / Skill India / PMKVY formats) featuring:
+- **Ivory Parchment Canvas (`#fffdfa`) with Guilloche Watermark**: Tamper-evident aesthetic with 100% visible, high-contrast dark slate text (`#0f172a` / `#1e293b`).
+- **Dynamic Institutional Brand Combination**: Double/triple borders, medal ribbons, and accent lines automatically adopt the host college's primary and secondary color palette.
+- **Verification Trio**: Cryptographic HMAC-SHA256 QR code on the left, dual-color official rosette medal seal in the center, and digital fountain-pen signature with Chairman signatory attribution on the right.
+- **Public Verification Portal (`/verify-cert/:certificateId`)**: Instant cryptographic ledger verification accessible by scanning the physical or digital QR code.
+
+<p align="center">
+  <img src="docs/screenshots/admin_certificate_modal.png" alt="Official Standard Certificate Modal with College Colors" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/public_certificate_verification.png" alt="Public Certificate Verification Portal" width="850" />
+</p>
+
+---
+
+### 2. Dynamic Event Pipeline Designer & Automated Round Quotas
+Before launching an event, college administrators customize every stage of the tournament:
+- **Modular Round Types**: MCQ Debugging rounds, Algorithmic Coding rounds, and Sudden-Death Tiebreakers.
+- **Language & Runtime Selection**: Per-round configuration for Python, JavaScript, C, C++, and Java with custom time limits and penalty rules.
+- **Automated Advancement Quotas**: Set exact qualification thresholds upfront (e.g., *Round 1: 25 teams → Round 2: Top 15 → Final: Top 10*). The system handles ranking, cutoffs, and locked access automatically.
+
+<p align="center">
+  <img src="docs/screenshots/admin_event_pipeline_builder.png" alt="Dynamic Event Pipeline Builder" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/admin_round_advancement_quota.png" alt="Automated Round Advancement Quota Engine" width="850" />
+</p>
+
+---
+
+### 3. Strict Multi-Tenant Privacy & Competitor Concealment
+Host colleges enjoy completely private, tenant-isolated experiences:
+- **Zero Cross-College Visibility**: Colleges never see other institutions' events, question banks, participants, or leaderboards.
+- **Scoped API & Database Security**: All event builders, participant queries, and mutations strictly enforce the authenticated administrator's `collegeId`. Competitor resources return HTTP 404 (zero existence disclosure).
+
+<p align="center">
+  <img src="docs/screenshots/admin_event_tenant_concealment.png" alt="Multi-Tenant Privacy & Competitor Concealment" width="850" />
+</p>
+
+---
+
+### 4. Live Control Room, Fairness Engine & Pre-Event Health Inspector
+- **Centralized Control**: Real-time Socket.io gateway broadcasting participant logins, code executions, test pass rates, and security breaches.
+- **Question Anomaly & Fairness Detection**: Automatically flags questions where pass rates diverge significantly from historical difficulty norms.
+- **System Readiness Inspector**: One-click verification of database latency, sandbox availability, and round schedules prior to kickoff.
+
+<p align="center">
+  <img src="docs/screenshots/phase3_live_control_room.png" alt="Live Control Room & Fairness Engine" width="850" />
+</p>
+
+---
+
+### 5. Universal Question Engine, Question DNA & Bug Mutation Studio
+- **Question Bank Studio**: Create, tag, and categorize MCQ and code debugging challenges with sample and hidden test cases.
+- **Question DNA & Bug Mutation**: Automatically generates diverse syntactic and logical bug variants to prevent candidate collusion.
+
+<p align="center">
+  <img src="docs/screenshots/phase2_question_bank_studio.png" alt="Universal Question Bank Studio" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/phase2_question_dna_variant.png" alt="Question DNA Bug Mutation Studio" width="850" />
+</p>
+
+---
+
+### 6. Evidence-Based Suspicion Engine, Journey Replay & Skill Radar
+- **Suspicion Engine**: Flags anomalous submission timing, massive sudden code pastes, and repeated compilation failures with visual evidence cards.
+- **Debugging Journey Replay**: Chronological step-by-step playback of how each candidate edited their code and iterated toward their solution.
+- **Dynamic Skill Radar**: Evaluates candidate competencies across Algorithmic Logic, Syntax Mastery, Optimization, and Debugging Speed.
+
+<p align="center">
+  <img src="docs/screenshots/phase5_suspicion_evidence.png" alt="Evidence-Based Suspicion Engine" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/phase5_journey_replay.png" alt="Debugging Journey Replay" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/phase5_skill_radar.png" alt="Dynamic Skill Radar" width="850" />
+</p>
+
+---
+
+### 7. Proctored Assessment Environment & Server-Authoritative Timing
+- **Mandatory Fullscreen & Proctoring Shield**: Enforces locked fullscreen. Tab switching and focus loss trigger strikes; exceeding the threshold results in automatic submission.
+- **Server-Authoritative Clock**: Eliminates client-side clock tampering. Round expiration and auto-submits are synchronized strictly via server timestamps.
+- **Offline Sync Resilience**: Real-time debounced progress persistence (~1.5s). In the event of network interruptions, answers are safely buffered locally and synced automatically upon reconnection.
+
+<p align="center">
+  <img src="docs/screenshots/participant_proctored_assessment.png" alt="Proctored Assessment Environment" width="850" />
+</p>
+
+---
+
+## 🛠️ Tech Stack & Architecture
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Canvas/SVG Rendering |
+| **Backend** | Node.js, Express, TypeScript, Socket.io, JSON Web Tokens (JWT), Crypto (HMAC-SHA256) |
+| **Database** | MongoDB with Mongoose (with automated `mongodb-memory-server` fallback for zero-config local runs) |
+| **Execution Sandbox** | Multi-language code execution engine (Python native, Judge0 / Piston integration for C, C++, Java) |
+| **Integrity & Security** | Server-authoritative timer, full-screen lock proctoring, rate-limiting, multi-tenant isolation |
+
+---
+
+## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
-- Node.js (v18+)
-- Python 3 (`py` or `python`) for native Python execution (C, C++, Java supported when Judge0/Piston URL is supplied in `.env`)
+- **Node.js** (v18 or later)
+- **npm** (v9 or later)
+- **Python 3** (`python` or `py`) installed on system PATH for native Python challenge evaluation.
 
-### 2. Install Dependencies
+### 2. Installation
+Clone the repository and install all root, client, and server dependencies:
 ```bash
+git clone https://github.com/Suriya528/DebugArena.git
+cd DebugArena
 npm run install:all
 ```
-*Or install separately:*
-```bash
-cd server && npm install
-cd ../client && npm install
-```
 
-### 3. Run Development Servers
-To run both backend and frontend concurrently:
+### 3. Launch Development Environment
+Start both the backend server and frontend development client concurrently:
+
 ```bash
 # Terminal 1: Backend Server (runs on http://localhost:5000)
 npm run server
@@ -46,67 +143,73 @@ npm run server
 npm run client
 ```
 
+*Note: On first launch, the server automatically initializes an in-memory MongoDB instance and seeds sample colleges, events, questions, and participant accounts.*
+
 ---
 
 ## 🔑 Default Seeded Accounts
 
-The database auto-seeds on first startup with demo accounts and question banks:
-
-| Role | Username | Password | Purpose |
+| Role | Username | Password | Purpose & Scope |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin` | `admin123` | Full tournament control, live feed, advancement, leaderboard |
-| **Participant 1** | `team1` | `debug123` | Demo participant (Binary Beasts) |
-| **Participant 2** | `team2` | `debug123` | Demo participant (Null Pointers) |
-| **Participant 3** | `team3` | `debug123` | Demo participant (Stack Overflows) |
-| **Participant 4** | `team4` | `debug123` | Demo participant (Byte Benders) |
-| **Participant 5** | `team5` | `debug123` | Demo participant (Logic Bombs) |
-| **Participant 6** | `team6` | `debug123` | Demo participant (Syntax Strikers) |
+| **Host College Admin** | `admin` | `admin123` | College Alpha Command Center (Events, Control Room, Certificates) |
+| **Participant 1** | `team1` | `debug123` | Demo Team 1 (Binary Beasts) |
+| **Participant 2** | `team2` | `debug123` | Demo Team 2 (Null Pointers) |
+| **Participant 3** | `team3` | `debug123` | Demo Team 3 (Stack Overflows) |
+| **Participant 4** | `team4` | `debug123` | Demo Team 4 (Byte Benders) |
+| **Participant 5** | `team5` | `debug123` | Demo Team 5 (Logic Bombs) |
+| **Participant 6** | `team6` | `debug123` | Demo Team 6 (Syntax Strikers) |
 
 ---
 
-## 🧪 Automated Testing & Verification
+## 🧪 Automated Verification & Test Suites
 
-Run the full end-to-end integration test suite:
-```bash
-cd server
-npx tsx src/scripts/verify_all.ts
-npx tsx src/scripts/verify_tiebreak.ts
-```
+The project includes an end-to-end automated testing suite covering all architectural layers:
 
-Run the automated Chrome browser verification and screenshot capture:
 ```bash
-cd server
-npx tsx src/scripts/browser_verify.ts
+# Multi-Tenant Privacy & Isolation (15/15 tests)
+npx --prefix server tsx src/scripts/verify_tenant_privacy.ts
+
+# Full Assessment & Scoring Lifecycle Verification
+npx --prefix server tsx src/scripts/verify_all.ts
+
+# Sudden-Death Tiebreaker Engine Verification
+npx --prefix server tsx src/scripts/verify_tiebreak.ts
+
+# Automated Headless Chrome Browser Verification
+npx --prefix server tsx src/scripts/browser_verify.ts
 ```
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Structure
 
 ```
-debugarena/
-├── package.json               # Root scripts
-├── README.md                  # Setup & user guide
-├── client/                    # Vite + React + TypeScript + Tailwind CSS
+DebugArena/
+├── docs/
+│   └── screenshots/           # High-resolution architectural screenshots
+├── client/                    # Vite + React 19 + TypeScript + Tailwind CSS
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── admin/         # LiveMonitor, CompetitionControl, RoundResults, Leaderboard, etc.
-│   │   │   ├── participant/   # InstructionsView, McqShell, CodingShell, TieBreakShell, etc.
-│   │   │   └── common/        # Navbar, ConnectionBadge, ViolationModal, etc.
+│   │   │   ├── admin/         # ControlRoom, EventBuilder, CertificateModal, Leaderboard, etc.
+│   │   │   ├── participant/   # ProctoredShell, CodingShell, McqShell, TieBreakShell, etc.
+│   │   │   └── public/        # CertificateVerifyView (Public QR Ledger)
 │   │   ├── context/           # AuthContext, SocketContext
-│   │   ├── hooks/             # useFullscreen, useTimer, useDebounce
-│   │   ├── services/          # api.ts (with offline queue), socket.ts
-│   │   ├── App.tsx            # Portal & Dashboard router
-│   │   └── main.tsx
+│   │   ├── hooks/             # useFullscreen, useTimer, useOfflineQueue
+│   │   └── services/          # api.ts (with offline queue), socket.ts
 │   └── vite.config.ts
-└── server/                    # Express + TypeScript + Mongoose + Socket.io
-    ├── src/
-    │   ├── config/            # db.ts (MemoryServer fallback), env.ts
-    │   ├── models/            # User, Round, Question, Attempt, RoundProgress, TieBreak, etc.
-    │   ├── middleware/        # auth.ts (JWT verify, role guards, anti-cheat checks)
-    │   ├── routes/            # auth.ts, participant.ts, admin.ts
-    │   ├── services/          # judgeService.ts, scoringService.ts, timerService.ts, socketService.ts
-    │   ├── scripts/           # seed.ts, verify_all.ts, verify_tiebreak.ts, browser_verify.ts
-    │   └── server.ts          # Express HTTP + Socket.io entrypoint
-    └── tsconfig.json
+├── server/                    # Express + TypeScript + Mongoose + Socket.io
+│   ├── src/
+│   │   ├── config/            # db.ts (MemoryServer fallback), env.ts
+│   │   ├── models/            # College, Event, Round, Question, Attempt, Certificate, etc.
+│   │   ├── middleware/        # auth.ts (tenant isolation, role guards, proctoring checks)
+│   │   ├── routes/            # admin.ts, participant.ts, certificate.ts, auth.ts
+│   │   ├── services/          # judgeService.ts, scoringService.ts, timerService.ts
+│   │   └── scripts/           # seed.ts, test scripts, screenshot capture utilities
+│   └── tsconfig.json
+└── package.json               # Root scripts (install:all, server, client)
 ```
+
+---
+
+## 📜 License & Accreditation
+Built for high-stakes university tournaments, competitive programming events, and hackathons. Licensed under the MIT License.
