@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Download, Award, Clock, RefreshCw, Medal } from 'lucide-react';
 import { LeaderboardRow } from '../../types/index.js';
 import { api } from '../../services/api.js';
+import { CertificateModal } from './CertificateModal.js';
 
 export const LeaderboardView: React.FC = () => {
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [selectedCertRow, setSelectedCertRow] = useState<LeaderboardRow | null>(null);
 
   const fetchLeaderboard = async () => {
     try {
@@ -182,18 +184,19 @@ export const LeaderboardView: React.FC = () => {
                 <th className="p-4">Total Score</th>
                 <th className="p-4">Total Time</th>
                 <th className="p-4">Outcome</th>
+                <th className="p-4 text-right">Certificate</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300 font-mono">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500 font-sans">
+                  <td colSpan={9} className="p-8 text-center text-slate-500 font-sans">
                     Loading standings...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500 font-sans">
+                  <td colSpan={9} className="p-8 text-center text-slate-500 font-sans">
                     No participants recorded yet.
                   </td>
                 </tr>
@@ -250,6 +253,16 @@ export const LeaderboardView: React.FC = () => {
                         </span>
                       )}
                     </td>
+
+                    <td className="p-4 text-right font-sans">
+                      <button
+                        onClick={() => setSelectedCertRow(r)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 flex items-center gap-1.5 ml-auto cursor-pointer transition-colors"
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Verify & Issue</span>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -257,6 +270,18 @@ export const LeaderboardView: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Certificate Modal */}
+      {selectedCertRow && (
+        <CertificateModal
+          userId={selectedCertRow.userId}
+          username={selectedCertRow.username}
+          name={selectedCertRow.name}
+          rank={selectedCertRow.rank}
+          score={selectedCertRow.totalScore}
+          onClose={() => setSelectedCertRow(null)}
+        />
+      )}
     </div>
   );
 };

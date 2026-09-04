@@ -45,7 +45,7 @@ adminAnalyticsRouter.get('/journey-replay/:userId/:questionId', async (req: Auth
   try {
     const { userId, questionId } = req.params;
 
-    let milestones = [];
+    let milestones: any[] = [];
     if (mongoose.Types.ObjectId.isValid(userId) && mongoose.Types.ObjectId.isValid(questionId)) {
       milestones = await CodeMilestone.find({ userId, questionId }).sort({ timestamp: 1 });
     }
@@ -55,7 +55,7 @@ adminAnalyticsRouter.get('/journey-replay/:userId/:questionId', async (req: Auth
 
     if (milestones.length === 0) {
       // Provide authentic debugging evolution steps
-      return res.json({
+      res.json({
         success: true,
         user: user ? { id: user._id, username: user.username, name: user.name } : { username: 'team1', name: 'Binary Beasts' },
         question: question ? { id: question._id, title: question.title } : { title: 'Binary Search Boundary Bug' },
@@ -96,6 +96,7 @@ adminAnalyticsRouter.get('/journey-replay/:userId/:questionId', async (req: Auth
           }
         ]
       });
+      return;
     }
 
     res.json({
