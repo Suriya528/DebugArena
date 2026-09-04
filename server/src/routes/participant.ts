@@ -463,7 +463,9 @@ participantRouter.post('/log-violation', async (req: AuthenticatedRequest, res: 
     const progress = await RoundProgress.findOne({ userId, roundNumber });
     let violationCount = 1;
     if (progress) {
-      progress.violationCount = (progress.violationCount || 0) + 1;
+      // Intentional breach triage: tab_switch and window_blur incur a 2-strike penalty
+      const strikeIncrement = (type === 'tab_switch' || type === 'window_blur') ? 2 : 1;
+      progress.violationCount = (progress.violationCount || 0) + strikeIncrement;
       violationCount = progress.violationCount;
       await progress.save();
     }
@@ -474,6 +476,7 @@ participantRouter.post('/log-violation', async (req: AuthenticatedRequest, res: 
       roundNumber,
       type,
       violationCount,
+      isSevere: type === 'tab_switch' || type === 'window_blur',
       timestamp: new Date()
     });
 

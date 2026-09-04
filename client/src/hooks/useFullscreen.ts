@@ -85,18 +85,28 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     };
 
+    const purgeClipboard = async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText('');
+        }
+      } catch (e) {}
+    };
+
     const handleVisibilityChange = () => {
       if (document.hidden && isEnabledRef.current) {
+        purgeClipboard();
         if (onViolationRef.current) {
-          onViolationRef.current('tab_switch', 'Tab switched or window minimized during live assessment');
+          onViolationRef.current('tab_switch', 'Candidate switched tabs or minimized assessment window');
         }
       }
     };
 
     const handleWindowBlur = () => {
       if (isEnabledRef.current) {
+        purgeClipboard();
         if (onViolationRef.current) {
-          onViolationRef.current('window_blur', 'Window lost focus (Alt+Tab or external click)');
+          onViolationRef.current('window_blur', 'Window lost focus (Alt+Tab or secondary monitor click)');
         }
       }
     };

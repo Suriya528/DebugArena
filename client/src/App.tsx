@@ -99,8 +99,13 @@ export const App: React.FC = () => {
   // Handle anti-cheat violation
   const handleViolation = useCallback(
     async (type: 'fullscreen_exit' | 'tab_switch' | 'window_blur' | 'unauthorized_shortcut', details: string) => {
-      // Always show lockout screen to conceal test content
-      setCurrentViolationType(type);
+      // Always show lockout screen to conceal test content; prioritize intentional tab switch / blur
+      setCurrentViolationType(prev => {
+        if ((prev === 'tab_switch' || prev === 'window_blur') && type === 'fullscreen_exit') {
+          return prev;
+        }
+        return type;
+      });
       setCurrentViolationDetails(details);
       setViolationModalOpen(true);
 
@@ -147,7 +152,7 @@ export const App: React.FC = () => {
     await requestFullscreen();
   };
 
-  const handleSubmitRoundExplicitly = async () => {
+  const handleSubmitRoundExplicitly = useCallback(async () => {
     if (!roundState) return;
     setIsSubmittingRound(true);
     try {
@@ -160,7 +165,7 @@ export const App: React.FC = () => {
     } finally {
       setIsSubmittingRound(false);
     }
-  };
+  }, [roundState, fetchRoundState]);
 
   // Socket event listeners for live updates
   useEffect(() => {
@@ -530,14 +535,16 @@ export const App: React.FC = () => {
         </>
       )}
 
-      {/* Global Security Violation & Fullscreen Lockout Modal */}
+      {/* Global Security Violation & Fullscreen Lockout Modal with 8s Grace Window */}
       <ViolationModal
-        isOpen={violationModalOpen || !isFullscreen}
+        isOpen={(violationModalOpen || !isFullscreen) && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced'}
         violationCount={violationCount}
         violationLimit={violationLimit}
         type={currentViolationType || 'fullscreen_exit'}
         details={currentViolationDetails || 'You must be in true full-screen mode to access this assessment.'}
         onResumeFullscreen={handleResumeFullscreen}
+        onTimeoutAutoSubmit={handleSubmitRoundExplicitly}
+        gracePeriodSeconds={8}
       />
     </div>
   );
