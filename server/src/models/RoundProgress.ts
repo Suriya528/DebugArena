@@ -10,6 +10,8 @@ export interface IRoundProgress extends Document {
   submittedAt: Date | null;
   markedForReview: Types.ObjectId[];
   violationCount: number;
+  suspicionScore: number;
+  suspicionLevel: 'low' | 'elevated' | 'high' | 'critical';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,7 +30,13 @@ const RoundProgressSchema = new Schema<IRoundProgress>(
     startedAt: { type: Date, default: null },
     submittedAt: { type: Date, default: null },
     markedForReview: [{ type: Schema.Types.ObjectId, ref: 'Question' }],
-    violationCount: { type: Number, default: 0 }
+    violationCount: { type: Number, default: 0 },
+    suspicionScore: { type: Number, default: 0, min: 0, max: 100 },
+    suspicionLevel: {
+      type: String,
+      enum: ['low', 'elevated', 'high', 'critical'],
+      default: 'low'
+    }
   },
   { timestamps: true }
 );

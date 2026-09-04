@@ -8,6 +8,7 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
 import { ProcessedOperation } from '../models/ProcessedOperation.js';
+import { CodeMilestone } from '../models/CodeMilestone.js';
 import { getRemainingSeconds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
@@ -336,6 +337,19 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     const visibleCases = (question.testCases || []).filter(tc => !tc.isHidden);
     const results = await runTestCases(code, language, visibleCases, question.timeLimitMs);
 
+    // Record debugging journey milestone
+    await CodeMilestone.create({
+      userId,
+      questionId,
+      roundNumber: req.body.roundNumber || 2,
+      code,
+      language,
+      eventType: 'run',
+      passedTestsCount: results.filter(r => r.passed).length,
+      totalTestsCount: visibleCases.length,
+      charDelta: code.length
+    }).catch(() => {});
+
     broadcastToAdmins('admin:run_code', {
       userId,
       username: req.user!.username,
@@ -414,6 +428,19 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     }
     await attempt.save();
 
+    // Record debugging journey milestone
+    await CodeMilestone.create({
+      userId,
+      questionId,
+      roundNumber,
+      code,
+      language,
+      eventType: 'submit',
+      passedTestsCount: results.filter(r => r.passed).length,
+      totalTestsCount: allCases.length,
+      charDelta: code.length
+    }).catch(() => {});
+
     broadcastToAdmins('admin:submit_code', {
       userId,
       username: req.user!.username,
@@ -448,6 +475,35 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
   } catch (err) {
     console.error('Submit code error:', err);
     res.status(500).json({ error: 'Error submitting code' });
+  }
+});
+
+// POST /api/participant/log-paste
+participantRouter.post('/log-paste', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { questionId, roundNumber, textLength, pastedText } = req.body;
+
+    // Check if large paste anomaly
+    if (textLength >= 80) {
+      await ViolationLog.create({
+        userId,
+        roundNumber: roundNumber || 2,
+        type: 'large_paste',
+        details: `Bulk paste of ${textLength} characters detected`,
+        suspicionPoints: 35
+      });
+      broadcastToAdmins('admin:suspicion_alert', {
+        userId,
+        username: req.user!.username,
+        type: 'large_paste',
+        textLength
+      });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to log paste' });
   }
 });
 

@@ -11,6 +11,7 @@ import { adminRouter } from './routes/admin.js';
 import { adminEventRouter } from './routes/adminEvent.js';
 import { adminQuestionBankRouter } from './routes/adminQuestionBank.js';
 import { adminControlRoomRouter } from './routes/adminControlRoom.js';
+import { adminAnalyticsRouter } from './routes/adminAnalytics.js';
 import { timeSyncRouter } from './routes/timeSync.js';
 import { tenantContext } from './middleware/tenantContext.js';
 
@@ -39,6 +40,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/admin/events', adminEventRouter);
 app.use('/api/admin/questions/bank', adminQuestionBankRouter);
 app.use('/api/admin/control-room', adminControlRoomRouter);
+app.use('/api/admin/analytics', adminAnalyticsRouter);
 
 // Initialize Socket.io
 initSocketIO(server);

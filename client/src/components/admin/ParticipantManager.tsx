@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Upload, ShieldAlert, ShieldCheck, RotateCcw, Search, Check } from 'lucide-react';
+import { Users, UserPlus, Upload, ShieldAlert, ShieldCheck, RotateCcw, Search, Check, Brain, Terminal, Eye } from 'lucide-react';
 import { api } from '../../services/api.js';
+import { SuspicionEvidenceModal } from './SuspicionEvidenceModal.js';
+import { JourneyReplayModal } from './JourneyReplayModal.js';
+import { SkillRadarModal } from './SkillRadarModal.js';
 
 export const ParticipantManager: React.FC = () => {
   const [participants, setParticipants] = useState<any[]>([]);
@@ -10,6 +13,9 @@ export const ParticipantManager: React.FC = () => {
   // Modals
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
   const [showBulkModal, setShowBulkModal] = useState<boolean>(false);
+  const [suspicionTarget, setSuspicionTarget] = useState<{ id: string; username: string } | null>(null);
+  const [replayTarget, setReplayTarget] = useState<{ id: string; username: string; questionId: string } | null>(null);
+  const [skillTarget, setSkillTarget] = useState<{ id?: string; username?: string } | null>(null);
 
   // Add single form
   const [formData, setFormData] = useState({ username: '', name: '', password: '' });
@@ -151,6 +157,14 @@ export const ParticipantManager: React.FC = () => {
             <Upload className="w-4 h-4" />
             <span>Bulk CSV Import</span>
           </button>
+
+          <button
+            onClick={() => setSkillTarget({})}
+            className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-cyan-500/30"
+          >
+            <Brain className="w-4 h-4" />
+            <span>Skill Radar</span>
+          </button>
         </div>
       </div>
 
@@ -241,7 +255,31 @@ export const ParticipantManager: React.FC = () => {
                     </td>
 
                     <td className="p-4 text-right font-sans">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setSuspicionTarget({ id: p.id, username: p.username })}
+                          title="View Proctoring Suspicion Audit"
+                          className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 transition-colors cursor-pointer border border-rose-500/30"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => setReplayTarget({ id: p.id, username: p.username, questionId: 'demo' })}
+                          title="Watch Debugging Journey Replay"
+                          className="p-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 transition-colors cursor-pointer border border-indigo-500/30"
+                        >
+                          <Terminal className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => setSkillTarget({ id: p.id, username: p.username })}
+                          title="View Candidate Skill Graph"
+                          className="p-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 transition-colors cursor-pointer border border-cyan-500/30"
+                        >
+                          <Brain className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           onClick={() => handleResetAttempt(p.id, p.username)}
                           title="Reset attempt for a round"
@@ -366,6 +404,34 @@ export const ParticipantManager: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Suspicion Evidence Audit Modal */}
+      {suspicionTarget && (
+        <SuspicionEvidenceModal
+          userId={suspicionTarget.id}
+          username={suspicionTarget.username}
+          onClose={() => setSuspicionTarget(null)}
+        />
+      )}
+
+      {/* Debugging Journey Replay Modal */}
+      {replayTarget && (
+        <JourneyReplayModal
+          userId={replayTarget.id}
+          questionId={replayTarget.questionId}
+          username={replayTarget.username}
+          onClose={() => setReplayTarget(null)}
+        />
+      )}
+
+      {/* Dynamic Skill Radar Modal */}
+      {skillTarget && (
+        <SkillRadarModal
+          userId={skillTarget.id}
+          username={skillTarget.username}
+          onClose={() => setSkillTarget(null)}
+        />
       )}
     </div>
   );

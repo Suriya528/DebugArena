@@ -24,6 +24,8 @@ export interface IQuestion extends Document {
   testCases?: ITestCase[];
   timeLimitMs?: number;
   memoryLimitMb?: number;
+  tags?: string[];
+  topic?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,7 +57,9 @@ const QuestionSchema = new Schema<IQuestion>(
     starterCode: { type: Map, of: String, default: {} },
     testCases: [TestCaseSchema],
     timeLimitMs: { type: Number, default: 3000 },
-    memoryLimitMb: { type: Number, default: 256 }
+    memoryLimitMb: { type: Number, default: 256 },
+    tags: [{ type: String }],
+    topic: { type: String, default: 'Algorithms' }
   },
   { timestamps: true }
 );
