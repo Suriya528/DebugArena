@@ -230,7 +230,6 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         <div className="flex items-center gap-2">
           {questions.map((q, idx) => {
             const isCurrent = idx === currentQIndex;
-            const qScore = scores[q._id] || 0;
             return (
               <button
                 key={q._id}
@@ -242,22 +241,15 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 }`}
               >
                 <span>Problem {idx + 1}</span>
-                {qScore > 0 && (
-                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
-                    {qScore}/{q.marks} pts
-                  </span>
-                )}
               </button>
             );
           })}
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="text-xs text-slate-300 font-mono">
-            Round Score:{' '}
-            <span className="font-bold text-emerald-400 text-sm">
-              {totalScoreAcrossQuestions} pts
-            </span>
+          <div className="text-xs text-slate-400 font-mono flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Problem {currentQIndex + 1} of {questions.length}</span>
           </div>
 
           <button
@@ -280,8 +272,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                   Question {currentQIndex + 1} of {questions.length}
                 </span>
-                <span className="text-xs font-mono text-slate-400 font-bold">
-                  Weight: {currentQ.marks} Marks
+                <span className="text-xs font-mono text-slate-500">
+                  {currentQ.timeLimitMs}ms limit
                 </span>
               </div>
               <h1 className="text-xl font-extrabold text-white tracking-tight">
@@ -570,19 +562,17 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white mb-2">Finish Round {roundNumber}?</h3>
             <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-              Your highest-scoring submissions will be locked and ranked. Are you ready to finish this round?
+              All your code solutions will be finalized and locked on the server. Are you ready to submit this round?
             </p>
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono mb-6 space-y-1">
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono mb-6 space-y-1.5">
               {questions.map((q, i) => (
                 <div key={q._id} className="flex justify-between text-slate-300">
                   <span>Problem {i + 1}:</span>
-                  <span className="font-bold text-emerald-400">{scores[q._id] || 0} pts</span>
+                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Ready for Evaluation
+                  </span>
                 </div>
               ))}
-              <div className="pt-2 border-t border-slate-800 flex justify-between font-bold text-white">
-                <span>Total Round Score:</span>
-                <span className="text-emerald-400">{totalScoreAcrossQuestions} pts</span>
-              </div>
             </div>
             <div className="flex items-center gap-3">
               <button

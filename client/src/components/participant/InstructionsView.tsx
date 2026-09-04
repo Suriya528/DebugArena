@@ -106,7 +106,7 @@ export const InstructionsView: React.FC<InstructionsViewProps> = ({
             ) : round.status === 'active' ? (
               <>
                 <Play className="w-5 h-5 fill-white" />
-                <span>Enter Full-Screen & Begin Assessment</span>
+                <span>Begin Assessment</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             ) : (

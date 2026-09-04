@@ -3,8 +3,20 @@
 @tailwind utilities;
 
 @layer base {
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overscroll-behavior: none !important;
+    overscroll-behavior-y: none !important;
+    overscroll-behavior-x: none !important;
+  }
+
   body {
     @apply bg-[#090d16] text-slate-100 font-sans;
+    user-select: none;
+    -webkit-user-select: none;
   }
 }
 

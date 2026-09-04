@@ -7,7 +7,8 @@
     "seed": "npm --prefix server run seed",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
-    "build": "npm --prefix server run build && npm --prefix client run build"
+    "build": "npm --prefix server run build && npm --prefix client run build",
+    "oa": "start_oa_kiosk.bat"
   },
   "keywords": ["debugging", "hackathon", "competition", "judge"],
   "author": "Antigravity",

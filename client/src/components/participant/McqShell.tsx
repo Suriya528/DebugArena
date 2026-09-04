@@ -149,9 +149,6 @@ export const McqShell: React.FC<McqShellProps> = ({
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                   Question {currentIndex + 1} of {totalCount}
                 </span>
-                <span className="text-xs font-semibold text-slate-400">
-                  +{currentQ.marks} Marks
-                </span>
                 <span className="text-[11px] text-emerald-400/80 font-mono">
                   (0 negative marks)
                 </span>
@@ -378,7 +375,7 @@ export const McqShell: React.FC<McqShellProps> = ({
             </div>
 
             <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-              Once submitted, you will not be able to change your answers. Your score will be computed instantly.
+              Once submitted, your responses will be locked and securely recorded on the server.
             </p>
 
             <div className="flex items-center gap-3">

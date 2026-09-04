@@ -27,6 +27,16 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       } else {
         setIsFullscreen(true);
       }
+
+      // W3C Keyboard Lock API: Lock Escape key to prevent Chrome from exiting full screen on Esc
+      // and suppress the standard "Press Esc to exit full screen" banner in supported Chromium browsers.
+      if ('keyboard' in navigator && (navigator as any).keyboard?.lock) {
+        try {
+          await (navigator as any).keyboard.lock(['Escape']);
+        } catch (lockErr) {
+          // Allowed only after user gesture
+        }
+      }
     } catch (err) {
       console.warn('Fullscreen request failed or was rejected:', err);
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -35,6 +45,11 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
 
   const exitFullscreen = useCallback(async () => {
     try {
+      if ('keyboard' in navigator && (navigator as any).keyboard?.unlock) {
+        try {
+          (navigator as any).keyboard.unlock();
+        } catch (e) {}
+      }
       if (document.fullscreenElement) {
         if (document.exitFullscreen) {
           await document.exitFullscreen();
@@ -52,10 +67,18 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     // Check initial state
     setIsFullscreen(Boolean(document.fullscreenElement));
 
-    const handleFullscreenChange = () => {
+    const handleFullscreenChange = async () => {
       const active = Boolean(document.fullscreenElement);
       setIsFullscreen(active);
-      if (!active && isEnabledRef.current) {
+
+      if (active) {
+        // Lock Escape key when entering full screen
+        if ('keyboard' in navigator && (navigator as any).keyboard?.lock) {
+          try {
+            await (navigator as any).keyboard.lock(['Escape']);
+          } catch (e) {}
+        }
+      } else if (isEnabledRef.current) {
         if (onViolationRef.current) {
           onViolationRef.current('fullscreen_exit', 'Participant pressed Escape or exited full-screen mode');
         }
@@ -78,9 +101,19 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     };
 
-    // Strict OA Keyboard Lock: Block F12, Ctrl+Shift+I, Ctrl+U, Alt+Tab, etc.
+    // Strict OA Keyboard Lock: Block Esc, F12, Ctrl+Shift+I, Ctrl+U, Alt+Tab, etc.
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isEnabledRef.current) return;
+
+      // Intercept and prevent Escape key from exiting fullscreen
+      if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onViolationRef.current) {
+          onViolationRef.current('fullscreen_exit', 'Escape key pressed during live assessment');
+        }
+        return false;
+      }
 
       // F12 or DevTools
       if (
@@ -113,7 +146,6 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     const handleContextMenu = (e: MouseEvent) => {
       if (!isEnabledRef.current) return;
       const target = e.target as HTMLElement;
-      // Allow right-click only inside Monaco editor if needed
       if (!target?.closest('.monaco-editor')) {
         e.preventDefault();
       }
@@ -128,6 +160,13 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     };
 
+    // Prevent top scroll pull / overscroll
+    const handleWheel = (e: WheelEvent) => {
+      if (window.scrollY <= 0 && e.deltaY < 0) {
+        e.preventDefault();
+      }
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -135,6 +174,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('selectstart', handleSelectStart);
+    window.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -144,6 +184,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('selectstart', handleSelectStart);
+      window.removeEventListener('wheel', handleWheel);
     };
   }, [enabled]);
 

@@ -20,10 +20,10 @@ import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
-import { Terminal, Shield, LogIn, Lock, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { user, token, loading: authLoading, login, refreshUser } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const { socket } = useRealtime();
 
   // Login form state
@@ -99,39 +99,41 @@ export const App: React.FC = () => {
   // Handle anti-cheat violation
   const handleViolation = useCallback(
     async (type: 'fullscreen_exit' | 'tab_switch' | 'window_blur' | 'unauthorized_shortcut', details: string) => {
-      // Only penalize if currently in an active, in-progress round
-      if (
-        !hasStartedActiveRound ||
-        roundState?.round?.status !== 'active' ||
-        roundState?.progress?.status === 'submitted'
-      ) {
-        return;
-      }
-
+      // Always show lockout screen to conceal test content
       setCurrentViolationType(type);
       setCurrentViolationDetails(details);
       setViolationModalOpen(true);
 
-      try {
-        const res = await api.post('/participant/log-violation', {
-          roundNumber: roundState.round?.roundNumber || 1,
-          type,
-          details
-        });
-        setViolationCount(res.data.violationCount);
-        if (res.data.autoSubmitted) {
-          await fetchRoundState();
+      // Only increment strikes on server if participant is actively in-progress
+      if (
+        user &&
+        user.role === 'participant' &&
+        hasStartedActiveRound &&
+        roundState?.round?.status === 'active' &&
+        roundState?.progress?.status !== 'submitted'
+      ) {
+        try {
+          const res = await api.post('/participant/log-violation', {
+            roundNumber: roundState.round?.roundNumber || 1,
+            type,
+            details
+          });
+          setViolationCount(res.data.violationCount);
+          if (res.data.autoSubmitted) {
+            await fetchRoundState();
+          }
+        } catch (err) {
+          console.warn('Failed to log violation on server');
         }
-      } catch (err) {
-        console.warn('Failed to log violation on server');
       }
     },
-    [hasStartedActiveRound, roundState, fetchRoundState]
+    [user, hasStartedActiveRound, roundState, fetchRoundState]
   );
 
-  // Fullscreen manager
+  // Continuous Fullscreen manager: strictly enforced for unauthenticated portal and participant accounts
+  const isParticipantSession = !user || user.role === 'participant';
   const { requestFullscreen, isFullscreen } = useFullscreen({
-    enabled: hasStartedActiveRound && roundState?.round?.status === 'active',
+    enabled: isParticipantSession,
     onViolation: handleViolation
   });
 
@@ -160,7 +162,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Socket event listeners for live round updates
+  // Socket event listeners for live updates
   useEffect(() => {
     if (!socket) return;
 
@@ -199,6 +201,7 @@ export const App: React.FC = () => {
     setLoginError('');
     setIsLoggingIn(true);
     try {
+      await requestFullscreen();
       await login(username, password);
     } catch (err: any) {
       setLoginError(err.response?.data?.error || 'Invalid credentials');
@@ -223,8 +226,45 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Unauthenticated Login Screen
+  // 1. Unauthenticated Login Screen with Full-Screen Lockdown Gate
   if (!user) {
+    // If not in fullscreen, present the mandatory entry gate
+    if (!isFullscreen) {
+      return (
+        <div className="min-h-screen bg-[#070b13] flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mr-24 -mt-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -ml-24 -mb-24 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 max-w-lg w-full rounded-3xl bg-slate-900/95 border-2 border-indigo-500/40 p-8 sm:p-10 shadow-2xl backdrop-blur-xl">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center mx-auto mb-5 text-indigo-400">
+              <Shield className="w-8 h-8" />
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-3">
+              <Lock className="w-3.5 h-3.5" />
+              <span>OA Proctoring Environment</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2">
+              DebugArena Challenge Portal
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mb-8 leading-relaxed">
+              This online competition operates under continuous full-screen lockdown from start to end. You must enter full-screen mode to proceed to sign in.
+            </p>
+
+            <button
+              onClick={requestFullscreen}
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-600/30 transition-all cursor-pointer active:scale-[0.98]"
+            >
+              <Maximize2 className="w-5 h-5" />
+              <span>Enter Full-Screen to Sign In</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Inside Fullscreen: Login Form
     return (
       <div className="min-h-screen bg-[#090d16] flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
         <header className="h-16 px-6 border-b border-slate-800 flex items-center justify-between">
@@ -234,7 +274,10 @@ export const App: React.FC = () => {
             </div>
             <span className="font-extrabold text-base tracking-tight text-white">DebugArena</span>
           </div>
-          <span className="text-xs font-mono text-slate-400">Competition Portal 2026</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <Lock className="w-3 h-3" />
+            <span>Proctoring Locked (Full-Screen)</span>
+          </div>
         </header>
 
         <main className="flex-1 flex items-center justify-center p-4">
@@ -358,7 +401,7 @@ export const App: React.FC = () => {
     );
   }
 
-  // 3. Participant Portal Application
+  // 3. Participant Portal Application (Locked in full-screen from start to end)
   if (portalLoading) {
     return (
       <div className="min-h-screen bg-[#090d16] flex items-center justify-center text-slate-400 text-xs font-mono">
@@ -367,133 +410,133 @@ export const App: React.FC = () => {
     );
   }
 
-  // Check if eliminated or waiting advancement
-  if (roundState?.isEliminated || roundState?.isWaitingAdvancement) {
-    return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col">
-        <Navbar />
-        <main className="flex-1 flex items-center justify-center p-4">
-          <RoundSummaryView
-            round={{ roundNumber: 1, title: 'DebugArena', status: 'completed' } as any}
-            progress={{ totalScore: 0, timeTakenSeconds: 0, status: 'eliminated' } as any}
-            onRefresh={fetchRoundState}
-            isEliminated={roundState.isEliminated}
-            isWaitingAdvancement={roundState.isWaitingAdvancement}
-          />
-        </main>
-      </div>
-    );
-  }
-
-  // Check if tie-break is active for this user
-  if (roundState?.isTieBreak && roundState?.question) {
-    return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col">
-        <Navbar roundTitle="Sudden-Death Tie-Breaker" />
-        <main className="flex-1">
-          <TieBreakShell
-            question={roundState.question}
-            attempt={roundState.attempt}
-            tieBreakId={roundState.tieBreakId}
-            onCompleted={fetchRoundState}
-          />
-        </main>
-      </div>
-    );
-  }
-
   const currentRound = roundState?.round;
   const currentProgress = roundState?.progress;
 
-  // If round already submitted by participant
-  if (currentProgress?.status === 'submitted' || currentProgress?.status === 'advanced') {
-    return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col">
-        <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
-        <main className="flex-1 flex items-center justify-center p-4">
-          <RoundSummaryView
-            round={currentRound}
-            progress={currentProgress}
-            onRefresh={fetchRoundState}
-          />
-        </main>
-      </div>
-    );
-  }
-
-  // If participant has not yet entered full-screen / started the active assessment
-  if (!hasStartedActiveRound) {
-    return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col">
-        <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
-        <main className="flex-1 flex items-center justify-center p-4">
-          {currentRound ? (
-            <InstructionsView
-              round={currentRound}
-              onStartRound={handleStartRoundAssessment}
-            />
-          ) : (
-            <div className="text-center text-slate-400 py-20 text-xs">
-              No active round found. Please wait for the tournament administrator.
-            </div>
-          )}
-        </main>
-      </div>
-    );
-  }
-
-  // Active Assessment Shell
   return (
     <div className="min-h-screen bg-[#090d16] flex flex-col select-none relative overflow-hidden">
       {user && <SecurityWatermark username={user.username} />}
 
-      <Navbar
-        roundTitle={currentRound?.title}
-        roundNumber={currentRound?.roundNumber}
-        timerFormatted={formattedTime}
-        isTimerUrgent={isUrgent}
-        proctoringMode={true}
-        violationCount={violationCount}
-        violationLimit={violationLimit}
-      />
-
-      <main className="flex-1 relative z-10">
-        {!isFullscreen ? (
-          <div className="h-full min-h-[500px] flex items-center justify-center p-6 text-center">
-            <div className="max-w-md p-8 rounded-3xl bg-slate-900/80 border border-rose-500/40 backdrop-blur-xl text-slate-300 text-sm shadow-2xl">
-              <div className="text-rose-400 font-bold text-base mb-2">🔒 Assessment Content Concealed</div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Questions and code editor are protected and hidden while outside full-screen mode.
-              </p>
-            </div>
+      {/* When outside fullscreen: conceal all assessment content */}
+      {!isFullscreen ? (
+        <div className="flex-1 flex items-center justify-center p-6 text-center z-10">
+          <div className="max-w-md p-8 rounded-3xl bg-slate-900/90 border border-rose-500/40 backdrop-blur-xl text-slate-300 text-sm shadow-2xl">
+            <div className="text-rose-400 font-bold text-base mb-2">🔒 Assessment Content Concealed</div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Assessment questions and test controls are hidden while outside full-screen mode.
+            </p>
           </div>
-        ) : currentRound?.type === 'mcq' ? (
-          <McqShell
-            questions={roundState.questions || []}
-            roundNumber={currentRound.roundNumber}
-            initialAttempts={roundState.attempts || []}
-            initialMarkedForReview={currentProgress?.markedForReview || []}
-            onSubmitRound={handleSubmitRoundExplicitly}
-            isSubmitting={isSubmittingRound}
-          />
-        ) : (
-          <CodingShell
-            questions={roundState.questions || []}
-            roundNumber={currentRound.roundNumber}
-            initialAttempts={roundState.attempts || []}
-            onSubmitRound={handleSubmitRoundExplicitly}
-            isSubmittingRound={isSubmittingRound}
-          />
-        )}
-      </main>
+        </div>
+      ) : (
+        <>
+          {/* 3A. Participant Eliminated or Waiting for Admin Advancement */}
+          {(roundState?.isEliminated || roundState?.isWaitingAdvancement) && (
+            <>
+              <Navbar />
+              <main className="flex-1 flex items-center justify-center p-4">
+                <RoundSummaryView
+                  round={{ roundNumber: 1, title: 'DebugArena', status: 'completed' } as any}
+                  progress={{ totalScore: 0, timeTakenSeconds: 0, status: 'eliminated' } as any}
+                  onRefresh={fetchRoundState}
+                  isEliminated={roundState.isEliminated}
+                  isWaitingAdvancement={roundState.isWaitingAdvancement}
+                />
+              </main>
+            </>
+          )}
 
-      {/* Security Violation & Fullscreen Lockout Modal */}
+          {/* 3B. Sudden Death Tie-Breaker */}
+          {roundState?.isTieBreak && roundState?.question && (
+            <>
+              <Navbar roundTitle="Sudden-Death Tie-Breaker" />
+              <main className="flex-1">
+                <TieBreakShell
+                  question={roundState.question}
+                  attempt={roundState.attempt}
+                  tieBreakId={roundState.tieBreakId}
+                  onCompleted={fetchRoundState}
+                />
+              </main>
+            </>
+          )}
+
+          {/* 3C. Round Submitted -> Shows "Submitted Successfully" */}
+          {!roundState?.isTieBreak && (currentProgress?.status === 'submitted' || currentProgress?.status === 'advanced') && (
+            <>
+              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
+              <main className="flex-1 flex items-center justify-center p-4">
+                <RoundSummaryView
+                  round={currentRound}
+                  progress={currentProgress}
+                  onRefresh={fetchRoundState}
+                />
+              </main>
+            </>
+          )}
+
+          {/* 3D. Assessment Briefing (Before starting active round) */}
+          {!roundState?.isTieBreak && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced' && !hasStartedActiveRound && (
+            <>
+              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
+              <main className="flex-1 flex items-center justify-center p-4">
+                {currentRound ? (
+                  <InstructionsView
+                    round={currentRound}
+                    onStartRound={handleStartRoundAssessment}
+                  />
+                ) : (
+                  <div className="text-center text-slate-400 py-20 text-xs">
+                    No active round found. Please wait for the tournament administrator.
+                  </div>
+                )}
+              </main>
+            </>
+          )}
+
+          {/* 3E. Active Assessment Shell (MCQ / Coding) */}
+          {!roundState?.isTieBreak && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced' && hasStartedActiveRound && (
+            <>
+              <Navbar
+                roundTitle={currentRound?.title}
+                roundNumber={currentRound?.roundNumber}
+                timerFormatted={formattedTime}
+                isTimerUrgent={isUrgent}
+                proctoringMode={true}
+                violationCount={violationCount}
+                violationLimit={violationLimit}
+              />
+              <main className="flex-1 relative z-10">
+                {currentRound?.type === 'mcq' ? (
+                  <McqShell
+                    questions={roundState.questions || []}
+                    roundNumber={currentRound.roundNumber}
+                    initialAttempts={roundState.attempts || []}
+                    initialMarkedForReview={currentProgress?.markedForReview || []}
+                    onSubmitRound={handleSubmitRoundExplicitly}
+                    isSubmitting={isSubmittingRound}
+                  />
+                ) : (
+                  <CodingShell
+                    questions={roundState.questions || []}
+                    roundNumber={currentRound.roundNumber}
+                    initialAttempts={roundState.attempts || []}
+                    onSubmitRound={handleSubmitRoundExplicitly}
+                    isSubmittingRound={isSubmittingRound}
+                  />
+                )}
+              </main>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Global Security Violation & Fullscreen Lockout Modal */}
       <ViolationModal
-        isOpen={violationModalOpen || (hasStartedActiveRound && !isFullscreen)}
+        isOpen={violationModalOpen || !isFullscreen}
         violationCount={violationCount}
         violationLimit={violationLimit}
         type={currentViolationType || 'fullscreen_exit'}
-        details={currentViolationDetails || 'You must be in true full-screen mode to access questions and code in this assessment.'}
+        details={currentViolationDetails || 'You must be in true full-screen mode to access this assessment.'}
         onResumeFullscreen={handleResumeFullscreen}
       />
     </div>
