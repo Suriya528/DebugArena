@@ -215,3 +215,14 @@ export async function getEventAuditLogs(eventId: string) {
   const res = await api.get(`/admin/events/${eventId}/audit-logs`);
   return res.data.logs;
 }
+
+export async function autoAdvanceParticipants(roundNumber: number, data?: { quota?: number; eventId?: string; tieStrategy?: string; forceOverride?: boolean }) {
+  const res = await api.post(`/admin/rounds/${roundNumber}/auto-advance`, data || {});
+  return res.data;
+}
+
+export async function verifyCertificatePublic(certificateId: string) {
+  const res = await api.get(`/certificates/verify/${certificateId}`);
+  return res.data;
+}
+

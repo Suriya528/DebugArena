@@ -21,6 +21,15 @@ export interface IEvent extends Document {
     signatoryName?: string;
     signatoryTitle?: string;
   };
+  certificateConfig: {
+    useDefaultTemplate: boolean;
+    customTemplateUrl?: string;
+    textColorMode?: 'light' | 'dark' | 'auto';
+    primaryColor?: string;
+    issuerName?: string;
+    issuerTitle?: string;
+    includeQrVerification?: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +62,15 @@ const EventSchema = new Schema<IEvent>(
       certificateTitle: { type: String, default: 'Certificate of Excellence' },
       signatoryName: { type: String, default: 'Head of Department' },
       signatoryTitle: { type: String, default: 'Coordinator, DebugArena' }
+    },
+    certificateConfig: {
+      useDefaultTemplate: { type: Boolean, default: true },
+      customTemplateUrl: { type: String, default: '' },
+      textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' },
+      primaryColor: { type: String, default: '#f59e0b' },
+      issuerName: { type: String, default: 'Head of Department' },
+      issuerTitle: { type: String, default: 'DebugArena Organizing Committee' },
+      includeQrVerification: { type: Boolean, default: true }
     }
   },
   { timestamps: true }

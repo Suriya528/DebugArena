@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { User } from '../models/User.js';
@@ -9,6 +10,8 @@ import { Attempt } from '../models/Attempt.js';
 import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
+import { DynamicRound } from '../models/DynamicRound.js';
+import { AuditLog } from '../models/AuditLog.js';
 import { broadcastToParticipants, broadcastToAdmins } from '../services/socketService.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
 
@@ -87,7 +90,11 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
 
     // Mark eligible participants as in_progress
     if (roundNumber === 1) {
-      const participants = await User.find({ role: 'participant', isDisqualified: false });
+      const userFilter: any = { role: 'participant', isDisqualified: false };
+      if (req.user?.eventId) {
+        userFilter.eventId = req.user.eventId;
+      }
+      const participants = await User.find(userFilter);
       for (const p of participants) {
         await RoundProgress.findOneAndUpdate(
           { userId: p._id, roundNumber: 1 },
@@ -96,8 +103,15 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
         );
       }
     } else {
-      // For Round 2 and 3, only advanced participants start
+      // For Round 2 and 3, only advanced participants from this event start
+      const userFilter: any = { role: 'participant', isDisqualified: false };
+      if (req.user?.eventId) {
+        userFilter.eventId = req.user.eventId;
+      }
+      const eligibleUsers = await User.find(userFilter).distinct('_id');
+
       const advancedFromPrev = await RoundProgress.find({
+        userId: { $in: eligibleUsers },
         roundNumber: roundNumber - 1,
         status: 'advanced'
       });
@@ -227,6 +241,186 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
   } catch (err) {
     console.error('Advance error:', err);
     res.status(500).json({ error: 'Failed to advance participants' });
+  }
+});
+
+// POST /api/admin/rounds/:roundNumber/auto-advance
+// Automatically evaluates participants against configured round quota, resolves ties, excludes disqualified users, and advances the top N
+adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roundNumber = parseInt(req.params.roundNumber, 10);
+    const { quota: bodyQuota, eventId: bodyEventId, tieStrategy = 'expand', forceOverride = false } = req.body;
+
+    const eventId = bodyEventId || req.user?.eventId;
+
+    // Check if next round is already active
+    const nextRound = await Round.findOne({ roundNumber: roundNumber + 1 });
+    if (nextRound && nextRound.status === 'active' && !forceOverride) {
+      res.status(400).json({
+        error: `Round ${roundNumber + 1} is already active! Re-advancement requires emergency forceOverride confirmation.`
+      });
+      return;
+    }
+
+    // Lookup dynamic round for quota if not explicitly passed
+    let effectiveQuota = bodyQuota;
+    let effectiveTieStrategy = tieStrategy;
+    if (eventId) {
+      const dynRound = await DynamicRound.findOne({ eventId, roundNumber });
+      if (dynRound) {
+        if (!effectiveQuota && dynRound.advancementQuota > 0) {
+          effectiveQuota = dynRound.advancementQuota;
+        }
+        if (dynRound.tieResolutionStrategy) {
+          effectiveTieStrategy = dynRound.tieResolutionStrategy;
+        }
+      }
+    }
+
+    // Default fallback quota if unspecified
+    const quota = effectiveQuota && effectiveQuota > 0 ? effectiveQuota : 15;
+
+    // Fetch all eligible (non-disqualified) participants in this event
+    const userFilter: any = { role: 'participant', isDisqualified: false };
+    if (eventId) {
+      userFilter.eventId = mongoose.Types.ObjectId.isValid(eventId)
+        ? new mongoose.Types.ObjectId(eventId)
+        : eventId;
+    }
+    const eligibleParticipants = await User.find(userFilter);
+    const eligibleUserIds = eligibleParticipants.map(u => u._id);
+
+    // Fetch round progress for this round
+    const progressList = await RoundProgress.find({
+      roundNumber,
+      userId: { $in: eligibleUserIds }
+    }).populate('userId', 'username name isDisqualified');
+
+    // Only consider participants who took the round
+    const activeProgress = progressList.filter(p => p.userId && !(p.userId as any).isDisqualified);
+
+    // Deterministic Sort:
+    // 1. totalScore: DESC
+    // 2. timeTakenSeconds: ASC
+    // 3. violationCount: ASC
+    // 4. submittedAt: ASC
+    activeProgress.sort((a, b) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+      if (a.violationCount !== b.violationCount) return a.violationCount - b.violationCount;
+      const aTime = a.submittedAt ? new Date(a.submittedAt).getTime() : Infinity;
+      const bTime = b.submittedAt ? new Date(b.submittedAt).getTime() : Infinity;
+      return aTime - bTime;
+    });
+
+    let cutoffTieDetected = false;
+    let selectedProgress: typeof activeProgress = [];
+
+    if (activeProgress.length <= quota) {
+      // Under-quota or exact: everyone qualified advances
+      selectedProgress = [...activeProgress];
+    } else {
+      // Slice initial top N
+      selectedProgress = activeProgress.slice(0, quota);
+
+      // Check boundary tie between index quota-1 (last advanced) and index quota (first eliminated)
+      const lastSelected = activeProgress[quota - 1];
+      const firstExcluded = activeProgress[quota];
+
+      if (
+        lastSelected &&
+        firstExcluded &&
+        lastSelected.totalScore === firstExcluded.totalScore &&
+        lastSelected.timeTakenSeconds === firstExcluded.timeTakenSeconds &&
+        lastSelected.violationCount === firstExcluded.violationCount
+      ) {
+        cutoffTieDetected = true;
+        if (effectiveTieStrategy === 'expand') {
+          // Expand cutoff to include all candidates tied with lastSelected
+          for (let i = quota; i < activeProgress.length; i++) {
+            const candidate = activeProgress[i];
+            if (
+              candidate.totalScore === lastSelected.totalScore &&
+              candidate.timeTakenSeconds === lastSelected.timeTakenSeconds &&
+              candidate.violationCount === lastSelected.violationCount
+            ) {
+              selectedProgress.push(candidate);
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const advancedUserIds = selectedProgress.map(p => (p.userId as any)._id || p.userId);
+    const advancedIdStrings = advancedUserIds.map(id => id.toString());
+
+    // Mark selected as advanced
+    await RoundProgress.updateMany(
+      { roundNumber, userId: { $in: advancedUserIds } },
+      { $set: { status: 'advanced' } }
+    );
+
+    // Mark non-selected participants for this round as eliminated
+    await RoundProgress.updateMany(
+      { roundNumber, userId: { $in: eligibleUserIds, $nin: advancedUserIds } },
+      { $set: { status: 'eliminated' } }
+    );
+
+    // Socket Notifications
+    broadcastToAdmins('admin:participants_advanced', {
+      roundNumber,
+      advancedCount: advancedUserIds.length,
+      quota,
+      cutoffTieDetected,
+      tieExpanded: selectedProgress.length > quota
+    });
+
+    broadcastToParticipants('round:advancement_announced', {
+      roundNumber,
+      advancedUserIds: advancedIdStrings
+    });
+
+    // Record Audit Log
+    try {
+      await AuditLog.create({
+        adminId: req.user!.userId,
+        adminUsername: req.user!.username,
+        eventId: eventId,
+        action: 'AUTO_ADVANCEMENT_EXECUTED',
+        targetType: 'DynamicRound',
+        targetId: roundNumber.toString(),
+        details: {
+          roundNumber,
+          quota,
+          advancedCount: advancedUserIds.length,
+          cutoffTieDetected,
+          tieStrategy: effectiveTieStrategy,
+          advancedUserIds: advancedIdStrings
+        },
+        reason: `Auto-advancement with quota ${quota} completed`
+      });
+    } catch (auditErr) {
+      console.warn('Could not write audit log for auto-advancement:', auditErr);
+    }
+
+    res.json({
+      success: true,
+      roundNumber,
+      targetQuota: quota,
+      advancedCount: advancedUserIds.length,
+      eliminatedCount: Math.max(0, activeProgress.length - advancedUserIds.length),
+      cutoffTieDetected,
+      tieExpanded: selectedProgress.length > quota,
+      advancedUserIds: advancedIdStrings,
+      message: `Successfully advanced top ${advancedUserIds.length} participants to Round ${roundNumber + 1}${
+        cutoffTieDetected ? ' (Cutoff tie resolved by policy: ' + effectiveTieStrategy + ')' : ''
+      }`
+    });
+  } catch (err) {
+    console.error('Auto-advance error:', err);
+    res.status(500).json({ error: 'Failed to auto-advance participants' });
   }
 });
 

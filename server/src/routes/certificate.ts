@@ -41,6 +41,9 @@ certificateRouter.get('/verify/:certificateId', async (req: Request, res: Respon
       totalScore: cert.totalScore,
       issueDate: cert.issueDate,
       verificationHash: cert.verificationHash,
+      templateUrl: cert.templateUrl || '',
+      useCustomTemplate: !!cert.useCustomTemplate,
+      textColorMode: cert.textColorMode || 'auto',
       cryptographicStatus: isTamperFree ? 'GENUINE_VERIFIED_SHA256' : 'HASH_MISMATCH_TAMPERED'
     });
   } catch (err: any) {
@@ -51,12 +54,42 @@ certificateRouter.get('/verify/:certificateId', async (req: Request, res: Respon
 // ADMIN ONLY: POST /api/certificates/issue
 certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { userId, rank, totalScore, eventTitle, collegeName } = req.body;
+    const {
+      userId,
+      rank,
+      totalScore,
+      eventTitle,
+      collegeName,
+      templateUrl: bodyTemplateUrl,
+      useCustomTemplate: bodyUseCustomTemplate,
+      textColorMode: bodyTextColorMode,
+      eventId: bodyEventId
+    } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+
+    const eventId = bodyEventId || user.eventId || req.user?.eventId;
+    let effectiveTemplateUrl = bodyTemplateUrl;
+    let effectiveUseCustom = bodyUseCustomTemplate;
+    let effectiveTextColorMode = bodyTextColorMode;
+
+    if (eventId) {
+      const event = await Event.findById(eventId);
+      if (event && event.certificateConfig) {
+        if (effectiveUseCustom === undefined) {
+          effectiveUseCustom = !event.certificateConfig.useDefaultTemplate;
+        }
+        if (!effectiveTemplateUrl) {
+          effectiveTemplateUrl = event.certificateConfig.customTemplateUrl;
+        }
+        if (!effectiveTextColorMode) {
+          effectiveTextColorMode = event.certificateConfig.textColorMode;
+        }
+      }
     }
 
     const certId = 'CERT-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
@@ -67,12 +100,16 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
       userId: user._id,
       participantName: user.name || user.username,
       username: user.username,
+      eventId: eventId || undefined,
       eventTitle: eventTitle || 'DebugArena 2026 Competitive Debugging OA',
       collegeName: collegeName || 'Institute of Engineering & Technology',
       rank,
       totalScore,
       issueDate: new Date(),
-      verificationHash: hash
+      verificationHash: hash,
+      templateUrl: effectiveTemplateUrl || '',
+      useCustomTemplate: !!effectiveUseCustom,
+      textColorMode: effectiveTextColorMode || 'auto'
     });
 
     res.json({ success: true, certificate: cert });

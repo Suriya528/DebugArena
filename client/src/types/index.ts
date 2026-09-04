@@ -55,6 +55,15 @@ export interface Event {
     signatoryName?: string;
     signatoryTitle?: string;
   };
+  certificateConfig?: {
+    useDefaultTemplate: boolean;
+    customTemplateUrl?: string;
+    textColorMode?: 'light' | 'dark' | 'auto';
+    primaryColor?: string;
+    issuerName?: string;
+    issuerTitle?: string;
+    includeQrVerification?: boolean;
+  };
   createdAt: string;
 }
 
@@ -70,6 +79,9 @@ export interface DynamicRound {
   totalMarks: number;
   passingMarks: number;
   negativeMarkValue: number;
+  advancementQuota?: number;
+  advancementRule?: 'top_n' | 'min_score' | 'manual';
+  tieResolutionStrategy?: 'expand' | 'strict' | 'manual';
   status: 'pending' | 'active' | 'locked' | 'completed';
   startedAt: string | null;
   endedAt?: string | null;
@@ -197,4 +209,21 @@ export interface LeaderboardRow {
   totalTimeSeconds: number;
   lastStatus: string;
   tieBreakRank?: number;
+}
+
+export interface Certificate {
+  certificateId: string;
+  userId: string;
+  participantName: string;
+  username: string;
+  eventTitle: string;
+  collegeName: string;
+  rank: number;
+  totalScore: number;
+  issueDate: string;
+  verificationHash: string;
+  templateUrl?: string;
+  useCustomTemplate?: boolean;
+  textColorMode?: 'light' | 'dark' | 'auto';
+  cryptographicStatus?: string;
 }

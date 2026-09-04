@@ -14,6 +14,9 @@ export interface ICertificate extends Document {
   issueDate: Date;
   verificationHash: string;
   qrCodeUrl?: string;
+  templateUrl?: string;
+  useCustomTemplate?: boolean;
+  textColorMode?: 'light' | 'dark' | 'auto';
   createdAt: Date;
 }
 
@@ -39,7 +42,10 @@ const CertificateSchema = new Schema<ICertificate>(
     rank: { type: Number, required: true },
     totalScore: { type: Number, required: true },
     issueDate: { type: Date, default: Date.now },
-    verificationHash: { type: String, required: true }
+    verificationHash: { type: String, required: true },
+    templateUrl: { type: String, default: '' },
+    useCustomTemplate: { type: Boolean, default: false },
+    textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' }
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

@@ -157,14 +157,23 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
         certificateTitle: `Certificate of Achievement — ${name}`,
         signatoryName: 'Head of Department',
         signatoryTitle: 'Tournament Director'
+      },
+      certificateConfig: req.body.certificateConfig || {
+        useDefaultTemplate: true,
+        customTemplateUrl: '',
+        textColorMode: 'auto',
+        primaryColor: '#f59e0b',
+        issuerName: 'Head of Department',
+        issuerTitle: 'DebugArena Organizing Committee',
+        includeQrVerification: true
       }
     });
 
     // Create initial dynamic rounds if provided
     const roundsList = initialRounds || [
-      { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100 },
-      { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100 },
-      { roundNumber: 3, title: 'Round 3: Advanced Algorithmic Coding', type: 'coding', durationMinutes: 45, questionCount: 2, totalMarks: 100 }
+      { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100, advancementQuota: 15 },
+      { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100, advancementQuota: 10 },
+      { roundNumber: 3, title: 'Round 3: Advanced Algorithmic Coding', type: 'coding', durationMinutes: 45, questionCount: 2, totalMarks: 100, advancementQuota: 0 }
     ];
 
     const createdRounds = [];
@@ -180,6 +189,9 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
         totalMarks: r.totalMarks || 100,
         passingMarks: r.passingMarks || 0,
         negativeMarkValue: r.negativeMarkValue || 0,
+        advancementQuota: r.advancementQuota !== undefined ? r.advancementQuota : (r.roundNumber === 1 ? 15 : r.roundNumber === 2 ? 10 : 0),
+        advancementRule: r.advancementRule || 'top_n',
+        tieResolutionStrategy: r.tieResolutionStrategy || 'expand',
         status: r.roundNumber === 1 ? 'active' : 'pending',
         startedAt: r.roundNumber === 1 ? new Date() : null
       });
@@ -215,7 +227,7 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
 adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { eventId } = req.params;
-    const { name, description, rules, scoringConfig, branding, status, overrideReason } = req.body;
+    const { name, description, rules, scoringConfig, branding, certificateConfig, status, overrideReason } = req.body;
 
     const event = await Event.findById(eventId);
     if (!event) {
@@ -235,6 +247,7 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     if (rules) event.rules = rules;
     if (scoringConfig) event.scoringConfig = { ...event.scoringConfig, ...scoringConfig };
     if (branding) event.branding = { ...event.branding, ...branding };
+    if (certificateConfig) event.certificateConfig = { ...event.certificateConfig, ...certificateConfig };
     if (status) event.status = status;
 
     await event.save();
@@ -311,8 +324,22 @@ adminEventRouter.post('/:eventId/unfreeze', async (req: AuthenticatedRequest, re
 // POST /api/admin/events/:eventId/rounds
 adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { eventId } = req.params;
-    const { title, description, type, durationMinutes, questionCount, totalMarks, passingMarks, negativeMarkValue } = req.body;
+    const {
+      eventId
+    } = req.params;
+    const {
+      title,
+      description,
+      type,
+      durationMinutes,
+      questionCount,
+      totalMarks,
+      passingMarks,
+      negativeMarkValue,
+      advancementQuota,
+      advancementRule,
+      tieResolutionStrategy
+    } = req.body;
 
     const event = await Event.findById(eventId);
     if (!event) {
@@ -340,10 +367,13 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
       totalMarks: totalMarks || 100,
       passingMarks: passingMarks || 0,
       negativeMarkValue: negativeMarkValue || 0,
+      advancementQuota: advancementQuota !== undefined ? advancementQuota : 0,
+      advancementRule: advancementRule || 'top_n',
+      tieResolutionStrategy: tieResolutionStrategy || 'expand',
       status: 'pending'
     });
 
-    await recordAudit(req, 'ROUND_CREATED', 'DynamicRound', round._id.toString(), { roundNumber: nextRoundNumber, type, title }, '', event.collegeId, eventId);
+    await recordAudit(req, 'ROUND_CREATED', 'DynamicRound', round._id.toString(), { roundNumber: nextRoundNumber, type, title, advancementQuota }, '', event.collegeId, eventId);
     res.status(201).json({ round });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create round' });
@@ -354,7 +384,20 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
 adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { eventId, roundNumber } = req.params;
-    const { title, description, type, durationMinutes, questionCount, totalMarks, passingMarks, negativeMarkValue, overrideReason } = req.body;
+    const {
+      title,
+      description,
+      type,
+      durationMinutes,
+      questionCount,
+      totalMarks,
+      passingMarks,
+      negativeMarkValue,
+      advancementQuota,
+      advancementRule,
+      tieResolutionStrategy,
+      overrideReason
+    } = req.body;
 
     const event = await Event.findById(eventId);
     if (event?.status === 'frozen' && !overrideReason) {
@@ -376,6 +419,9 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
     if (totalMarks) round.totalMarks = totalMarks;
     if (passingMarks !== undefined) round.passingMarks = passingMarks;
     if (negativeMarkValue !== undefined) round.negativeMarkValue = negativeMarkValue;
+    if (advancementQuota !== undefined) round.advancementQuota = advancementQuota;
+    if (advancementRule) round.advancementRule = advancementRule;
+    if (tieResolutionStrategy) round.tieResolutionStrategy = tieResolutionStrategy;
 
     await round.save();
 

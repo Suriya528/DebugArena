@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Building2, Calendar, ShieldCheck, Palette, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { X, Building2, Calendar, ShieldCheck, Palette, Plus, Trash2, CheckCircle2, Award, Zap, Image } from 'lucide-react';
 import { College } from '../../types/index.js';
 import { createEvent, createCollege } from '../../services/api.js';
 
@@ -26,6 +26,13 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   const [violationLimit, setViolationLimit] = useState(3);
   const [customTitle, setCustomTitle] = useState('');
   const [certificateTitle, setCertificateTitle] = useState('');
+  const [useDefaultCertTemplate, setUseDefaultCertTemplate] = useState(true);
+  const [customCertTemplateUrl, setCustomCertTemplateUrl] = useState('');
+  const [certTextColorMode, setCertTextColorMode] = useState<'auto' | 'light' | 'dark'>('auto');
+  const [certSignatoryName, setCertSignatoryName] = useState('Head of Department');
+  const [certSignatoryTitle, setCertSignatoryTitle] = useState('DebugArena Organizing Committee');
+  const [round1Quota, setRound1Quota] = useState(15);
+  const [round2Quota, setRound2Quota] = useState(10);
   const [rules, setRules] = useState<string[]>([
     'Full-screen proctoring is strictly enforced throughout the competition.',
     'Zero negative marking on all debugging challenges.',
@@ -96,8 +103,24 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
         },
         branding: {
           customTitle: customTitle || `${name} Live Championship`,
-          certificateTitle: certificateTitle || `Certificate of Achievement — ${name}`
-        }
+          certificateTitle: certificateTitle || `Certificate of Achievement — ${name}`,
+          signatoryName: certSignatoryName,
+          signatoryTitle: certSignatoryTitle
+        },
+        certificateConfig: {
+          useDefaultTemplate: useDefaultCertTemplate,
+          customTemplateUrl: customCertTemplateUrl,
+          textColorMode: certTextColorMode,
+          issuerName: certSignatoryName,
+          issuerTitle: certSignatoryTitle,
+          primaryColor: '#f59e0b',
+          includeQrVerification: true
+        },
+        initialRounds: [
+          { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100, advancementQuota: round1Quota },
+          { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100, advancementQuota: round2Quota },
+          { roundNumber: 3, title: 'Round 3: Advanced Algorithmic Coding', type: 'coding', durationMinutes: 45, questionCount: 2, totalMarks: 100, advancementQuota: 0 }
+        ]
       });
       onEventCreated();
       onClose();
@@ -306,6 +329,151 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                 <span>Enable deductions</span>
               </label>
             </div>
+          </div>
+
+          {/* Upfront Round Advancement Sequence */}
+          <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Zap className="w-4 h-4 fill-amber-400" />
+                Upfront Round Advancement Sequence
+              </span>
+              <span className="text-[11px] text-amber-300/80 font-mono">Auto Progression</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Preset tournament advancement quotas upfront so the engine auto-advances top performers seamlessly between rounds.
+            </p>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Round 1 Advancement Quota
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={round1Quota}
+                    onChange={e => setRound1Quota(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
+                  />
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap">&rarr; Round 2</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Round 2 Advancement Quota
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={round2Quota}
+                    onChange={e => setRound2Quota(parseInt(e.target.value, 10) || 1)}
+                    className="w-full bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:border-amber-400 focus:outline-none"
+                  />
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap">&rarr; Finals</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Certificate Customization & Optional Template */}
+          <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-indigo-400" />
+                Certificate Template & Verification (Optional)
+              </span>
+              <span className="text-[11px] text-indigo-400 font-mono">HMAC-SHA256 QR</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Use the platform standard Luxury Gold/Dark verifiable certificate, or provide your college's custom certificate template image/banner.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setUseDefaultCertTemplate(true)}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  useDefaultCertTemplate
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-md'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="text-xs font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  Default Luxury Gold Theme
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">Platform Dark/Gold security certificate</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUseDefaultCertTemplate(false)}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  !useDefaultCertTemplate
+                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200 shadow-md'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="text-xs font-bold flex items-center gap-1.5">
+                  <Image className="w-3.5 h-3.5 text-indigo-400" />
+                  Custom College Template
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">Upload or link university template image</div>
+              </button>
+            </div>
+
+            {!useDefaultCertTemplate && (
+              <div className="space-y-3 pt-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                    College Certificate Template Image / Banner URL
+                  </label>
+                  <input
+                    type="text"
+                    value={customCertTemplateUrl}
+                    onChange={e => setCustomCertTemplateUrl(e.target.value)}
+                    placeholder="https://example.com/certificates/university_template.png"
+                    className="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Candidate credentials, rank, score, and verifiable HMAC QR code will be overlayed dynamically.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      Text Contrast Mode
+                    </label>
+                    <select
+                      value={certTextColorMode}
+                      onChange={e => setCertTextColorMode(e.target.value as any)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none"
+                    >
+                      <option value="auto">Adaptive Glass Contrast (Recommended)</option>
+                      <option value="light">Light Text (For Dark Templates)</option>
+                      <option value="dark">Dark Text (For Light Templates)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      Signatory / Authority
+                    </label>
+                    <input
+                      type="text"
+                      value={certSignatoryName}
+                      onChange={e => setCertSignatoryName(e.target.value)}
+                      placeholder="e.g. Dean of Academics"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Submit Buttons */}

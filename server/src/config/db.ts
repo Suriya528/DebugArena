@@ -22,8 +22,8 @@ export async function connectDB(): Promise<void> {
       console.log(`📦 Embedded MongoDB initialized at: ${uri}`);
     }
 
-    await mongoose.connect(uri);
-    console.log('✅ Connected to MongoDB successfully.');
+    await mongoose.connect(uri, { dbName: 'debugarena' });
+    console.log('✅ Connected to MongoDB successfully (dbName: debugarena).');
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error);
     process.exit(1);
