@@ -12,6 +12,7 @@ import { College } from '../models/College.js';
 import { Event } from '../models/Event.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { QuestionTemplate } from '../models/QuestionTemplate.js';
 
 export async function seedData() {
   console.log('🌱 Connecting to database for seeding...');
@@ -30,7 +31,8 @@ export async function seedData() {
     College.deleteMany({}),
     Event.deleteMany({}),
     DynamicRound.deleteMany({}),
-    AuditLog.deleteMany({})
+    AuditLog.deleteMany({}),
+    QuestionTemplate.deleteMany({})
   ]);
 
   console.log('🏛️ Creating Default College and Event...');
@@ -1043,6 +1045,121 @@ if __name__ == '__main__':
     ],
     timeLimitMs: 3000
   });
+
+  console.log('📚 Seeding Central Question Bank and Question DNA Templates...');
+  await QuestionTemplate.create([
+    {
+      title: 'Binary Search Boundary Bug (Question DNA)',
+      topic: 'Algorithms',
+      language: 'java',
+      type: 'debugging',
+      difficulty: 'medium',
+      expectedSolveTimeMinutes: 15,
+      marks: 25,
+      skillTags: ['Binary Search', 'Boundary Handling', 'Pointers', 'Off-by-One'],
+      prompt: 'Identify and fix the boundary bug in this binary search implementation. Pay close attention to loop termination condition and upper index limit.',
+      hasDnaMutation: true,
+      dnaConfig: {
+        bugCategory: 'off_by_one',
+        codeTemplate: `public class Solution {
+    public static int search(int[] {{VAR_1}}, int {{VAR_2}}) {
+        int {{VAR_3}} = 0;
+        int {{VAR_4}} = {{VAR_1}}.length; // BUG: Should be length - 1
+        while ({{VAR_3}} {{BOUNDARY_OP}} {{VAR_4}}) {
+            int mid = {{VAR_3}} + ({{VAR_4}} - {{VAR_3}}) / 2;
+            if ({{VAR_1}}[mid] == {{VAR_2}}) return mid;
+            else if ({{VAR_1}}[mid] < {{VAR_2}}) {{VAR_3}} = mid + 1;
+            else {{VAR_4}} = mid - 1;
+        }
+        return -1;
+    }
+}`,
+        mutationParams: {
+          varNames: [
+            ['arr', 'nums', 'dataList', 'sortedArr'],
+            ['target', 'key', 'searchVal'],
+            ['low', 'start', 'left'],
+            ['high', 'end', 'right']
+          ],
+          boundaryOps: ['<', '<=']
+        }
+      },
+      testCases: [
+        { input: '5\n1 3 5 7 9\n7', output: '3', isHidden: false, weight: 10 },
+        { input: '4\n2 4 6 8\n10', output: '-1', isHidden: false, weight: 10 },
+        { input: '6\n10 20 30 40 50 60\n10', output: '0', isHidden: true, weight: 5 }
+      ]
+    },
+    {
+      title: 'Linked List Cycle Detection Null Pointer (Question DNA)',
+      topic: 'Linked Lists',
+      language: 'python',
+      type: 'debugging',
+      difficulty: 'medium',
+      expectedSolveTimeMinutes: 20,
+      marks: 30,
+      skillTags: ['Linked Lists', 'Null Pointer Guard', 'Fast & Slow Pointers'],
+      prompt: 'The following two-pointer cycle detection algorithm crashes with an unchecked null reference when encountering short or acyclic lists. Fix the traversal logic.',
+      hasDnaMutation: true,
+      dnaConfig: {
+        bugCategory: 'null_pointer',
+        codeTemplate: `def has_cycle({{VAR_1}}):
+    {{VAR_2}} = {{VAR_1}}
+    {{VAR_3}} = {{VAR_1}}
+    # BUG: Missing null check for fast pointer
+    while {{VAR_3}}.next:
+        {{VAR_2}} = {{VAR_2}}.next
+        {{VAR_3}} = {{VAR_3}}.next.next
+        if {{VAR_2}} == {{VAR_3}}:
+            return True
+    return False`,
+        mutationParams: {
+          varNames: [
+            ['head', 'rootNode', 'listHead'],
+            ['slow', 'tortoise', 'slowPtr'],
+            ['fast', 'hare', 'fastPtr']
+          ]
+        }
+      },
+      testCases: [
+        { input: '3\n1 2 3\n1', output: 'True', isHidden: false, weight: 15 },
+        { input: '2\n1 2\n-1', output: 'False', isHidden: false, weight: 15 }
+      ]
+    },
+    {
+      title: 'Department Top Earners (SQL Aggregation)',
+      topic: 'SQL',
+      language: 'sql',
+      type: 'sql',
+      difficulty: 'hard',
+      expectedSolveTimeMinutes: 25,
+      marks: 35,
+      skillTags: ['SQL', 'Window Functions', 'DENSE_RANK', 'GROUP BY'],
+      prompt: 'Write an SQL query to find employees who earn the top 3 highest unique salaries in each of the department divisions.',
+      hasDnaMutation: false,
+      testCases: [
+        { input: 'Employees Table (7 rows)', output: 'IT: Alice ($90k), Bob ($85k)\nHR: Carol ($80k)', isHidden: false, weight: 35 }
+      ]
+    },
+    {
+      title: 'Python Variable Shadowing & Closures',
+      topic: 'Python',
+      language: 'python',
+      type: 'mcq',
+      difficulty: 'easy',
+      expectedSolveTimeMinutes: 5,
+      marks: 10,
+      skillTags: ['Python', 'Closures', 'Late Binding'],
+      prompt: 'What will be printed by the following snippet?\n\n```python\nfuncs = [lambda x: x + i for i in range(3)]\nprint([f(1) for f in funcs])\n```',
+      options: [
+        { text: '[1, 2, 3]', isCorrect: false },
+        { text: '[3, 3, 3]', isCorrect: true },
+        { text: '[2, 3, 4]', isCorrect: false },
+        { text: 'TypeError: late binding closure', isCorrect: false }
+      ],
+      explanation: 'Python closures bind variables by reference, not by value. When the lambdas execute, `i` has finalized to 2, so `1 + 2 = 3` for each.'
+    }
+  ]);
 
   console.log('🎉 Seeding successfully completed!');
 }

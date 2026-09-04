@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js';
 import { participantRouter } from './routes/participant.js';
 import { adminRouter } from './routes/admin.js';
 import { adminEventRouter } from './routes/adminEvent.js';
+import { adminQuestionBankRouter } from './routes/adminQuestionBank.js';
 import { tenantContext } from './middleware/tenantContext.js';
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/participant', participantRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/admin/events', adminEventRouter);
+app.use('/api/admin/questions/bank', adminQuestionBankRouter);
 
 // Initialize Socket.io
 initSocketIO(server);
