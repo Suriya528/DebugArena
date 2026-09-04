@@ -170,30 +170,54 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
     });
 
     // Create initial dynamic rounds if provided
-    const roundsList = initialRounds || [
-      { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100, advancementQuota: 15 },
-      { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100, advancementQuota: 10 },
-      { roundNumber: 3, title: 'Round 3: Advanced Algorithmic Coding', type: 'coding', durationMinutes: 45, questionCount: 2, totalMarks: 100, advancementQuota: 0 }
-    ];
+    let rawRounds = initialRounds && Array.isArray(initialRounds) && initialRounds.length > 0
+      ? initialRounds
+      : [
+          { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100, advancementQuota: 15, allowedLanguages: [] },
+          { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100, advancementQuota: 10, allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'] },
+          { roundNumber: 3, title: 'Round 3: Advanced Algorithmic Coding', type: 'coding', durationMinutes: 45, questionCount: 2, totalMarks: 100, advancementQuota: 0, allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'] }
+        ];
 
     const createdRounds = [];
-    for (const r of roundsList) {
+    for (let i = 0; i < rawRounds.length; i++) {
+      const r = rawRounds[i];
+      const sequentialRoundNum = i + 1;
+      const isFinalRound = i === rawRounds.length - 1;
+
+      // Determine allowedLanguages based on type
+      let resolvedLanguages: string[] = [];
+      if (r.type === 'coding' || r.type === 'debugging') {
+        resolvedLanguages = (r.allowedLanguages && r.allowedLanguages.length > 0)
+          ? r.allowedLanguages
+          : ['python', 'cpp', 'java', 'c', 'javascript'];
+      } else if (r.type === 'sql') {
+        resolvedLanguages = (r.allowedLanguages && r.allowedLanguages.length > 0)
+          ? r.allowedLanguages
+          : ['sql'];
+      } else {
+        resolvedLanguages = r.allowedLanguages || [];
+      }
+
+      // Final round always has quota 0 (championship round)
+      const resolvedQuota = isFinalRound ? 0 : (r.advancementQuota !== undefined ? r.advancementQuota : 10);
+
       const newRound = await DynamicRound.create({
         eventId: event._id,
-        roundNumber: r.roundNumber,
-        title: r.title,
+        roundNumber: sequentialRoundNum,
+        title: r.title || `Round ${sequentialRoundNum}`,
         description: r.description || '',
-        type: r.type,
+        type: r.type || 'debugging',
         durationMinutes: r.durationMinutes || 30,
         questionCount: r.questionCount || 5,
         totalMarks: r.totalMarks || 100,
         passingMarks: r.passingMarks || 0,
         negativeMarkValue: r.negativeMarkValue || 0,
-        advancementQuota: r.advancementQuota !== undefined ? r.advancementQuota : (r.roundNumber === 1 ? 15 : r.roundNumber === 2 ? 10 : 0),
+        allowedLanguages: resolvedLanguages,
+        advancementQuota: resolvedQuota,
         advancementRule: r.advancementRule || 'top_n',
         tieResolutionStrategy: r.tieResolutionStrategy || 'expand',
-        status: r.roundNumber === 1 ? 'active' : 'pending',
-        startedAt: r.roundNumber === 1 ? new Date() : null
+        status: sequentialRoundNum === 1 ? 'active' : 'pending',
+        startedAt: sequentialRoundNum === 1 ? new Date() : null
       });
       createdRounds.push(newRound);
     }
@@ -336,6 +360,7 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
       totalMarks,
       passingMarks,
       negativeMarkValue,
+      allowedLanguages,
       advancementQuota,
       advancementRule,
       tieResolutionStrategy
@@ -356,6 +381,19 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
     const maxRound = await DynamicRound.findOne({ eventId }).sort({ roundNumber: -1 });
     const nextRoundNumber = maxRound ? maxRound.roundNumber + 1 : 1;
 
+    let resolvedLanguages: string[] = [];
+    if (type === 'coding' || type === 'debugging') {
+      resolvedLanguages = (allowedLanguages && allowedLanguages.length > 0)
+        ? allowedLanguages
+        : ['python', 'cpp', 'java', 'c', 'javascript'];
+    } else if (type === 'sql') {
+      resolvedLanguages = (allowedLanguages && allowedLanguages.length > 0)
+        ? allowedLanguages
+        : ['sql'];
+    } else {
+      resolvedLanguages = allowedLanguages || [];
+    }
+
     const round = await DynamicRound.create({
       eventId,
       roundNumber: nextRoundNumber,
@@ -367,13 +405,14 @@ adminEventRouter.post('/:eventId/rounds', async (req: AuthenticatedRequest, res:
       totalMarks: totalMarks || 100,
       passingMarks: passingMarks || 0,
       negativeMarkValue: negativeMarkValue || 0,
+      allowedLanguages: resolvedLanguages,
       advancementQuota: advancementQuota !== undefined ? advancementQuota : 0,
       advancementRule: advancementRule || 'top_n',
       tieResolutionStrategy: tieResolutionStrategy || 'expand',
       status: 'pending'
     });
 
-    await recordAudit(req, 'ROUND_CREATED', 'DynamicRound', round._id.toString(), { roundNumber: nextRoundNumber, type, title, advancementQuota }, '', event.collegeId, eventId);
+    await recordAudit(req, 'ROUND_CREATED', 'DynamicRound', round._id.toString(), { roundNumber: nextRoundNumber, type, title, advancementQuota, allowedLanguages: resolvedLanguages }, '', event.collegeId, eventId);
     res.status(201).json({ round });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create round' });
@@ -393,6 +432,7 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
       totalMarks,
       passingMarks,
       negativeMarkValue,
+      allowedLanguages,
       advancementQuota,
       advancementRule,
       tieResolutionStrategy,
@@ -419,6 +459,7 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
     if (totalMarks) round.totalMarks = totalMarks;
     if (passingMarks !== undefined) round.passingMarks = passingMarks;
     if (negativeMarkValue !== undefined) round.negativeMarkValue = negativeMarkValue;
+    if (allowedLanguages !== undefined) round.allowedLanguages = allowedLanguages;
     if (advancementQuota !== undefined) round.advancementQuota = advancementQuota;
     if (advancementRule) round.advancementRule = advancementRule;
     if (tieResolutionStrategy) round.tieResolutionStrategy = tieResolutionStrategy;

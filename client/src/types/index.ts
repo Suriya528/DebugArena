@@ -82,6 +82,7 @@ export interface DynamicRound {
   advancementQuota?: number;
   advancementRule?: 'top_n' | 'min_score' | 'manual';
   tieResolutionStrategy?: 'expand' | 'strict' | 'manual';
+  allowedLanguages?: string[];
   status: 'pending' | 'active' | 'locked' | 'completed';
   startedAt: string | null;
   endedAt?: string | null;

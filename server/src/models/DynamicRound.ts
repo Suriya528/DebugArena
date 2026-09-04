@@ -15,6 +15,7 @@ export interface IDynamicRound extends Document {
   advancementRule: 'top_n' | 'min_score' | 'manual';
   minPassingScore: number;
   tieResolutionStrategy: 'expand' | 'strict' | 'manual';
+  allowedLanguages: string[];
   status: 'pending' | 'active' | 'locked' | 'completed';
   startedAt: Date | null;
   endedAt: Date | null;
@@ -40,6 +41,10 @@ const DynamicRoundSchema = new Schema<IDynamicRound>(
     totalMarks: { type: Number, default: 50 },
     passingMarks: { type: Number, default: 0 },
     negativeMarkValue: { type: Number, default: 0 },
+    allowedLanguages: {
+      type: [String],
+      default: ['python', 'cpp', 'java', 'c', 'javascript']
+    },
     advancementQuota: { type: Number, default: 0 },
     advancementRule: {
       type: String,

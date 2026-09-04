@@ -9,6 +9,7 @@ import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
 import { ProcessedOperation } from '../models/ProcessedOperation.js';
 import { CodeMilestone } from '../models/CodeMilestone.js';
+import { DynamicRound } from '../models/DynamicRound.js';
 import { getRemainingSeconds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
@@ -143,6 +144,15 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Fetch questions for this round
     const questions = await Question.find({ roundNumber }).sort({ orderIndex: 1 });
 
+    // Lookup dynamic round for event-specific allowed languages
+    let roundAllowedLanguages: string[] | null = null;
+    if (req.user?.eventId) {
+      const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
+      if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
+        roundAllowedLanguages = dynRound.allowedLanguages;
+      }
+    }
+
     // Sanitize questions: strip correct answers for MCQ and hidden test cases for Coding!
     const sanitizedQuestions = questions.map(q => {
       if (q.type === 'mcq') {
@@ -165,7 +175,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           title: q.title,
           prompt: q.prompt,
           marks: q.marks,
-          allowedLanguages: q.allowedLanguages,
+          allowedLanguages: roundAllowedLanguages || q.allowedLanguages || ['python', 'cpp', 'java', 'c', 'javascript'],
           starterCode: q.starterCode,
           testCases: (q.testCases || []).filter(tc => !tc.isHidden).map(tc => ({
             input: tc.input,
@@ -333,6 +343,27 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    // Validate language against permitted languages for this round
+    let allowedLangs = question.allowedLanguages && question.allowedLanguages.length > 0
+      ? question.allowedLanguages
+      : ['python', 'cpp', 'java', 'c', 'javascript'];
+
+    if (req.user?.eventId) {
+      const activeRoundNumber = req.body.roundNumber || question.roundNumber;
+      const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: activeRoundNumber });
+      if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
+        allowedLangs = dynRound.allowedLanguages;
+      }
+    }
+
+    const normalizedLang = (language || '').toLowerCase().trim();
+    if (!allowedLangs.map(l => l.toLowerCase()).includes(normalizedLang)) {
+      res.status(400).json({
+        error: `Language '${language}' is not permitted for this round. Allowed: ${allowedLangs.join(', ')}`
+      });
+      return;
+    }
+
     // Run only visible test cases
     const visibleCases = (question.testCases || []).filter(tc => !tc.isHidden);
     const results = await runTestCases(code, language, visibleCases, question.timeLimitMs);
@@ -391,6 +422,26 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     const question = await Question.findById(questionId);
     if (!question || question.type !== 'coding') {
       res.status(404).json({ error: 'Coding question not found' });
+      return;
+    }
+
+    // Validate language against permitted languages for this round
+    let allowedSubmitLangs = question.allowedLanguages && question.allowedLanguages.length > 0
+      ? question.allowedLanguages
+      : ['python', 'cpp', 'java', 'c', 'javascript'];
+
+    if (req.user?.eventId) {
+      const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
+      if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
+        allowedSubmitLangs = dynRound.allowedLanguages;
+      }
+    }
+
+    const normalizedSubmitLang = (language || '').toLowerCase().trim();
+    if (!allowedSubmitLangs.map(l => l.toLowerCase()).includes(normalizedSubmitLang)) {
+      res.status(400).json({
+        error: `Language '${language}' is not permitted for this round. Allowed: ${allowedSubmitLangs.join(', ')}`
+      });
       return;
     }
 

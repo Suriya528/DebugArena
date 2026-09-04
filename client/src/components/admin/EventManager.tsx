@@ -321,6 +321,28 @@ export const EventManager: React.FC = () => {
                       </div>
                       <h4 className="text-sm font-black text-white tracking-tight">{r.title}</h4>
                       <p className="text-xs text-slate-400 mt-0.5">{r.description || 'No description provided'}</p>
+                      
+                      {/* Language and Quota Badges */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {r.advancementQuota && r.advancementQuota > 0 ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                            ⚡ Top {r.advancementQuota} Advance
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                            🏆 Championship Final
+                          </span>
+                        )}
+                        {r.allowedLanguages && r.allowedLanguages.length > 0 && (
+                          <div className="flex items-center gap-1">
+                            {r.allowedLanguages.map(l => (
+                              <span key={l} className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 

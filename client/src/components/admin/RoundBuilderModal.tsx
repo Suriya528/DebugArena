@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Layers, Clock, Award, CheckCircle2 } from 'lucide-react';
+import { X, Layers, Clock, Award, CheckCircle2, Code2, Check } from 'lucide-react';
 import { createDynamicRound } from '../../services/api.js';
 
 interface RoundBuilderModalProps {
@@ -8,6 +8,15 @@ interface RoundBuilderModalProps {
   eventId: string;
   onRoundCreated: () => void;
 }
+
+const ALL_LANGUAGES: { id: string; label: string; badge: string; color: string }[] = [
+  { id: 'python', label: 'Python 3', badge: 'PY', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  { id: 'cpp', label: 'C++ (GCC)', badge: 'C++', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  { id: 'java', label: 'Java 17', badge: 'JAVA', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  { id: 'c', label: 'C (GCC)', badge: 'C', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
+  { id: 'javascript', label: 'JavaScript (Node)', badge: 'JS', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
+  { id: 'sql', label: 'SQL', badge: 'SQL', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
+];
 
 export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
   isOpen,
@@ -23,16 +32,34 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
   const [totalMarks, setTotalMarks] = useState(100);
   const [passingMarks, setPassingMarks] = useState(0);
   const [negativeMarkValue, setNegativeMarkValue] = useState(0);
+  const [allowedLanguages, setAllowedLanguages] = useState<string[]>(['python', 'cpp', 'java', 'c', 'javascript']);
   const [advancementQuota, setAdvancementQuota] = useState(15);
   const [tieResolutionStrategy, setTieResolutionStrategy] = useState<'expand' | 'strict' | 'manual'>('expand');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
+  const toggleLanguage = (langId: string) => {
+    if (allowedLanguages.includes(langId)) {
+      setAllowedLanguages(allowedLanguages.filter(l => l !== langId));
+    } else {
+      setAllowedLanguages([...allowedLanguages, langId]);
+    }
+  };
+
+  const selectAll = () => {
+    setAllowedLanguages(['python', 'cpp', 'java', 'c', 'javascript']);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       alert('Please provide a round title');
+      return;
+    }
+
+    if ((type === 'coding' || type === 'debugging') && allowedLanguages.length === 0) {
+      alert('Please select at least one permitted programming language for this round.');
       return;
     }
 
@@ -47,6 +74,9 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
         totalMarks,
         passingMarks,
         negativeMarkValue,
+        allowedLanguages: (type === 'coding' || type === 'debugging')
+          ? allowedLanguages
+          : (type === 'sql' ? ['sql'] : []),
         advancementQuota,
         advancementRule: 'top_n',
         tieResolutionStrategy
@@ -61,8 +91,8 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl text-left my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
+      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-8 shadow-2xl text-left my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400">
@@ -70,10 +100,10 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-white tracking-tight">Add Dynamic Round</h2>
-              <p className="text-xs text-slate-400">Configure round type, duration, marks, and evaluation</p>
+              <p className="text-xs text-slate-400">Configure round type, permitted languages, and evaluation</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -104,8 +134,17 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setType(t.id as any)}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                  onClick={() => {
+                    const nextType = t.id as any;
+                    setType(nextType);
+                    if (nextType === 'sql') setAllowedLanguages(['sql']);
+                    else if (nextType === 'coding' || nextType === 'debugging') {
+                      if (allowedLanguages.length === 0 || allowedLanguages.includes('sql')) {
+                        setAllowedLanguages(['python', 'cpp', 'java', 'c', 'javascript']);
+                      }
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                     type === t.id
                       ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-950/50'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
@@ -116,6 +155,54 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
               ))}
             </div>
           </div>
+
+          {/* ALLOWED LANGUAGES */}
+          {(type === 'coding' || type === 'debugging' || type === 'sql') && (
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <Code2 className="w-3.5 h-3.5 text-cyan-400" /> Permitted Programming Languages
+                </label>
+                {type !== 'sql' && (
+                  <button
+                    type="button"
+                    onClick={selectAll}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
+                  >
+                    Select All Standard
+                  </button>
+                )}
+              </div>
+
+              {type === 'sql' ? (
+                <div className="text-xs text-purple-400 font-mono bg-purple-500/10 border border-purple-500/20 px-3 py-1.5 rounded-xl">
+                  SQL dialect active.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {ALL_LANGUAGES.filter(l => l.id !== 'sql').map(lang => {
+                    const isSelected = allowedLanguages.includes(lang.id);
+                    return (
+                      <button
+                        key={lang.id}
+                        type="button"
+                        onClick={() => toggleLanguage(lang.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? `${lang.color} shadow-sm`
+                            : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        <span className="font-mono text-[10px] uppercase font-black">{lang.badge}</span>
+                        <span>{lang.label}</span>
+                        {isSelected && <Check className="w-3 h-3" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-bold text-slate-300 block mb-1.5">Description & Objective</label>
