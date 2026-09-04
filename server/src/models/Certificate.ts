@@ -17,6 +17,11 @@ export interface ICertificate extends Document {
   templateUrl?: string;
   useCustomTemplate?: boolean;
   textColorMode?: 'light' | 'dark' | 'auto';
+  primaryColor?: string;
+  secondaryColor?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  identificationNo?: string;
   createdAt: Date;
 }
 
@@ -45,7 +50,12 @@ const CertificateSchema = new Schema<ICertificate>(
     verificationHash: { type: String, required: true },
     templateUrl: { type: String, default: '' },
     useCustomTemplate: { type: Boolean, default: false },
-    textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' }
+    textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' },
+    primaryColor: { type: String, default: '#b8860b' },
+    secondaryColor: { type: String, default: '#d97706' },
+    signatoryName: { type: String, default: 'Dr. A. Sakthivel' },
+    signatoryTitle: { type: String, default: 'Chairman, Examination & Technical Board' },
+    identificationNo: { type: String, default: '' }
   },
   { timestamps: { createdAt: true, updatedAt: false } }
 );

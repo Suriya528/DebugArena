@@ -4,6 +4,8 @@ import { User } from '../models/User.js';
 import { Event } from '../models/Event.js';
 import { authenticate, requireAnyAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 
+import { College } from '../models/College.js';
+
 export const certificateRouter = Router();
 
 // PUBLIC: GET /api/certificates/verify/:certificateId
@@ -44,6 +46,11 @@ certificateRouter.get('/verify/:certificateId', async (req: Request, res: Respon
       templateUrl: cert.templateUrl || '',
       useCustomTemplate: !!cert.useCustomTemplate,
       textColorMode: cert.textColorMode || 'auto',
+      primaryColor: cert.primaryColor || '#b8860b',
+      secondaryColor: cert.secondaryColor || '#d97706',
+      signatoryName: cert.signatoryName || 'Dr. A. Sakthivel',
+      signatoryTitle: cert.signatoryTitle || 'Chairman, Examination & Technical Board',
+      identificationNo: cert.identificationNo || `UP00F20-${cert.certificateId.slice(-6)}`,
       cryptographicStatus: isTamperFree ? 'GENUINE_VERIFIED_SHA256' : 'HASH_MISMATCH_TAMPERED'
     });
   } catch (err: any) {
@@ -63,7 +70,12 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
       templateUrl: bodyTemplateUrl,
       useCustomTemplate: bodyUseCustomTemplate,
       textColorMode: bodyTextColorMode,
-      eventId: bodyEventId
+      eventId: bodyEventId,
+      primaryColor: bodyPrimaryColor,
+      secondaryColor: bodySecondaryColor,
+      signatoryName: bodySignatoryName,
+      signatoryTitle: bodySignatoryTitle,
+      identificationNo: bodyIdentificationNo
     } = req.body;
 
     const user = await User.findById(userId);
@@ -81,9 +93,12 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
     let effectiveTemplateUrl = bodyTemplateUrl;
     let effectiveUseCustom = bodyUseCustomTemplate;
     let effectiveTextColorMode = bodyTextColorMode;
+    let effectiveSignatoryName = bodySignatoryName;
+    let effectiveSignatoryTitle = bodySignatoryTitle;
 
+    let event: any = null;
     if (eventId) {
-      const event = await Event.findById(eventId);
+      event = await Event.findById(eventId);
       if (event) {
         if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
           res.status(404).json({ error: 'Event not found' });
@@ -100,11 +115,32 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
             effectiveTextColorMode = event.certificateConfig.textColorMode;
           }
         }
+        if (!effectiveSignatoryName && event.branding?.signatoryName) {
+          effectiveSignatoryName = event.branding.signatoryName;
+        }
+        if (!effectiveSignatoryTitle && event.branding?.signatoryTitle) {
+          effectiveSignatoryTitle = event.branding.signatoryTitle;
+        }
+      }
+    }
+
+    const effectiveCollegeId = user.collegeId || req.user?.collegeId || event?.collegeId;
+    let effectiveCollegeName = collegeName;
+    let effectivePrimaryColor = bodyPrimaryColor;
+    let effectiveSecondaryColor = bodySecondaryColor;
+
+    if (effectiveCollegeId) {
+      const col = await College.findById(effectiveCollegeId);
+      if (col) {
+        if (!effectiveCollegeName) effectiveCollegeName = col.name;
+        if (!effectivePrimaryColor) effectivePrimaryColor = col.primaryColor;
+        if (!effectiveSecondaryColor) effectiveSecondaryColor = col.secondaryColor;
       }
     }
 
     const certId = 'CERT-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
     const hash = generateCertificateHash(certId, user.username, rank, totalScore);
+    const systemId = bodyIdentificationNo || `UP00F20-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const cert = await Certificate.create({
       certificateId: certId,
@@ -112,15 +148,20 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
       participantName: user.name || user.username,
       username: user.username,
       eventId: eventId || undefined,
-      eventTitle: eventTitle || 'DebugArena 2026 Competitive Debugging OA',
-      collegeName: collegeName || 'Institute of Engineering & Technology',
+      eventTitle: eventTitle || (event ? event.name : 'DebugArena Competitive Debugging OA'),
+      collegeName: effectiveCollegeName || 'Institute of Engineering & Technology',
       rank,
       totalScore,
       issueDate: new Date(),
       verificationHash: hash,
       templateUrl: effectiveTemplateUrl || '',
       useCustomTemplate: !!effectiveUseCustom,
-      textColorMode: effectiveTextColorMode || 'auto'
+      textColorMode: effectiveTextColorMode || 'auto',
+      primaryColor: effectivePrimaryColor || '#b8860b',
+      secondaryColor: effectiveSecondaryColor || '#d97706',
+      signatoryName: effectiveSignatoryName || 'Dr. A. Sakthivel',
+      signatoryTitle: effectiveSignatoryTitle || 'Chairman, Examination & Technical Board',
+      identificationNo: systemId
     });
 
     res.json({ success: true, certificate: cert });

@@ -8,6 +8,8 @@ export const LeaderboardView: React.FC = () => {
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedCertRow, setSelectedCertRow] = useState<LeaderboardRow | null>(null);
+  const [activeCollege, setActiveCollege] = useState<any>(null);
+  const [activeEvent, setActiveEvent] = useState<any>(null);
 
   const fetchLeaderboard = async () => {
     try {
@@ -23,6 +25,22 @@ export const LeaderboardView: React.FC = () => {
 
   useEffect(() => {
     fetchLeaderboard();
+
+    async function loadMeta() {
+      try {
+        const colRes = await api.get('/admin/events/colleges');
+        if (colRes.data.colleges && colRes.data.colleges.length > 0) {
+          setActiveCollege(colRes.data.colleges[0]);
+        }
+        const evRes = await api.get('/admin/events');
+        if (evRes.data.events && evRes.data.events.length > 0) {
+          setActiveEvent(evRes.data.events[0]);
+        }
+      } catch (e) {
+        console.warn('Could not load college/event meta', e);
+      }
+    }
+    loadMeta();
   }, []);
 
   const handleExportCSV = () => {
@@ -279,6 +297,11 @@ export const LeaderboardView: React.FC = () => {
           name={selectedCertRow.name}
           rank={selectedCertRow.rank}
           score={selectedCertRow.totalScore}
+          eventTitle={activeEvent?.name || 'DebugX Championship 2026'}
+          collegeName={activeCollege?.name || 'ABC Institute of Technology'}
+          collegeCode={activeCollege?.code || 'ABC-TECH'}
+          primaryColor={activeCollege?.primaryColor || '#b8860b'}
+          secondaryColor={activeCollege?.secondaryColor || '#d97706'}
           onClose={() => setSelectedCertRow(null)}
         />
       )}
