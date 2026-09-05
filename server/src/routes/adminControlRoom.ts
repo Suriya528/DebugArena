@@ -18,12 +18,33 @@ adminControlRoomRouter.use(authenticate, requireAnyAdmin);
 adminControlRoomRouter.get('/pulse', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt((req.query.roundNumber as string) || '1', 10);
-    const round = await Round.findOne({ roundNumber });
+    const collegeId = req.user?.collegeId;
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
 
-    const totalParticipants = await User.countDocuments({ role: 'participant' });
-    const inProgressCount = await RoundProgress.countDocuments({ roundNumber, status: 'in_progress' });
-    const submittedCount = await RoundProgress.countDocuments({ roundNumber, status: 'submitted' });
-    const violationsCount = await ViolationLog.countDocuments({ roundNumber });
+    let round = null;
+    if (eventId) {
+      const { DynamicRound } = await import('../models/DynamicRound.js');
+      round = await DynamicRound.findOne({ eventId, roundNumber });
+    }
+    if (!round) {
+      round = await Round.findOne({ roundNumber });
+    }
+
+    const userFilter: any = { role: 'participant' };
+    if (collegeId) userFilter.collegeId = collegeId;
+    if (eventId) userFilter.eventId = eventId;
+    const tenantUserIds = await User.find(userFilter).distinct('_id');
+
+    const progressFilter: any = { roundNumber };
+    if (tenantUserIds.length > 0) progressFilter.userId = { $in: tenantUserIds };
+
+    const totalParticipants = tenantUserIds.length;
+    const inProgressCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'in_progress' });
+    const submittedCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'submitted' });
+
+    const violationFilter: any = { roundNumber };
+    if (tenantUserIds.length > 0) violationFilter.userId = { $in: tenantUserIds };
+    const violationsCount = await ViolationLog.countDocuments(violationFilter);
 
     // Measure DB Ping
     const dbStart = Date.now();
@@ -59,7 +80,9 @@ adminControlRoomRouter.get('/pulse', async (req: AuthenticatedRequest, res: Resp
 adminControlRoomRouter.get('/fairness', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt((req.query.roundNumber as string) || '1', 10);
-    const metrics = await getQuestionFairnessMetrics(roundNumber);
+    const collegeId = req.user?.collegeId;
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+    const metrics = await getQuestionFairnessMetrics(roundNumber, collegeId, eventId);
     res.json({ roundNumber, metrics });
   } catch (err) {
     res.status(500).json({ error: 'Failed to compute question fairness' });
@@ -69,11 +92,14 @@ adminControlRoomRouter.get('/fairness', async (req: AuthenticatedRequest, res: R
 // POST /api/admin/control-room/anomaly-action
 adminControlRoomRouter.post('/anomaly-action', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { roundNumber, questionId, action, reason } = req.body;
+    const { roundNumber, questionId, action, reason, eventId: bodyEventId } = req.body;
     if (!roundNumber || !questionId || !action) {
       res.status(400).json({ error: 'roundNumber, questionId, and action are required' });
       return;
     }
+
+    const collegeId = req.user?.collegeId;
+    const eventId = bodyEventId || req.user?.eventId;
 
     const result = await executeAnomalyAction(
       parseInt(roundNumber, 10),
@@ -81,7 +107,9 @@ adminControlRoomRouter.post('/anomaly-action', async (req: AuthenticatedRequest,
       action,
       req.user!.username,
       req.user!.userId,
-      reason
+      reason,
+      collegeId,
+      eventId
     );
 
     res.json(result);

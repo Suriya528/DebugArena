@@ -41,7 +41,24 @@ export const App: React.FC = () => {
   // Participant Portal State
   const [roundState, setRoundState] = useState<any>(null);
   const [portalLoading, setPortalLoading] = useState<boolean>(false);
-  const [hasStartedActiveRound, setHasStartedActiveRound] = useState<boolean>(false);
+  const [hasStartedActiveRound, setHasStartedActiveRoundState] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('debugarena_active_round_session') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setHasStartedActiveRound = useCallback((val: boolean) => {
+    try {
+      if (val) {
+        sessionStorage.setItem('debugarena_active_round_session', 'true');
+      } else {
+        sessionStorage.removeItem('debugarena_active_round_session');
+      }
+    } catch {}
+    setHasStartedActiveRoundState(val);
+  }, []);
   const [isSubmittingRound, setIsSubmittingRound] = useState<boolean>(false);
 
   // Anti-Cheat & Violation Modal State
@@ -59,6 +76,21 @@ export const App: React.FC = () => {
       const res = await api.get('/participant/round-state');
       setRoundState(res.data);
       setViolationCount(res.data.progress?.violationCount || 0);
+
+      // If participant is in an active round, ensure session resume
+      if (res.data.round?.status === 'active' && res.data.progress?.status === 'in_progress') {
+        const stored = sessionStorage.getItem('debugarena_active_round_session');
+        if (stored === 'true' || res.data.progress?.startedAt) {
+          setHasStartedActiveRound(true);
+        }
+      }
+      if (
+        res.data.progress?.status === 'submitted' ||
+        res.data.progress?.status === 'eliminated' ||
+        res.data.progress?.status === 'advanced'
+      ) {
+        setHasStartedActiveRound(false);
+      }
     } catch (err: any) {
       if (err.response?.status === 403) {
         setRoundState({
@@ -66,11 +98,12 @@ export const App: React.FC = () => {
           isWaitingAdvancement: err.response.data.status === 'waiting_advancement',
           errorMessage: err.response.data.error
         });
+        setHasStartedActiveRound(false);
       }
     } finally {
       setPortalLoading(false);
     }
-  }, [user]);
+  }, [user, setHasStartedActiveRound]);
 
   useEffect(() => {
     if (user && user.role === 'participant') {
@@ -162,13 +195,14 @@ export const App: React.FC = () => {
       await api.post('/participant/submit-round', {
         roundNumber: roundState.round?.roundNumber || 1
       });
+      setHasStartedActiveRound(false);
       await fetchRoundState();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to submit round');
     } finally {
       setIsSubmittingRound(false);
     }
-  }, [roundState, fetchRoundState]);
+  }, [roundState, fetchRoundState, setHasStartedActiveRound]);
 
   // Socket event listeners for live updates
   useEffect(() => {

@@ -35,11 +35,32 @@ export async function computeQuestionScore(
   }
 }
 
+import { DynamicRound } from '../models/DynamicRound.js';
+import { User } from '../models/User.js';
+
 export async function finalizeParticipantRoundScore(
   userId: string,
-  roundNumber: number
+  roundNumber: number,
+  forceRecalculateTime: boolean = false
 ): Promise<{ totalScore: number; timeTakenSeconds: number }> {
-  const round = await Round.findOne({ roundNumber });
+  // Check if participant is in a dynamic event round
+  const user = await User.findById(userId);
+  let effectiveRound: { startedAt: Date | null; durationMinutes: number } | null = null;
+
+  if (user?.eventId) {
+    const dynRound = await DynamicRound.findOne({ eventId: user.eventId, roundNumber });
+    if (dynRound) {
+      effectiveRound = { startedAt: dynRound.startedAt, durationMinutes: dynRound.durationMinutes };
+    }
+  }
+
+  if (!effectiveRound) {
+    const round = await Round.findOne({ roundNumber });
+    if (round) {
+      effectiveRound = { startedAt: round.startedAt, durationMinutes: round.durationMinutes };
+    }
+  }
+
   let progress = await RoundProgress.findOne({ userId, roundNumber });
 
   if (!progress) {
@@ -47,7 +68,7 @@ export async function finalizeParticipantRoundScore(
       userId,
       roundNumber,
       status: 'submitted',
-      startedAt: round?.startedAt || new Date()
+      startedAt: effectiveRound?.startedAt || new Date()
     });
   }
 
@@ -59,13 +80,23 @@ export async function finalizeParticipantRoundScore(
   }
 
   const now = new Date();
-  const startTime = progress.startedAt || round?.startedAt || now;
-  const timeTakenSeconds = Math.max(0, Math.floor((now.getTime() - new Date(startTime).getTime()) / 1000));
+  const maxDurationSec = (effectiveRound?.durationMinutes || 30) * 60;
+  const startTime = progress.startedAt || effectiveRound?.startedAt || now;
+
+  // Idempotency: If already submitted, preserve initial submission timestamp and duration unless force-recalculated
+  let timeTakenSeconds = progress.timeTakenSeconds;
+  let submittedAt = progress.submittedAt || now;
+
+  if (progress.status !== 'submitted' || forceRecalculateTime || !progress.submittedAt) {
+    const rawElapsed = Math.max(0, Math.floor((now.getTime() - new Date(startTime).getTime()) / 1000));
+    timeTakenSeconds = Math.min(maxDurationSec, rawElapsed);
+    submittedAt = now;
+  }
 
   progress.totalScore = totalScore;
   progress.timeTakenSeconds = timeTakenSeconds;
   progress.status = 'submitted';
-  progress.submittedAt = now;
+  progress.submittedAt = submittedAt;
   await progress.save();
 
   broadcastToAdmins('admin:participant_submitted', {
@@ -73,7 +104,7 @@ export async function finalizeParticipantRoundScore(
     roundNumber,
     totalScore,
     timeTakenSeconds,
-    submittedAt: now
+    submittedAt
   });
 
   return { totalScore, timeTakenSeconds };

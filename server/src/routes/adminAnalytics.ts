@@ -17,7 +17,11 @@ adminAnalyticsRouter.use(authenticate, requireAnyAdmin);
 adminAnalyticsRouter.get('/suspicion', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt((req.query.roundNumber as string) || '1', 10);
-    const participants = await User.find({ role: 'participant' });
+    const userFilter: any = { role: 'participant' };
+    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
+    if (req.query.eventId) userFilter.eventId = req.query.eventId;
+    else if (req.user?.eventId) userFilter.eventId = req.user.eventId;
+    const participants = await User.find(userFilter);
 
     const reports = await Promise.all(
       participants.map(async (p) => {

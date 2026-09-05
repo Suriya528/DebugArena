@@ -1,6 +1,7 @@
 import { Attempt } from '../models/Attempt.js';
 import { Question } from '../models/Question.js';
 import { RoundProgress } from '../models/RoundProgress.js';
+import { User } from '../models/User.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { broadcastToAdmins, broadcastToAll } from './socketService.js';
 import { finalizeParticipantRoundScore } from './scoringService.js';
@@ -20,19 +21,27 @@ export interface QuestionFairnessMetric {
   isActionApplied?: boolean;
 }
 
-export async function getQuestionFairnessMetrics(roundNumber: number): Promise<QuestionFairnessMetric[]> {
-  const questions = await Question.find({ roundNumber }).sort({ orderIndex: 1 });
+export async function getQuestionFairnessMetrics(roundNumber: number, collegeId?: string, eventId?: string): Promise<QuestionFairnessMetric[]> {
+  const qFilter: any = { roundNumber };
+  if (eventId) qFilter.eventId = eventId;
+  const questions = await Question.find(qFilter).sort({ orderIndex: 1 });
   const metrics: QuestionFairnessMetric[] = [];
 
+  const userFilter: any = { role: 'participant' };
+  if (collegeId) userFilter.collegeId = collegeId;
+  if (eventId) userFilter.eventId = eventId;
+  const tenantUserIds = await User.find(userFilter).distinct('_id');
+
   for (const q of questions) {
-    const attempts = await Attempt.find({ roundNumber, questionId: q._id });
+    const attFilter: any = { roundNumber, questionId: q._id };
+    if (tenantUserIds.length > 0) attFilter.userId = { $in: tenantUserIds };
+    const attempts = await Attempt.find(attFilter);
     const totalAttempts = attempts.length;
     const passCount = attempts.filter(a => a.score && a.score >= q.marks * 0.7).length;
     const passRate = totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 100;
 
     let totalDuration = 0;
     attempts.forEach(a => {
-      // Mock average solve time calculation based on saved attempts
       totalDuration += 300; // default 5m
     });
     const avgSolveTimeSeconds = totalAttempts > 0 ? Math.round(totalDuration / totalAttempts) : 0;
@@ -74,25 +83,38 @@ export async function executeAnomalyAction(
   action: 'give_full_marks' | 'disable_question' | 'recalculate_scores',
   adminUsername: string,
   adminId: string,
-  reason: string = 'Statistical outlier anomaly detected'
+  reason: string = 'Statistical outlier anomaly detected',
+  collegeId?: string,
+  eventId?: string
 ): Promise<{ success: boolean; affectedCount: number; message: string }> {
   const question = await Question.findById(questionId);
   if (!question) {
     throw new Error('Question not found');
   }
 
+  const userFilter: any = { role: 'participant' };
+  if (collegeId) userFilter.collegeId = collegeId;
+  if (eventId) userFilter.eventId = eventId;
+  const tenantUserIds = await User.find(userFilter).distinct('_id');
+
+  const attemptFilter: any = { roundNumber, questionId };
+  if (tenantUserIds.length > 0) attemptFilter.userId = { $in: tenantUserIds };
+
+  const progressFilter: any = { roundNumber };
+  if (tenantUserIds.length > 0) progressFilter.userId = { $in: tenantUserIds };
+
   let affectedCount = 0;
 
   if (action === 'give_full_marks') {
-    // 1. Bulk update all existing attempts for this question to award full marks
+    // 1. Bulk update existing tenant attempts for this question
     const updateRes = await Attempt.updateMany(
-      { roundNumber, questionId },
+      attemptFilter,
       { score: question.marks, status: 'submitted' }
     );
     affectedCount = updateRes.modifiedCount;
 
-    // 2. Also ensure any participants in this round have an attempt with full marks
-    const allProgress = await RoundProgress.find({ roundNumber });
+    // 2. Ensure all tenant participants in this round have an attempt with full marks
+    const allProgress = await RoundProgress.find(progressFilter);
     for (const prog of allProgress) {
       const existing = await Attempt.findOne({ userId: prog.userId, roundNumber, questionId });
       if (!existing) {
@@ -112,6 +134,8 @@ export async function executeAnomalyAction(
     await AuditLog.create({
       adminId,
       adminUsername,
+      collegeId,
+      eventId,
       action: 'ANOMALY_FULL_MARKS_AWARDED',
       targetType: 'Question',
       targetId: questionId,
@@ -124,7 +148,7 @@ export async function executeAnomalyAction(
       action,
       questionTitle: question.title,
       affectedCount
-    });
+    }, collegeId);
 
     broadcastToAll('leaderboard:updated', { roundNumber });
 
@@ -136,14 +160,13 @@ export async function executeAnomalyAction(
   }
 
   if (action === 'disable_question') {
-    // Zero out score contribution or drop question
     const updateRes = await Attempt.updateMany(
-      { roundNumber, questionId },
+      attemptFilter,
       { score: 0 }
     );
     affectedCount = updateRes.modifiedCount;
 
-    const allProgress = await RoundProgress.find({ roundNumber });
+    const allProgress = await RoundProgress.find(progressFilter);
     for (const prog of allProgress) {
       await finalizeParticipantRoundScore(prog.userId.toString(), roundNumber);
     }

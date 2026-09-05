@@ -11,6 +11,37 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
   onViolationRef.current = onViolation;
   const isEnabledRef = useRef(enabled);
   isEnabledRef.current = enabled;
+  const lastViolationTimeRef = useRef<number>(0);
+  const lastViolationTypeRef = useRef<string>('');
+
+  const triggerViolation = useCallback(
+    (type: 'fullscreen_exit' | 'tab_switch' | 'window_blur' | 'unauthorized_shortcut', details: string) => {
+      if (!isEnabledRef.current || !onViolationRef.current) return;
+      const now = Date.now();
+
+      // Coalesce blur and tab_switch: if switching tabs, document.hidden is true or tab_switch fires within 1500ms
+      if (type === 'window_blur') {
+        if (document.hidden) return;
+        if (lastViolationTypeRef.current === 'tab_switch' && now - lastViolationTimeRef.current < 1500) {
+          return;
+        }
+      }
+      if (type === 'tab_switch') {
+        if (lastViolationTypeRef.current === 'window_blur' && now - lastViolationTimeRef.current < 1500) {
+          return;
+        }
+      }
+      // General sliding debounce for rapid repeated events of the same type
+      if (type === lastViolationTypeRef.current && now - lastViolationTimeRef.current < 1500) {
+        return;
+      }
+
+      lastViolationTimeRef.current = now;
+      lastViolationTypeRef.current = type;
+      onViolationRef.current(type, details);
+    },
+    []
+  );
 
   const requestFullscreen = useCallback(async () => {
     try {
@@ -79,9 +110,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
           } catch (e) {}
         }
       } else if (isEnabledRef.current) {
-        if (onViolationRef.current) {
-          onViolationRef.current('fullscreen_exit', 'Participant pressed Escape or exited full-screen mode');
-        }
+        triggerViolation('fullscreen_exit', 'Participant pressed Escape or exited full-screen mode');
       }
     };
 
@@ -96,18 +125,14 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     const handleVisibilityChange = () => {
       if (document.hidden && isEnabledRef.current) {
         purgeClipboard();
-        if (onViolationRef.current) {
-          onViolationRef.current('tab_switch', 'Candidate switched tabs or minimized assessment window');
-        }
+        triggerViolation('tab_switch', 'Candidate switched tabs or minimized assessment window');
       }
     };
 
     const handleWindowBlur = () => {
       if (isEnabledRef.current) {
         purgeClipboard();
-        if (onViolationRef.current) {
-          onViolationRef.current('window_blur', 'Window lost focus (Alt+Tab or secondary monitor click)');
-        }
+        triggerViolation('window_blur', 'Window lost focus (Alt+Tab or secondary monitor click)');
       }
     };
 
@@ -119,9 +144,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) {
         e.preventDefault();
         e.stopPropagation();
-        if (onViolationRef.current) {
-          onViolationRef.current('fullscreen_exit', 'Escape key pressed during live assessment');
-        }
+        triggerViolation('fullscreen_exit', 'Escape key pressed during live assessment');
         return false;
       }
 
@@ -133,9 +156,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       ) {
         e.preventDefault();
         e.stopPropagation();
-        if (onViolationRef.current) {
-          onViolationRef.current('unauthorized_shortcut', `Attempted unauthorized developer tools access (${e.key})`);
-        }
+        triggerViolation('unauthorized_shortcut', `Attempted unauthorized developer tools access (${e.key})`);
         return false;
       }
 
@@ -145,9 +166,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
         const isMonaco = target?.closest('.monaco-editor') !== null || target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT';
         if (!isMonaco) {
           e.preventDefault();
-          if (onViolationRef.current) {
-            onViolationRef.current('unauthorized_shortcut', `Copy/Paste is disabled across test statements`);
-          }
+          triggerViolation('unauthorized_shortcut', `Copy/Paste is disabled across test statements`);
         }
       }
     };

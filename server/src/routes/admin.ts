@@ -75,16 +75,33 @@ adminRouter.get('/rounds', async (_req: AuthenticatedRequest, res: Response): Pr
 adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt(req.params.roundNumber, 10);
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+
+    let dynamicRound = null;
+    if (eventId) {
+      dynamicRound = await DynamicRound.findOne({ eventId, roundNumber });
+      if (dynamicRound) {
+        dynamicRound.status = 'active';
+        dynamicRound.startedAt = new Date();
+        dynamicRound.endedAt = null;
+        await dynamicRound.save();
+      }
+    }
+
     const round = await Round.findOne({ roundNumber });
-    if (!round) {
+    if (round) {
+      round.status = 'active';
+      round.startedAt = new Date();
+      round.endedAt = null;
+      await round.save();
+    }
+
+    if (!round && !dynamicRound) {
       res.status(404).json({ error: 'Round not found' });
       return;
     }
 
-    round.status = 'active';
-    round.startedAt = new Date();
-    round.endedAt = null;
-    await round.save();
+    const effectiveRound = dynamicRound || round!;
 
     // Update competition currentRoundNumber
     await Competition.updateOne({}, { currentRoundNumber: roundNumber, status: 'active' });
@@ -99,7 +116,7 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
       for (const p of participants) {
         await RoundProgress.findOneAndUpdate(
           { userId: p._id, roundNumber: 1 },
-          { $setOnInsert: { status: 'in_progress', startedAt: round.startedAt } },
+          { $set: { status: 'in_progress', startedAt: effectiveRound.startedAt } },
           { upsert: true }
         );
       }
@@ -119,7 +136,7 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
       for (const adv of advancedFromPrev) {
         await RoundProgress.findOneAndUpdate(
           { userId: adv.userId, roundNumber },
-          { $setOnInsert: { status: 'in_progress', startedAt: round.startedAt } },
+          { $set: { status: 'in_progress', startedAt: effectiveRound.startedAt } },
           { upsert: true }
         );
       }
@@ -127,13 +144,13 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
 
     broadcastToParticipants('round:started', {
       roundNumber,
-      title: round.title,
-      durationMinutes: round.durationMinutes,
-      startedAt: round.startedAt
+      title: effectiveRound.title,
+      durationMinutes: effectiveRound.durationMinutes,
+      startedAt: effectiveRound.startedAt
     });
     broadcastToAdmins('admin:round_started', { roundNumber });
 
-    res.json({ success: true, round });
+    res.json({ success: true, round: effectiveRound });
   } catch (err) {
     console.error('Start round error:', err);
     res.status(500).json({ error: 'Failed to start round' });
@@ -144,15 +161,31 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
 adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt(req.params.roundNumber, 10);
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+
+    let dynamicRound = null;
+    if (eventId) {
+      dynamicRound = await DynamicRound.findOne({ eventId, roundNumber });
+      if (dynamicRound) {
+        dynamicRound.status = 'locked';
+        dynamicRound.endedAt = new Date();
+        await dynamicRound.save();
+      }
+    }
+
     const round = await Round.findOne({ roundNumber });
-    if (!round) {
+    if (round) {
+      round.status = 'locked';
+      round.endedAt = new Date();
+      await round.save();
+    }
+
+    if (!round && !dynamicRound) {
       res.status(404).json({ error: 'Round not found' });
       return;
     }
 
-    round.status = 'locked';
-    round.endedAt = new Date();
-    await round.save();
+    const effectiveRound = dynamicRound || round!;
 
     // Auto-grade/sweep in_progress participants for this tenant
     const userFilter: any = { role: 'participant' };
@@ -177,7 +210,7 @@ adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, 
     });
     broadcastToAdmins('admin:round_locked', { roundNumber });
 
-    res.json({ success: true, round });
+    res.json({ success: true, round: effectiveRound });
   } catch (err) {
     res.status(500).json({ error: 'Failed to lock round' });
   }
@@ -243,11 +276,14 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
     const tenantUsers = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantUsers.map(u => u._id);
 
-    // Mark selected participants as 'advanced' in current round
-    await RoundProgress.updateMany(
-      { roundNumber, userId: { $in: participantIds } },
-      { $set: { status: 'advanced' } }
-    );
+    // Mark selected participants as 'advanced' in current round (upserting if not present)
+    for (const pId of participantIds) {
+      await RoundProgress.findOneAndUpdate(
+        { roundNumber, userId: pId },
+        { $set: { status: 'advanced' } },
+        { upsert: true }
+      );
+    }
 
     // Mark non-selected participants of this tenant who took this round as 'eliminated'
     await RoundProgress.updateMany(
@@ -333,10 +369,13 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     // Only consider participants who took the round
     const activeProgress = progressList.filter(p => p.userId && !(p.userId as any).isDisqualified);
 
-    // Sort by totalScore DESC, timeTakenSeconds ASC
+    // Sort by totalScore DESC, timeTakenSeconds ASC, submittedAt ASC
     activeProgress.sort((a, b) => {
       if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      return a.timeTakenSeconds - b.timeTakenSeconds;
+      if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+      const aTime = a.submittedAt ? new Date(a.submittedAt).getTime() : Infinity;
+      const bTime = b.submittedAt ? new Date(b.submittedAt).getTime() : Infinity;
+      return aTime - bTime;
     });
 
     // Auto-Advancement with Boundary Tie Handling
@@ -352,6 +391,7 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
       // Check for ties at the boundary
       const boundaryScore = lastSelected.totalScore;
       const boundaryTime = lastSelected.timeTakenSeconds;
+      const boundarySubmittedAt = lastSelected.submittedAt ? new Date(lastSelected.submittedAt).getTime() : 0;
 
       const tiedCandidates = activeProgress.slice(quota).filter(
         p => p.totalScore === boundaryScore && p.timeTakenSeconds === boundaryTime
@@ -368,17 +408,13 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
             p => !(p.totalScore === boundaryScore && p.timeTakenSeconds === boundaryTime)
           );
         } else if (effectiveTieStrategy === 'earliest_submission') {
-          // Rule: earliest_submission — sort by submittedAt
-          for (const candidate of tiedCandidates) {
-            if (
-              candidate.submittedAt &&
-              lastSelected.submittedAt &&
-              new Date(candidate.submittedAt).getTime() < new Date(lastSelected.submittedAt).getTime()
-            ) {
-              selectedProgress.push(candidate);
-            } else {
-              break;
-            }
+          // Rule: earliest_submission — already ordered by submittedAt.
+          // Check if any candidate has the exact same submittedAt as lastSelected
+          const exactTiedCandidates = tiedCandidates.filter(
+            p => (p.submittedAt ? new Date(p.submittedAt).getTime() : 0) === boundarySubmittedAt
+          );
+          if (exactTiedCandidates.length === 0) {
+            cutoffTieDetected = false; // Successfully resolved by submission timestamp
           }
         }
       }
@@ -845,7 +881,7 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
     const participants = await User.find(userFilter);
     const participantIds = participants.map(p => p._id);
     const allProgress = await RoundProgress.find({ userId: { $in: participantIds } });
-    const tieBreaks = await TieBreak.find({ status: 'completed' });
+    const tieBreaks = await TieBreak.find({ status: 'completed', tiedUserIds: { $in: participantIds } });
 
     const rows = participants.map(p => {
       const userProg = allProgress.filter(pr => pr.userId.toString() === p._id.toString());
@@ -856,9 +892,11 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
       const r1Score = r1?.totalScore || 0;
       const r2Score = r2?.totalScore || 0;
       const r3Score = r3?.totalScore || 0;
-      const totalScore = r1Score + r2Score + r3Score;
 
-      const totalTimeSeconds = (r1?.timeTakenSeconds || 0) + (r2?.timeTakenSeconds || 0) + (r3?.timeTakenSeconds || 0);
+      // Dynamic total score & time across all rounds (excluding tie-break round 99)
+      const regularProg = userProg.filter(pr => pr.roundNumber !== 99);
+      const totalScore = regularProg.reduce((acc, curr) => acc + (curr.totalScore || 0), 0);
+      const totalTimeSeconds = regularProg.reduce((acc, curr) => acc + (curr.timeTakenSeconds || 0), 0);
 
       // Check tie-break resolved rank
       let tieBreakRankOffset = 0;
@@ -868,6 +906,9 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
           tieBreakRankOffset = match.resolvedRank;
         }
       }
+
+      const sortedProg = [...regularProg].sort((a, b) => b.roundNumber - a.roundNumber);
+      const lastStatus = sortedProg[0]?.status || 'not_started';
 
       return {
         userId: p._id,
@@ -883,7 +924,7 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
         r3Time: r3?.timeTakenSeconds || 0,
         totalTimeSeconds,
         tieBreakRankOffset,
-        lastStatus: r3?.status || r2?.status || r1?.status || 'not_started'
+        lastStatus
       };
     });
 

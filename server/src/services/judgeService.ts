@@ -67,6 +67,64 @@ class ExecutionQueue {
 
 const queue = new ExecutionQueue();
 
+// Static Code Security Validator (Restricts RCE, child process spawning, file/system tampering)
+export function validateCodeSecurity(code: string, language: string): { safe: boolean; reason?: string } {
+  const normLang = (language || '').toLowerCase().trim();
+
+  if (normLang === 'python' || normLang === 'py') {
+    const forbiddenPatterns = [
+      /\bimport\s+os\b/,
+      /\bfrom\s+os\s+import\b/,
+      /\bimport\s+subprocess\b/,
+      /\bfrom\s+subprocess\s+import\b/,
+      /\bimport\s+shutil\b/,
+      /\bfrom\s+shutil\s+import\b/,
+      /\bimport\s+socket\b/,
+      /\bfrom\s+socket\s+import\b/,
+      /\bimport\s+pty\b/,
+      /\bimport\s+ctypes\b/,
+      /\bimport\s+multiprocessing\b/,
+      /\b__import__\s*\(/,
+      /\beval\s*\(/,
+      /\bexec\s*\(/,
+      /\bopen\s*\(/,
+      /\bos\.system\b/,
+      /\bos\.environ\b/,
+      /\bos\.remove\b/,
+      /\bos\.fork\b/
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(code)) {
+        return { safe: false, reason: `Security Restriction: Disallowed Python system module or API call (${pattern.source})` };
+      }
+    }
+  } else if (normLang === 'javascript' || normLang === 'js' || normLang === 'node') {
+    const forbiddenPatterns = [
+      /\bchild_process\b/,
+      /\bfs\b/,
+      /\bnet\b/,
+      /\bhttp\b/,
+      /\bhttps\b/,
+      /\bworker_threads\b/,
+      /\bcluster\b/,
+      /\bprocess\.exit\b/,
+      /\bprocess\.env\b/,
+      /\bprocess\.kill\b/,
+      /\beval\s*\(/,
+      /\bFunction\s*\(/
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(code)) {
+        return { safe: false, reason: `Security Restriction: Disallowed Node.js system API call (${pattern.source})` };
+      }
+    }
+  }
+
+  return { safe: true };
+}
+
 // Local Native Runner (used when external Piston is 401 whitelist-restricted or offline)
 function executeLocal(
   code: string,
@@ -75,10 +133,24 @@ function executeLocal(
   timeoutMs: number
 ): Promise<{ stdout: string; stderr: string; compileError?: string; runtimeError?: string; timeout: boolean; exitCode: number }> {
   return new Promise((resolve) => {
+    const isPython = language === 'python' || language === 'py';
+    const isJs = language === 'javascript' || language === 'js';
+
+    if (!isPython && !isJs) {
+      resolve({
+        stdout: '',
+        stderr: `Local runner only supports Python and JavaScript. '${language}' requires an active Piston judge container.`,
+        compileError: `Unsupported language in local runner: ${language}`,
+        timeout: false,
+        exitCode: 1
+      });
+      return;
+    }
+
     let cmd = 'node';
     let args = ['-e', code];
 
-    if (language === 'python' || language === 'py') {
+    if (isPython) {
       cmd = 'py';
       args = ['-3', '-c', code];
     }
@@ -90,7 +162,11 @@ function executeLocal(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      if (process.platform === 'win32' && child.pid) {
+        spawn('taskkill', ['/F', '/T', '/PID', child.pid.toString()], { windowsHide: true });
+      } else {
+        child.kill('SIGKILL');
+      }
     }, timeoutMs);
 
     child.stdout.on('data', data => { stdout += data.toString(); });
@@ -148,6 +224,19 @@ export async function executeSingleTestCase(
 }> {
   const normLang = langKey.toLowerCase();
   const langConfig = LANGUAGE_MAP[normLang] || { language: normLang, version: '*' };
+
+  // Enforce pre-execution AST & regex security scan
+  const securityCheck = validateCodeSecurity(code, normLang);
+  if (!securityCheck.safe) {
+    return {
+      stdout: '',
+      stderr: securityCheck.reason || 'Restricted code execution blocked by security policy',
+      compileError: securityCheck.reason || 'Restricted code execution blocked by security policy',
+      timeout: false,
+      runtimeMs: 0,
+      exitCode: 1
+    };
+  }
 
   return queue.enqueue(async () => {
     const startTime = Date.now();
@@ -231,8 +320,28 @@ export async function runTestCases(
   timeLimitMs: number = 3000
 ): Promise<IAttemptTestCaseResult[]> {
   const results: IAttemptTestCaseResult[] = [];
+  let earlyCompileError: string | undefined;
 
-  for (const tc of testCases) {
+  for (let i = 0; i < testCases.length; i++) {
+    const tc = testCases[i];
+
+    if (earlyCompileError) {
+      results.push({
+        passed: false,
+        status: 'compile_error',
+        runtimeMs: 0,
+        stdout: '',
+        stderr: earlyCompileError,
+        compileError: earlyCompileError,
+        timeout: false,
+        isHidden: tc.isHidden,
+        input: tc.isHidden ? undefined : tc.input,
+        expected: tc.isHidden ? undefined : tc.expectedOutput,
+        actual: ''
+      });
+      continue;
+    }
+
     const execRes = await executeSingleTestCase(code, language, tc.input, timeLimitMs);
     const actualNorm = normalizeOutput(execRes.stdout);
     const expectedNorm = normalizeOutput(tc.expectedOutput);
@@ -242,6 +351,7 @@ export async function runTestCases(
 
     if (execRes.compileError) {
       status = 'compile_error';
+      earlyCompileError = execRes.compileError;
     } else if (execRes.timeout) {
       status = 'timeout';
     } else if (execRes.runtimeError) {

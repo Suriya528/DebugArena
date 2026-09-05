@@ -1,4 +1,6 @@
 import { Round } from '../models/Round.js';
+import { DynamicRound } from '../models/DynamicRound.js';
+import { User } from '../models/User.js';
 import { RoundProgress } from '../models/RoundProgress.js';
 import { broadcastToAdmins, broadcastToParticipants, emitToUser } from './socketService.js';
 import { finalizeParticipantRoundScore } from './scoringService.js';
@@ -19,6 +21,7 @@ export function startServerTimerSweep(): void {
 
   sweepInterval = setInterval(async () => {
     try {
+      // 1. Sweep active legacy rounds
       const activeRounds = await Round.find({ status: 'active' });
 
       for (const round of activeRounds) {
@@ -51,6 +54,52 @@ export function startServerTimerSweep(): void {
             await finalizeParticipantRoundScore(progress.userId.toString(), round.roundNumber);
             emitToUser(progress.userId.toString(), 'round:auto_submitted', {
               roundNumber: round.roundNumber,
+              reason: 'Time expired'
+            });
+          }
+        }
+      }
+
+      // 2. Sweep active dynamic rounds (Phase 8+ dynamic multi-round events)
+      const activeDynRounds = await DynamicRound.find({ status: 'active' });
+
+      for (const dynRound of activeDynRounds) {
+        if (!dynRound.startedAt) continue;
+
+        const remaining = getRemainingSeconds(dynRound);
+
+        if (remaining <= 0) {
+          console.log(`⏱️ Dynamic Round ${dynRound.roundNumber} (Event: ${dynRound.eventId}) deadline reached. Auto-locking.`);
+          dynRound.status = 'locked';
+          dynRound.endedAt = new Date();
+          await dynRound.save();
+
+          broadcastToParticipants('round:locked', {
+            eventId: dynRound.eventId,
+            roundNumber: dynRound.roundNumber,
+            message: `Round ${dynRound.roundNumber} has concluded.`
+          });
+
+          broadcastToAdmins('admin:round_locked', {
+            eventId: dynRound.eventId,
+            roundNumber: dynRound.roundNumber
+          });
+
+          // Find participants scoped to this dynamic event
+          const eventUsers = await User.find({ eventId: dynRound.eventId }).select('_id');
+          const eventUserIds = eventUsers.map(u => u._id);
+
+          const inProgressDynList = await RoundProgress.find({
+            roundNumber: dynRound.roundNumber,
+            userId: { $in: eventUserIds },
+            status: { $in: ['in_progress', 'not_started'] }
+          });
+
+          for (const progress of inProgressDynList) {
+            await finalizeParticipantRoundScore(progress.userId.toString(), dynRound.roundNumber);
+            emitToUser(progress.userId.toString(), 'round:auto_submitted', {
+              eventId: dynRound.eventId,
+              roundNumber: dynRound.roundNumber,
               reason: 'Time expired'
             });
           }
