@@ -42,7 +42,7 @@ async function runHardeningVerification() {
 
   for (const snippet of dangerousPython) {
     const check = validateCodeSecurity(snippet, 'python');
-    assert(!check.safe, `Blocked malicious Python: "${snippet.split('\n')[0]}" -> ${check.error}`);
+    assert(!check.safe, `Blocked malicious Python: "${snippet.split('\n')[0]}" -> ${check.reason}`);
   }
 
   // Test 1.2: Allows legitimate competitive programming Python patterns
@@ -69,7 +69,7 @@ async function runHardeningVerification() {
 
   for (const snippet of dangerousJS) {
     const check = validateCodeSecurity(snippet, 'javascript');
-    assert(!check.safe, `Blocked malicious JS: "${snippet.split('\n')[0]}" -> ${check.error}`);
+    assert(!check.safe, `Blocked malicious JS: "${snippet.split('\n')[0]}" -> ${check.reason}`);
   }
 
   // -------------------------------------------------------------
@@ -124,6 +124,13 @@ async function runHardeningVerification() {
   // SUITE 3: Anti-Cheat Sliding Debounce & Strike Enforcement
   // -------------------------------------------------------------
   console.log('\n--- Suite 3: Anti-Cheat Debounce & Strike Limit Enforcement ---');
+
+  // Ensure Round 1 is active for the event/competition
+  try {
+    await axios.post(`${API}/admin/rounds/1/start`, {}, adminHeaders);
+  } catch (err: any) {
+    // Round may already be started
+  }
 
   // Create a dedicated participant for anti-cheat tests
   const antiCheatUsername = `anticheat_${Date.now()}`;

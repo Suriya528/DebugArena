@@ -448,6 +448,32 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    // Support arbitrary custom input execution (LeetCode-style custom testcase playground)
+    if (req.body.customInput !== undefined && req.body.customInput !== null) {
+      const sanitizedCustomInput = String(req.body.customInput).slice(0, 10000);
+      const customCases = [{
+        input: sanitizedCustomInput,
+        expectedOutput: '',
+        weight: 0,
+        isHidden: false
+      }];
+      const results = await runTestCases(code, language, customCases, question.timeLimitMs);
+      const res0 = results[0] || null;
+      res.json({
+        success: true,
+        isCustom: true,
+        customResult: res0 ? {
+          input: sanitizedCustomInput,
+          actualOutput: res0.actual || res0.stdout || '',
+          runtimeMs: res0.runtimeMs || 0,
+          status: res0.compileError ? 'Compilation Error' : (res0.runtimeError ? 'Runtime Error' : 'Success'),
+          compileError: res0.compileError,
+          runtimeError: res0.runtimeError
+        } : null
+      });
+      return;
+    }
+
     // Evaluate against candidate's specific Question DNA variant if template is mutated
     let visibleCases = (question.testCases || []).filter(tc => !tc.isHidden);
     const questionTemplate = await QuestionTemplate.findOne({ title: question.title, hasDnaMutation: true });

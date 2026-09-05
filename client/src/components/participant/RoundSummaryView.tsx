@@ -1,6 +1,8 @@
-import React from 'react';
-import { CheckCircle2, Clock, ShieldCheck, ShieldAlert, RefreshCw, Lock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle2, Clock, ShieldCheck, ShieldAlert, RefreshCw, Lock, Award } from 'lucide-react';
 import { RoundProgress, Round } from '../../types/index.js';
+import { api } from '../../services/api.js';
+import { CertificateModal } from '../admin/CertificateModal.js';
 
 interface RoundSummaryViewProps {
   round?: Round;
@@ -17,6 +19,18 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
   isEliminated,
   isWaitingAdvancement
 }) => {
+  const [certData, setCertData] = useState<any>(null);
+  const [showCertModal, setShowCertModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    api.get('/certificates/my-certificate')
+      .then(res => {
+        if (res.data?.hasCertificate && res.data?.certificate) {
+          setCertData(res.data.certificate);
+        }
+      })
+      .catch(() => {});
+  }, []);
   return (
     <div className="max-w-2xl mx-auto py-16 px-4">
       <div className="rounded-3xl bg-slate-900/95 border border-slate-800 p-8 sm:p-12 shadow-2xl backdrop-blur-xl text-center relative overflow-hidden">
@@ -107,6 +121,38 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
             </div>
           )}
 
+          {/* Official Verifiable Certificate Download Banner */}
+          {certData && (
+            <div className="mb-8 p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-500/30 text-left relative overflow-hidden shadow-xl shadow-amber-950/20 max-w-lg mx-auto">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-md">
+                    <Award className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1">
+                      <ShieldCheck className="w-3 h-3" /> Official Certificate Issued
+                    </div>
+                    <div className="text-sm font-bold text-white">
+                      {certData.participantName} • Rank #{certData.rank}
+                    </div>
+                    <div className="text-xs text-slate-400 font-mono">
+                      ID: {certData.certificateId}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCertModal(true)}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-md shadow-amber-500/20 transition-all cursor-pointer whitespace-nowrap self-stretch sm:self-auto justify-center"
+                >
+                  <Award className="w-4 h-4" />
+                  <span>View Certificate</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={onRefresh}
             className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 mx-auto transition-all cursor-pointer shadow-lg shadow-indigo-600/25 active:scale-[0.98]"
@@ -116,6 +162,26 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Participant Certificate Preview Modal */}
+      {showCertModal && certData && (
+        <CertificateModal
+          userId={certData.userId}
+          username={certData.username}
+          name={certData.participantName}
+          rank={certData.rank}
+          score={certData.totalScore}
+          eventId={certData.eventId}
+          eventTitle={certData.eventTitle}
+          collegeName={certData.collegeName}
+          primaryColor={certData.primaryColor}
+          secondaryColor={certData.secondaryColor}
+          initialCertificateId={certData.certificateId}
+          initialHash={certData.verificationHash}
+          isReadOnly={true}
+          onClose={() => setShowCertModal(false)}
+        />
+      )}
     </div>
   );
 };

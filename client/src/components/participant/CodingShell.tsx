@@ -47,7 +47,16 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isSubmittingCode, setIsSubmittingCode] = useState<boolean>(false);
   const [runResults, setRunResults] = useState<Record<string, TestCaseResult[]>>({});
-  const [activeTab, setActiveTab] = useState<'tests' | 'output'>('tests');
+  const [activeTab, setActiveTab] = useState<'tests' | 'custom'>('tests');
+  const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
+  const [customOutputs, setCustomOutputs] = useState<Record<string, {
+    input: string;
+    actualOutput: string;
+    runtimeMs: number;
+    status: string;
+    compileError?: string;
+    runtimeError?: string;
+  } | null>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
 
@@ -151,7 +160,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     debouncedSaveCode(qId, starter, lang);
   };
 
-  // Run Code: against visible sample test cases only
+  // Run Code: against visible sample test cases OR arbitrary custom input
   const handleRunCode = async () => {
     if (!currentQ || isRunning || isSubmittingCode) return;
     const qId = currentQ._id;
@@ -159,16 +168,25 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const lang = selectedLanguages[qId] || 'python';
 
     setIsRunning(true);
-    setActiveTab('tests');
 
     try {
-      const res = await api.post('/participant/run-code', {
+      const payload: any = {
         questionId: qId,
         code,
         language: lang
-      });
+      };
+
+      if (activeTab === 'custom') {
+        payload.customInput = customInputs[qId] ?? (currentQ.testCases?.find(tc => !tc.isHidden)?.input || '');
+      }
+
+      const res = await api.post('/participant/run-code', payload);
       if (res.data.success) {
-        setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
+        if (res.data.isCustom) {
+          setCustomOutputs(prev => ({ ...prev, [qId]: res.data.customResult }));
+        } else {
+          setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
+        }
       }
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to run code.');
@@ -428,10 +446,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Bottom Execution & Results Terminal */}
-          <div className="h-56 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0">
+          <div className="h-64 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0">
             {/* Terminal Header */}
             <div className="h-9 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/60">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 <button
                   onClick={() => setActiveTab('tests')}
                   className={`text-xs font-bold pb-1 pt-1.5 border-b-2 cursor-pointer transition-colors ${
@@ -442,9 +460,20 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 >
                   Test Results
                 </button>
+                <button
+                  onClick={() => setActiveTab('custom')}
+                  className={`text-xs font-bold pb-1 pt-1.5 border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
+                    activeTab === 'custom'
+                      ? 'border-indigo-500 text-white'
+                      : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>Custom Testcase</span>
+                </button>
               </div>
 
-              {currentResults.length > 0 && (
+              {activeTab === 'tests' && currentResults.length > 0 && (
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <span className="text-slate-400">Score:</span>
                   <span className="font-bold text-emerald-400">{currentScore} pts</span>
@@ -455,113 +484,209 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   )}
                 </div>
               )}
+
+              {activeTab === 'custom' && customOutputs[currentQ._id] && (
+                <div className="flex items-center gap-2 font-mono">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    customOutputs[currentQ._id]?.status === 'Success'
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                      : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
+                  }`}>
+                    {customOutputs[currentQ._id]?.status}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {customOutputs[currentQ._id]?.runtimeMs}ms
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Terminal Content */}
-            <div className="flex-1 p-4 overflow-y-auto font-mono text-xs space-y-3">
-              {isRunning && (
-                <div className="flex items-center gap-2 text-indigo-400">
-                  <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
-                  <span>Executing code against sample test cases...</span>
-                </div>
-              )}
+            {/* Terminal Content - Standard Test Results */}
+            {activeTab === 'tests' && (
+              <div className="flex-1 p-4 overflow-y-auto font-mono text-xs space-y-3">
+                {isRunning && (
+                  <div className="flex items-center gap-2 text-indigo-400">
+                    <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                    <span>Executing code against sample test cases...</span>
+                  </div>
+                )}
 
-              {isSubmittingCode && (
-                <div className="flex items-center gap-2 text-cyan-400">
-                  <span className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-                  <span>Evaluating code against all visible and hidden test cases...</span>
-                </div>
-              )}
+                {isSubmittingCode && (
+                  <div className="flex items-center gap-2 text-cyan-400">
+                    <span className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+                    <span>Evaluating code against all visible and hidden test cases...</span>
+                  </div>
+                )}
 
-              {!isRunning && !isSubmittingCode && currentResults.length === 0 && (
-                <div className="text-slate-500 py-6 text-center">
-                  Click <strong>Run</strong> to execute sample tests or <strong>Submit Code</strong> to evaluate against all test cases.
-                </div>
-              )}
+                {!isRunning && !isSubmittingCode && currentResults.length === 0 && (
+                  <div className="text-slate-500 py-6 text-center">
+                    Click <strong>Run</strong> to execute sample tests or <strong>Submit Code</strong> to evaluate against all test cases.
+                  </div>
+                )}
 
-              {/* Display Test Case Results */}
-              {!isRunning &&
-                !isSubmittingCode &&
-                currentResults.length > 0 && (
-                  <div className="space-y-3">
-                    {/* Visible Results */}
-                    {visibleCases.map(r => (
-                      <div
-                        key={r.testNumber}
-                        className={`p-3 rounded-xl border ${
-                          r.passed
-                            ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
-                            : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 font-bold">
-                            {r.passed ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-rose-400" />
-                            )}
-                            <span>Sample Case #{r.testNumber}</span>
-                            <span className="text-[11px] font-normal uppercase px-1.5 rounded bg-slate-800">
-                              {r.status}
+                {/* Display Test Case Results */}
+                {!isRunning &&
+                  !isSubmittingCode &&
+                  currentResults.length > 0 && (
+                    <div className="space-y-3">
+                      {/* Visible Results */}
+                      {visibleCases.map(r => (
+                        <div
+                          key={r.testNumber}
+                          className={`p-3 rounded-xl border ${
+                            r.passed
+                              ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+                              : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 font-bold">
+                              {r.passed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-rose-400" />
+                              )}
+                              <span>Sample Case #{r.testNumber}</span>
+                              <span className="text-[11px] font-normal uppercase px-1.5 rounded bg-slate-800">
+                                {r.status}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-400">{r.runtimeMs}ms</span>
+                          </div>
+
+                          {r.compileError && (
+                            <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
+                              {r.compileError}
+                            </div>
+                          )}
+                          {r.runtimeError && (
+                            <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
+                              {r.runtimeError}
+                            </div>
+                          )}
+
+                          {!r.passed && !r.compileError && !r.runtimeError && (
+                            <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
+                              <div>
+                                <span className="text-slate-400 block">Expected:</span>
+                                <pre className="bg-black/30 p-1 rounded text-emerald-400 whitespace-pre">
+                                  {r.expected}
+                                </pre>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block">Actual:</span>
+                                <pre className="bg-black/30 p-1 rounded text-rose-400 whitespace-pre">
+                                  {r.actual}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Hidden Results Summary Badge */}
+                      {hiddenCases.length > 0 && (
+                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-white">
+                            <span>Hidden Test Cases:</span>
+                            <span
+                              className={
+                                hiddenPassed === hiddenCases.length
+                                  ? 'text-emerald-400'
+                                  : 'text-amber-400'
+                              }
+                            >
+                              {hiddenPassed} of {hiddenCases.length} passed
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-400">{r.runtimeMs}ms</span>
+                          <span className="text-[11px] text-slate-500">
+                            (Inputs & outputs hidden for test security)
+                          </span>
                         </div>
+                      )}
+                    </div>
+                  )}
+              </div>
+            )}
 
-                        {r.compileError && (
-                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                            {r.compileError}
+            {/* Terminal Content - LeetCode-style Arbitrary Custom Testcase Panel */}
+            {activeTab === 'custom' && (
+              <div className="flex-1 p-3 grid grid-cols-1 md:grid-cols-2 gap-3 overflow-hidden">
+                {/* Left: Input Textarea */}
+                <div className="flex flex-col h-full bg-slate-900/60 rounded-xl border border-slate-800 p-2.5 overflow-hidden">
+                  <div className="flex items-center justify-between mb-1.5 shrink-0">
+                    <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                      Standard Input (stdin)
+                    </span>
+                    <span className="text-[10px] text-slate-500">Arbitrary stdin payload</span>
+                  </div>
+                  <textarea
+                    value={customInputs[currentQ._id] ?? (currentQ.testCases?.find(tc => !tc.isHidden)?.input || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomInputs(prev => ({ ...prev, [currentQ._id]: val }));
+                    }}
+                    placeholder="Enter custom stdin here..."
+                    className="flex-1 w-full bg-slate-950 text-slate-200 border border-slate-800/80 rounded-lg p-2 font-mono text-xs focus:outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+
+                {/* Right: Output Panel */}
+                <div className="flex flex-col h-full bg-slate-900/60 rounded-xl border border-slate-800 p-2.5 overflow-hidden">
+                  <div className="flex items-center justify-between mb-1.5 shrink-0">
+                    <span className="text-[11px] font-bold text-slate-300">Execution Output (stdout)</span>
+                    {customOutputs[currentQ._id] && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Wall clock: {customOutputs[currentQ._id]?.runtimeMs}ms
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 bg-slate-950 border border-slate-800/80 rounded-lg p-2 font-mono text-xs overflow-y-auto">
+                    {isRunning ? (
+                      <div className="flex items-center gap-2 text-indigo-400 py-6 justify-center">
+                        <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                        <span>Running code with custom stdin...</span>
+                      </div>
+                    ) : customOutputs[currentQ._id] ? (
+                      <div className="space-y-2">
+                        {customOutputs[currentQ._id]?.compileError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-rose-400 mb-1">Compilation Error:</div>
+                            <pre className="text-rose-400 bg-rose-950/30 border border-rose-900/40 p-2 rounded whitespace-pre-wrap">
+                              {customOutputs[currentQ._id]?.compileError}
+                            </pre>
                           </div>
                         )}
-                        {r.runtimeError && (
-                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                            {r.runtimeError}
+                        {customOutputs[currentQ._id]?.runtimeError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-rose-400 mb-1">Runtime Error:</div>
+                            <pre className="text-rose-400 bg-rose-950/30 border border-rose-900/40 p-2 rounded whitespace-pre-wrap">
+                              {customOutputs[currentQ._id]?.runtimeError}
+                            </pre>
                           </div>
                         )}
-
-                        {!r.passed && !r.compileError && !r.runtimeError && (
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
-                            <div>
-                              <span className="text-slate-400 block">Expected:</span>
-                              <pre className="bg-black/30 p-1 rounded text-emerald-400 whitespace-pre">
-                                {r.expected}
-                              </pre>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block">Actual:</span>
-                              <pre className="bg-black/30 p-1 rounded text-rose-400 whitespace-pre">
-                                {r.actual}
-                              </pre>
-                            </div>
+                        {!customOutputs[currentQ._id]?.compileError && !customOutputs[currentQ._id]?.runtimeError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Program Output:</div>
+                            <pre className="text-emerald-400 whitespace-pre font-mono">
+                              {customOutputs[currentQ._id]?.actualOutput || (
+                                <span className="text-slate-500 italic">(Process completed with zero stdout output)</span>
+                              )}
+                            </pre>
                           </div>
                         )}
                       </div>
-                    ))}
-
-                    {/* Hidden Results Summary Badge */}
-                    {hiddenCases.length > 0 && (
-                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                        <div className="flex items-center gap-2 font-bold text-white">
-                          <span>Hidden Test Cases:</span>
-                          <span
-                            className={
-                              hiddenPassed === hiddenCases.length
-                                ? 'text-emerald-400'
-                                : 'text-amber-400'
-                            }
-                          >
-                            {hiddenPassed} of {hiddenCases.length} passed
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-500">
-                          (Inputs & outputs hidden for test security)
-                        </span>
+                    ) : (
+                      <div className="text-slate-500 py-6 text-center">
+                        Provide custom input on the left and click <strong>Run</strong> to test your code.
                       </div>
                     )}
                   </div>
-                )}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

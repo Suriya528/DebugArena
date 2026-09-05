@@ -29,6 +29,9 @@ interface CertificateModalProps {
   secondaryColor?: string;
   initialTemplateUrl?: string;
   initialUseCustom?: boolean;
+  initialCertificateId?: string;
+  initialHash?: string;
+  isReadOnly?: boolean;
   onClose: () => void;
 }
 
@@ -53,16 +56,19 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   secondaryColor: initialSecondary = '#d97706',
   initialTemplateUrl = '',
   initialUseCustom = false,
+  initialCertificateId,
+  initialHash,
+  isReadOnly = false,
   onClose
 }) => {
   const [certId, setCertId] = useState<string>(
-    () => 'CERT-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '-2026'
+    () => initialCertificateId || 'CERT-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '-2026'
   );
   const [hash, setHash] = useState<string>(
-    () => 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    () => initialHash || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   );
   const [copied, setCopied] = useState<boolean>(false);
-  const [issued, setIssued] = useState<boolean>(false);
+  const [issued, setIssued] = useState<boolean>(() => Boolean(initialCertificateId || isReadOnly));
   const [loading, setLoading] = useState<boolean>(false);
 
   // Color Combination state: defaults to Government / Institutional Gold & Ochre (like the user's pic)
@@ -179,67 +185,76 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           </button>
         </div>
 
-        {/* Color Palette Selector Bar */}
-        <div className="px-6 py-3 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-slate-300 flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-indigo-400" />
-              Institutional Color Combination:
-            </span>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {presets.map(p => {
-                const isActive = primaryColor === p.primary && secondaryColor === p.secondary;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      setPrimaryColor(p.primary);
-                      setSecondaryColor(p.secondary);
-                    }}
-                    className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                      isActive
-                        ? 'bg-slate-800 text-white border-indigo-500 shadow-md'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-                    }`}
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full border border-black/30"
-                      style={{ backgroundColor: p.primary }}
-                    />
-                    <span
-                      className="w-2.5 h-2.5 rounded-full border border-black/30 -ml-1"
-                      style={{ backgroundColor: p.secondary }}
-                    />
-                    <span>{p.label}</span>
-                  </button>
-                );
-              })}
+        {/* Color Palette Selector Bar (Admin) or Verified Status Bar (Participant Read-Only) */}
+        {isReadOnly ? (
+          <div className="px-6 py-2.5 bg-emerald-950/40 border-b border-emerald-800/30 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <ShieldCheck className="w-4 h-4" />
+              <span>Official Institutional Credential Issued & Cryptographically Authenticated</span>
+            </div>
+            <span className="text-[11px] font-mono text-emerald-300">Hash: {hash.slice(0, 16)}...</span>
+          </div>
+        ) : (
+          <div className="px-6 py-3 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-indigo-400" />
+                Institutional Color Combination:
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {presets.map(p => {
+                  const isActive = primaryColor === p.primary && secondaryColor === p.secondary;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setPrimaryColor(p.primary);
+                        setSecondaryColor(p.secondary);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                        isActive
+                          ? 'bg-slate-800 text-white border-indigo-500 shadow-md'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                      }`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-black/30"
+                        style={{ backgroundColor: p.primary }}
+                      />
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-black/30 -ml-1"
+                        style={{ backgroundColor: p.secondary }}
+                      />
+                      <span>{p.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Custom Hex Color Pickers */}
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-slate-400 flex items-center gap-1">
+                Primary:
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={e => setPrimaryColor(e.target.value)}
+                  className="w-6 h-6 rounded-md bg-transparent border-0 cursor-pointer"
+                />
+              </label>
+              <label className="text-[11px] text-slate-400 flex items-center gap-1">
+                Accent:
+                <input
+                  type="color"
+                  value={secondaryColor}
+                  onChange={e => setSecondaryColor(e.target.value)}
+                  className="w-6 h-6 rounded-md bg-transparent border-0 cursor-pointer"
+                />
+              </label>
             </div>
           </div>
-
-          {/* Custom Hex Color Pickers */}
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] text-slate-400 flex items-center gap-1">
-              Primary:
-              <input
-                type="color"
-                value={primaryColor}
-                onChange={e => setPrimaryColor(e.target.value)}
-                className="w-6 h-6 rounded-md bg-transparent border-0 cursor-pointer"
-              />
-            </label>
-            <label className="text-[11px] text-slate-400 flex items-center gap-1">
-              Accent:
-              <input
-                type="color"
-                value={secondaryColor}
-                onChange={e => setSecondaryColor(e.target.value)}
-                className="w-6 h-6 rounded-md bg-transparent border-0 cursor-pointer"
-              />
-            </label>
-          </div>
-        </div>
+        )}
 
         {/* Certificate Display Area */}
         <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-950/50">

@@ -512,6 +512,9 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
         id: p._id,
         username: p.username,
         name: p.name,
+        department: p.department,
+        year: p.year,
+        regNo: p.regNo,
         isDisqualified: p.isDisqualified,
         disqualificationReason: p.disqualificationReason,
         rounds: userProgress.map(pr => ({
@@ -536,7 +539,7 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
 // POST /api/admin/participants
 adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { username, name, password, eventId: bodyEventId } = req.body;
+    const { username, name, password, department, year, regNo, eventId: bodyEventId } = req.body;
     if (!username || !password || !name) {
       res.status(400).json({ error: 'Username, name, and password are required' });
       return;
@@ -565,12 +568,22 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
       passwordHash,
       role: 'participant',
       collegeId: req.user?.collegeId,
-      eventId: effectiveEventId
+      eventId: effectiveEventId,
+      department: department ? String(department).trim() : undefined,
+      year: year ? String(year).trim() : undefined,
+      regNo: regNo ? String(regNo).trim() : undefined
     });
 
     res.json({
       success: true,
-      participant: { id: user._id, username: user.username, name: user.name }
+      participant: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        department: user.department,
+        year: user.year,
+        regNo: user.regNo
+      }
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create participant' });
@@ -618,7 +631,10 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
           passwordHash,
           role: 'participant',
           collegeId: req.user?.collegeId,
-          eventId: effectiveEventId
+          eventId: effectiveEventId,
+          department: item.department ? String(item.department).trim() : undefined,
+          year: item.year ? String(item.year).trim() : undefined,
+          regNo: item.regNo ? String(item.regNo).trim() : undefined
         });
         created.push({ id: user._id, username: user.username, name: user.name });
       } catch (e: any) {

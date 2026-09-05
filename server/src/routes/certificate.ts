@@ -58,6 +58,41 @@ certificateRouter.get('/verify/:certificateId', async (req: Request, res: Respon
   }
 });
 
+// PARTICIPANT: GET /api/certificates/my-certificate
+// Fetches the authenticated participant's awarded certificate (if issued)
+certificateRouter.get('/my-certificate', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({ hasCertificate: false, error: 'User not found' });
+      return;
+    }
+
+    const cert = await Certificate.findOne({ userId }).sort({ issueDate: -1 });
+    if (!cert) {
+      res.status(200).json({ hasCertificate: false, message: 'No certificate issued for this participant yet.' });
+      return;
+    }
+
+    // Check if certificate feature is enabled for this event
+    if (user.eventId) {
+      const ev = await Event.findById(user.eventId);
+      if (ev && ev.certificateConfig && ev.certificateConfig.enabled === false) {
+        res.status(200).json({ hasCertificate: false, message: 'Certificates are disabled for this event.' });
+        return;
+      }
+    }
+
+    res.json({
+      hasCertificate: true,
+      certificate: cert
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch participant certificate', details: err.message });
+  }
+});
+
 // ADMIN ONLY: POST /api/certificates/issue
 certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {

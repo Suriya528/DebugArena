@@ -19,8 +19,23 @@ export const ParticipantManager: React.FC = () => {
 
   // Add single form
   const [formData, setFormData] = useState({ username: '', name: '', password: '' });
-  // Bulk import string
+  // Bulk import string and file metadata
   const [bulkCsvText, setBulkCsvText] = useState<string>('');
+  const [csvFileName, setCsvFileName] = useState<string>('');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setBulkCsvText(text.replace(/^\uFEFF/, '')); // strip UTF-8 BOM
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const fetchParticipants = async () => {
     try {
@@ -53,18 +68,40 @@ export const ParticipantManager: React.FC = () => {
   const handleBulkImport = async () => {
     if (!bulkCsvText.trim()) return;
 
-    // Parse CSV lines: username,name,password
-    const lines = bulkCsvText.trim().split('\n');
+    // Clean BOM if present and split lines
+    const rawLines = bulkCsvText.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
     const parsed = [];
-    for (const line of lines) {
-      const parts = line.split(',').map(s => s.trim());
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+
+      // Auto-detect & skip header row
+      if (
+        i === 0 &&
+        (parts[0]?.toLowerCase().includes('user') ||
+          parts[0]?.toLowerCase().includes('team') ||
+          parts[1]?.toLowerCase().includes('name'))
+      ) {
+        continue;
+      }
+
       if (parts.length >= 3) {
-        parsed.push({ username: parts[0], name: parts[1], password: parts[2] });
+        parsed.push({
+          username: parts[0],
+          name: parts[1],
+          password: parts[2],
+          department: parts[3] || undefined,
+          year: parts[4] || undefined,
+          regNo: parts[5] || undefined
+        });
       }
     }
 
     if (parsed.length === 0) {
-      alert('No valid CSV rows parsed. Format must be: username,name,password');
+      alert('No valid CSV rows parsed. Format must be: username,name,password[,department,year,regNo]');
       return;
     }
 
@@ -73,6 +110,7 @@ export const ParticipantManager: React.FC = () => {
       alert(`Bulk Import Complete: ${res.data.createdCount} accounts created.`);
       setShowBulkModal(false);
       setBulkCsvText('');
+      setCsvFileName('');
       await fetchParticipants();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Bulk import failed');
@@ -200,7 +238,12 @@ export const ParticipantManager: React.FC = () => {
                   <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="p-4 font-sans">
                       <div className="font-bold text-white">{p.name}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">@{p.username}</div>
+                      <div className="text-[11px] text-slate-400 font-mono flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span>@{p.username}</span>
+                        {p.regNo && <span className="text-indigo-400 font-semibold">({p.regNo})</span>}
+                        {p.department && <span className="text-slate-500">• {p.department}</span>}
+                        {p.year && <span className="text-slate-500">• Yr {p.year}</span>}
+                      </div>
                     </td>
 
                     <td className="p-4 text-emerald-400 font-bold text-sm">
@@ -374,30 +417,78 @@ export const ParticipantManager: React.FC = () => {
       {/* Bulk CSV Modal */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white">Bulk Import Participants via CSV</h3>
-            <p className="text-xs text-slate-400">
-              Paste lines in format: <code className="text-indigo-400">username,team_name,password</code>
+          <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Upload className="w-5 h-5 text-indigo-400" />
+                Bulk Import Participants via CSV
+              </h3>
+              {csvFileName && (
+                <span className="text-xs text-indigo-400 bg-indigo-950/60 border border-indigo-800/60 px-2 py-0.5 rounded-md font-mono">
+                  {csvFileName}
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Upload a <code className="text-indigo-300">.csv</code> file or paste rows below. Supported columns:<br />
+              <code className="text-indigo-400 font-bold">username, team_name, password, [department, year, regNo]</code>
             </p>
 
-            <textarea
-              rows={8}
-              value={bulkCsvText}
-              onChange={e => setBulkCsvText(e.target.value)}
-              placeholder={`team7,Bit Hackers,pass123\nteam8,Cyber Warriors,pass123`}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-            />
+            {/* Native File Upload Area */}
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-4 bg-slate-950/50 hover:bg-slate-950 cursor-pointer transition-all group">
+              <Upload className="w-6 h-6 text-slate-400 group-hover:text-indigo-400 mb-1 transition-colors" />
+              <span className="text-xs font-semibold text-slate-300 group-hover:text-white">
+                {csvFileName ? 'Choose a different CSV file' : 'Click to browse & upload .csv file'}
+              </span>
+              <span className="text-[11px] text-slate-500 mt-0.5">UTF-8 / Excel CSV formats supported</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+
+            <div className="relative">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-bold text-slate-400 uppercase">Or Paste CSV Text:</span>
+                {bulkCsvText && (
+                  <button
+                    onClick={() => {
+                      setBulkCsvText('');
+                      setCsvFileName('');
+                    }}
+                    className="text-[11px] text-rose-400 hover:underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <textarea
+                rows={6}
+                value={bulkCsvText}
+                onChange={e => setBulkCsvText(e.target.value)}
+                placeholder={`team7,Bit Hackers,pass123,CSE,3,21CS101\nteam8,Cyber Warriors,pass123,ECE,4,20EC205`}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+              />
+            </div>
 
             <div className="flex items-center gap-3 pt-2">
               <button
-                onClick={() => setShowBulkModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+                onClick={() => {
+                  setShowBulkModal(false);
+                  setBulkCsvText('');
+                  setCsvFileName('');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleBulkImport}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
+                disabled={!bulkCsvText.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-colors"
               >
                 Import Roster
               </button>
