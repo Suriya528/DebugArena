@@ -90,38 +90,61 @@ certificateRouter.post('/issue', authenticate, requireAnyAdmin, async (req: Auth
     }
 
     const eventId = bodyEventId || user.eventId || req.user?.eventId;
+    if (!eventId) {
+      res.status(400).json({ error: 'Certificate issuance requires a valid tournament event.' });
+      return;
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Tournament event not found.' });
+      return;
+    }
+
+    // Multi-tenant check
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Prevent cross-event spoofing
+    if (user.eventId && user.eventId.toString() !== event._id.toString()) {
+      res.status(400).json({ error: 'Participant is registered for a different tournament event.' });
+      return;
+    }
+
+    // ENFORCE: Certificate feature must be explicitly enabled by event creator
+    if (!event.certificateConfig || event.certificateConfig.enabled !== true) {
+      res.status(400).json({
+        error: 'Certificate issuance is disabled for this event. The event creator did not activate certificates.'
+      });
+      return;
+    }
+
     let effectiveTemplateUrl = bodyTemplateUrl;
     let effectiveUseCustom = bodyUseCustomTemplate;
     let effectiveTextColorMode = bodyTextColorMode;
     let effectiveSignatoryName = bodySignatoryName;
     let effectiveSignatoryTitle = bodySignatoryTitle;
 
-    let event: any = null;
-    if (eventId) {
-      event = await Event.findById(eventId);
-      if (event) {
-        if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
-          res.status(404).json({ error: 'Event not found' });
-          return;
-        }
-        if (event.certificateConfig) {
-          if (effectiveUseCustom === undefined) {
-            effectiveUseCustom = !event.certificateConfig.useDefaultTemplate;
-          }
-          if (!effectiveTemplateUrl) {
-            effectiveTemplateUrl = event.certificateConfig.customTemplateUrl;
-          }
-          if (!effectiveTextColorMode) {
-            effectiveTextColorMode = event.certificateConfig.textColorMode;
-          }
-        }
-        if (!effectiveSignatoryName && event.branding?.signatoryName) {
-          effectiveSignatoryName = event.branding.signatoryName;
-        }
-        if (!effectiveSignatoryTitle && event.branding?.signatoryTitle) {
-          effectiveSignatoryTitle = event.branding.signatoryTitle;
-        }
-      }
+    if (effectiveUseCustom === undefined) {
+      effectiveUseCustom = !event.certificateConfig.useDefaultTemplate;
+    }
+    if (!effectiveTemplateUrl) {
+      effectiveTemplateUrl = event.certificateConfig.customTemplateUrl;
+    }
+    // Fallback if custom template URL is blank
+    if (effectiveUseCustom && (!effectiveTemplateUrl || !effectiveTemplateUrl.trim())) {
+      effectiveUseCustom = false;
+    }
+    if (!effectiveTextColorMode) {
+      effectiveTextColorMode = event.certificateConfig.textColorMode;
+    }
+    if (!effectiveSignatoryName && event.branding?.signatoryName) {
+      effectiveSignatoryName = event.branding.signatoryName;
+    }
+    if (!effectiveSignatoryTitle && event.branding?.signatoryTitle) {
+      effectiveSignatoryTitle = event.branding.signatoryTitle;
     }
 
     const effectiveCollegeId = user.collegeId || req.user?.collegeId || event?.collegeId;

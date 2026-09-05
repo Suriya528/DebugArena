@@ -81,6 +81,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   const [certTextColorMode, setCertTextColorMode] = useState<'auto' | 'light' | 'dark'>('auto');
   const [certSignatoryName, setCertSignatoryName] = useState('Head of Department');
   const [certSignatoryTitle, setCertSignatoryTitle] = useState('DebugArena Organizing Committee');
+  const [enableCertificates, setEnableCertificates] = useState(false);
 
   // Dynamic Round Pipeline State
   const [rounds, setRounds] = useState<PipelineRoundConfig[]>([
@@ -461,13 +462,14 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
           signatoryTitle: certSignatoryTitle
         },
         certificateConfig: {
+          enabled: enableCertificates,
           useDefaultTemplate: useDefaultCertTemplate,
-          customTemplateUrl: customCertTemplateUrl,
+          customTemplateUrl: enableCertificates ? customCertTemplateUrl.trim() : '',
           textColorMode: certTextColorMode,
           issuerName: certSignatoryName,
           issuerTitle: certSignatoryTitle,
           primaryColor: '#f59e0b',
-          includeQrVerification: true
+          includeQrVerification: enableCertificates
         },
         initialRounds: rounds.map((r, idx) => ({
           roundNumber: idx + 1,
@@ -1160,96 +1162,164 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 4: Certificate Template & QR Verification */}
-          <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-indigo-400" />
-                4. Certificate Template & QR Verification (Optional)
-              </span>
-              <span className="text-[11px] text-indigo-400 font-mono">HMAC-SHA256</span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Issue DebugArena's default Luxury Dark/Gold verifiable certificate, or provide your college's custom certificate template image.
-            </p>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setUseDefaultCertTemplate(true)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                  useDefaultCertTemplate
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-md'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                  Default Luxury Gold Theme
+          {/* SECTION 4: Certificate Generation & QR Verification (Optional) */}
+          <div
+            className={`p-5 rounded-2xl border transition-all ${
+              enableCertificates
+                ? 'bg-indigo-950/25 border-indigo-500/40 shadow-xl shadow-indigo-950/30'
+                : 'bg-slate-950/50 border-slate-800/80 hover:border-slate-750'
+            }`}
+          >
+            {/* Header with Switch */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                    enableCertificates
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-slate-900 text-slate-500 border border-slate-800'
+                  }`}
+                >
+                  <Award className="w-4 h-4" />
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">Platform Dark/Gold security certificate</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setUseDefaultCertTemplate(false)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                  !useDefaultCertTemplate
-                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200 shadow-md'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-bold flex items-center gap-1.5">
-                  <Image className="w-3.5 h-3.5 text-indigo-400" />
-                  Custom College Template
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1">Upload or link university template image</div>
-              </button>
-            </div>
-
-            {!useDefaultCertTemplate && (
-              <div className="space-y-3 pt-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                    College Certificate Template Image / Banner URL
-                  </label>
-                  <input
-                    type="text"
-                    value={customCertTemplateUrl}
-                    onChange={e => setCustomCertTemplateUrl(e.target.value)}
-                    placeholder="https://example.com/certificates/university_template.png"
-                    className="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-white">
+                      4. Certificate Issuance & QR Verification
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        enableCertificates
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}
+                    >
+                      {enableCertificates ? 'Active' : 'Optional (Off)'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {enableCertificates
+                      ? 'Official tamper-proof certificates will be issued with cryptographic HMAC-SHA256 verification.'
+                      : 'Certificates are disabled for this event. No certificates will be minted or issued.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Big Interactive Toggle Switch Button */}
+              <button
+                type="button"
+                onClick={() => setEnableCertificates(!enableCertificates)}
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer border ${
+                  enableCertificates
+                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30 shadow-md shadow-amber-500/10'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                }`}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full transition-all ${
+                    enableCertificates ? 'bg-amber-400 shadow-sm shadow-amber-400' : 'bg-slate-600'
+                  }`}
+                />
+                <span>{enableCertificates ? 'Certificates Enabled' : 'Enable Certificates'}</span>
+              </button>
+            </div>
+
+            {/* Collapsible Certificate Settings */}
+            {enableCertificates && (
+              <div className="mt-4 pt-4 border-t border-indigo-500/20 space-y-4 animate-in fade-in duration-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUseDefaultCertTemplate(true)}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      useDefaultCertTemplate
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-200 shadow-md'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="text-xs font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      Official Standard Format
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      High-contrast parchment canvas with college color accents
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUseDefaultCertTemplate(false)}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      !useDefaultCertTemplate
+                        ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200 shadow-md'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <div className="text-xs font-bold flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-indigo-400" />
+                      Custom College Template
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">Upload or link university template image</div>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Text Contrast Mode
+                      Certificate Attestation Title
                     </label>
-                    <select
-                      value={certTextColorMode}
-                      onChange={e => setCertTextColorMode(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none"
-                    >
-                      <option value="auto">Adaptive Glass Contrast (Recommended)</option>
-                      <option value="light">Light Text (For Dark Templates)</option>
-                      <option value="dark">Dark Text (For Light Templates)</option>
-                    </select>
+                    <input
+                      type="text"
+                      value={certificateTitle}
+                      onChange={e => setCertificateTitle(e.target.value)}
+                      placeholder="e.g. Certificate of Excellence"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
+                    />
                   </div>
                   <div>
                     <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Signatory / Authority Name
+                      Signatory Authority Name
                     </label>
                     <input
                       type="text"
                       value={certSignatoryName}
                       onChange={e => setCertSignatoryName(e.target.value)}
-                      placeholder="e.g. Dean of Academics"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
+                      placeholder="e.g. Dr. A. Sakthivel"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
                     />
                   </div>
                 </div>
+
+                {!useDefaultCertTemplate && (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                        Custom Template Image URL
+                      </label>
+                      <input
+                        type="text"
+                        value={customCertTemplateUrl}
+                        onChange={e => setCustomCertTemplateUrl(e.target.value)}
+                        placeholder="https://example.com/certificates/custom_template.png"
+                        className="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                        Text Contrast Mode
+                      </label>
+                      <select
+                        value={certTextColorMode}
+                        onChange={e => setCertTextColorMode(e.target.value as any)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none"
+                      >
+                        <option value="auto">Adaptive Glass Contrast (Recommended)</option>
+                        <option value="light">Light Text (For Dark Templates)</option>
+                        <option value="dark">Dark Text (For Light Templates)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

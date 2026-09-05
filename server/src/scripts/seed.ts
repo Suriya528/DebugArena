@@ -69,6 +69,16 @@ export async function seedData() {
       certificateTitle: 'Certificate of Achievement — DebugX 2026',
       signatoryName: 'Dr. S. Ramanujan',
       signatoryTitle: 'Head of Computer Science & Engineering'
+    },
+    certificateConfig: {
+      enabled: true,
+      useDefaultTemplate: true,
+      customTemplateUrl: '',
+      textColorMode: 'auto',
+      primaryColor: '#b8860b',
+      issuerName: 'Dr. S. Ramanujan',
+      issuerTitle: 'Head of Computer Science & Engineering',
+      includeQrVerification: true
     }
   });
 

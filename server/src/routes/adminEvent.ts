@@ -183,14 +183,15 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
         signatoryName: 'Head of Department',
         signatoryTitle: 'Tournament Director'
       },
-      certificateConfig: req.body.certificateConfig || {
-        useDefaultTemplate: true,
-        customTemplateUrl: '',
-        textColorMode: 'auto',
-        primaryColor: '#f59e0b',
-        issuerName: 'Head of Department',
-        issuerTitle: 'DebugArena Organizing Committee',
-        includeQrVerification: true
+      certificateConfig: {
+        enabled: req.body.certificateConfig?.enabled === true,
+        useDefaultTemplate: req.body.certificateConfig?.useDefaultTemplate !== false || !req.body.certificateConfig?.customTemplateUrl?.trim(),
+        customTemplateUrl: req.body.certificateConfig?.customTemplateUrl?.trim() || '',
+        textColorMode: req.body.certificateConfig?.textColorMode || 'auto',
+        primaryColor: req.body.certificateConfig?.primaryColor || '#f59e0b',
+        issuerName: req.body.certificateConfig?.issuerName || 'Head of Department',
+        issuerTitle: req.body.certificateConfig?.issuerTitle || 'DebugArena Organizing Committee',
+        includeQrVerification: req.body.certificateConfig?.enabled === true ? (req.body.certificateConfig?.includeQrVerification !== false) : false
       }
     });
 
@@ -330,6 +331,59 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     res.json({ event });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update event' });
+  }
+});
+
+// PATCH /api/admin/events/:eventId/toggle-certificates
+adminEventRouter.patch('/:eventId/toggle-certificates', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const { enabled } = req.body;
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const currentConfig = event.certificateConfig || {
+      enabled: false,
+      useDefaultTemplate: true,
+      customTemplateUrl: '',
+      textColorMode: 'auto',
+      primaryColor: '#f59e0b',
+      issuerName: 'Head of Department',
+      issuerTitle: 'DebugArena Organizing Committee',
+      includeQrVerification: true
+    };
+
+    const targetEnabled = typeof enabled === 'boolean' ? enabled : !currentConfig.enabled;
+    event.certificateConfig = {
+      ...currentConfig,
+      enabled: targetEnabled
+    };
+
+    await event.save();
+
+    await recordAudit(
+      req,
+      targetEnabled ? 'EVENT_CERTIFICATES_ACTIVATED' : 'EVENT_CERTIFICATES_DEACTIVATED',
+      'Event',
+      eventId,
+      { certificatesEnabled: targetEnabled },
+      '',
+      event.collegeId,
+      event._id
+    );
+
+    res.json({ success: true, event });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to toggle certificate status' });
   }
 });
 

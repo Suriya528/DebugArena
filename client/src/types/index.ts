@@ -56,6 +56,7 @@ export interface Event {
     signatoryTitle?: string;
   };
   certificateConfig?: {
+    enabled?: boolean;
     useDefaultTemplate: boolean;
     customTemplateUrl?: string;
     textColorMode?: 'light' | 'dark' | 'auto';

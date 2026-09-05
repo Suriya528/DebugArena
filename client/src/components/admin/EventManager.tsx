@@ -22,7 +22,8 @@ import {
   freezeEvent,
   unfreezeEvent,
   startDynamicRound,
-  getEventAuditLogs
+  getEventAuditLogs,
+  api
 } from '../../services/api.js';
 import { EventBuilderModal } from './EventBuilderModal.js';
 import { RoundBuilderModal } from './RoundBuilderModal.js';
@@ -133,6 +134,25 @@ export const EventManager: React.FC = () => {
     }
   };
 
+  const handleToggleCertificates = async () => {
+    if (!activeEvent) return;
+    const isCurrentlyEnabled = activeEvent.certificateConfig?.enabled === true;
+    const confirmMsg = isCurrentlyEnabled
+      ? `Disable certificates for "${activeEvent.name}"? No new certificates can be issued while disabled.`
+      : `Activate certificate issuance for "${activeEvent.name}"? Leaders and top participants can then receive verifiable credentials.`;
+
+    if (window.confirm(confirmMsg)) {
+      try {
+        await api.patch(`/admin/events/${activeEvent._id}/toggle-certificates`, {
+          enabled: !isCurrentlyEnabled
+        });
+        await fetchData();
+      } catch (err: any) {
+        alert(err.response?.data?.error || 'Failed to toggle certificates');
+      }
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-in fade-in duration-200 text-left">
       {/* Top Banner & Multi-College Selector */}
@@ -225,8 +245,17 @@ export const EventManager: React.FC = () => {
               </div>
               <h3 className="font-bold text-white text-sm mb-1 truncate">{ev.name}</h3>
               <p className="text-xs text-slate-400 line-clamp-1 mb-3">{ev.description || 'No description'}</p>
-              <div className="text-[11px] text-slate-500 font-mono">
-                Violations Limit: {ev.scoringConfig?.violationLimit || 3} strikes
+              <div className="flex items-center justify-between text-[11px] font-mono mt-3 pt-2 border-t border-slate-800/80">
+                <span className="text-slate-500">Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
+                {ev.certificateConfig?.enabled ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
+                    <Award className="w-3 h-3 text-amber-400" /> Certs On
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 font-sans">
+                    Certs Off
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -251,6 +280,24 @@ export const EventManager: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Certificate Lifecycle Quick Toggle */}
+              <button
+                onClick={handleToggleCertificates}
+                className={`py-2 px-3.5 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                  activeEvent.certificateConfig?.enabled
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 shadow-sm shadow-amber-500/10'
+                    : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-750'
+                }`}
+                title={
+                  activeEvent.certificateConfig?.enabled
+                    ? 'Certificates are enabled. Click to disable for this tournament.'
+                    : 'Certificates are currently off. Click to activate certificate issuance.'
+                }
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>{activeEvent.certificateConfig?.enabled ? 'Certs: Active' : 'Certs: Off'}</span>
+              </button>
+
               {/* Event Freeze Toggle */}
               <button
                 onClick={handleToggleFreeze}

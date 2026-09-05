@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { User } from '../models/User.js';
+import { Event } from '../models/Event.js';
 import { Competition } from '../models/Competition.js';
 import { Round } from '../models/Round.js';
 import { Question } from '../models/Question.js';
@@ -440,7 +441,9 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
       message: `Auto-advanced ${advancedUserIds.length} participants into Round ${roundNumber + 1}`,
       advancedCount: advancedUserIds.length,
       cutoffTieDetected,
-      expanded: selectedProgress.length > quota
+      expanded: selectedProgress.length > quota,
+      tieExpanded: selectedProgress.length > quota,
+      targetQuota: quota
     });
   } catch (err) {
     console.error('Auto-advance error:', err);
@@ -513,7 +516,7 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
     if (bodyEventId) {
       if (req.user?.collegeId) {
         const ev = await Event.findOne({ _id: bodyEventId, collegeId: req.user.collegeId });
-        if (ev) effectiveEventId = ev._id;
+        if (ev) effectiveEventId = ev._id.toString();
       } else {
         effectiveEventId = bodyEventId;
       }
@@ -551,7 +554,7 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
     if (bodyEventId) {
       if (req.user?.collegeId) {
         const ev = await Event.findOne({ _id: bodyEventId, collegeId: req.user.collegeId });
-        if (ev) effectiveEventId = ev._id;
+        if (ev) effectiveEventId = ev._id.toString();
       } else {
         effectiveEventId = bodyEventId;
       }

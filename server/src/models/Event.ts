@@ -22,6 +22,7 @@ export interface IEvent extends Document {
     signatoryTitle?: string;
   };
   certificateConfig: {
+    enabled: boolean;
     useDefaultTemplate: boolean;
     customTemplateUrl?: string;
     textColorMode?: 'light' | 'dark' | 'auto';
@@ -64,6 +65,7 @@ const EventSchema = new Schema<IEvent>(
       signatoryTitle: { type: String, default: 'Coordinator, DebugArena' }
     },
     certificateConfig: {
+      enabled: { type: Boolean, default: false },
       useDefaultTemplate: { type: Boolean, default: true },
       customTemplateUrl: { type: String, default: '' },
       textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' },

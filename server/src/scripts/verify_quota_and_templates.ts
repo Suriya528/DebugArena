@@ -12,15 +12,22 @@ import { ENV } from '../config/env.js';
 
 function getRunningMongoUri(): string {
   try {
-    const logPath = 'C:\\Users\\Admin\\.gemini\\antigravity\\brain\\ca14c8ba-a716-430a-a329-a9eaf281363b\\.system_generated\\tasks\\task-1637.log';
-    if (fs.existsSync(logPath)) {
-      const content = fs.readFileSync(logPath, 'utf8');
-      const matches = content.match(/Embedded MongoDB initialized at:\s*(mongodb:\/\/[^\s]+)/g);
-      if (matches && matches.length > 0) {
-        const lastMatch = matches[matches.length - 1];
-        const uri = lastMatch.replace('Embedded MongoDB initialized at:', '').trim();
-        const fullUri = uri.endsWith('/') ? `${uri}debugarena` : `${uri}/debugarena`;
-        return fullUri;
+    const tasksDir = 'C:\\Users\\Admin\\.gemini\\antigravity\\brain\\ca14c8ba-a716-430a-a329-a9eaf281363b\\.system_generated\\tasks';
+    if (fs.existsSync(tasksDir)) {
+      const files = fs.readdirSync(tasksDir)
+        .filter(f => f.endsWith('.log'))
+        .map(f => ({ name: f, time: fs.statSync(`${tasksDir}\\${f}`).mtimeMs }))
+        .sort((a, b) => b.time - a.time)
+        .map(x => x.name);
+      for (const file of files) {
+        const fullPath = `${tasksDir}\\${file}`;
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const matches = content.match(/Embedded MongoDB initialized at:\s*(mongodb:\/\/[^\s]+)/g);
+        if (matches && matches.length > 0) {
+          const lastMatch = matches[matches.length - 1];
+          const uri = lastMatch.replace('Embedded MongoDB initialized at:', '').trim();
+          return uri.endsWith('/') ? `${uri}debugarena` : `${uri}/debugarena`;
+        }
       }
     }
   } catch (e) {
@@ -81,6 +88,7 @@ async function runVerification() {
     status: 'ready',
     rules: ['Mandatory full-screen', 'Automated cutoff progression'],
     certificateConfig: {
+      enabled: true,
       useDefaultTemplate: false,
       customTemplateUrl: customTemplateUrl,
       textColorMode: 'auto',

@@ -23,7 +23,25 @@ Issued certificates adhere to an authentic educational and government credential
 
 ---
 
-### 2. Dynamic Event Pipeline Designer & Automated Round Quotas
+### 2. Optional Certificate Architecture on Event Creation & Lifecycle
+Event creators maintain complete control over whether certificates are issued for each tournament:
+- **Explicit Creator Opt-In**: Certificate issuance is strictly optional and defaults to **OFF**. Certificate template and signatory settings remain collapsed unless activated.
+- **On-Demand Customization**: When enabled, creators configure official vs custom templates, attestation headings, and authority signatory details.
+- **Post-Creation Lifecycle Toggle**: Organizers can activate or deactivate certificates at any stage directly from the Event Manager action bar.
+- **Adaptive Leaderboard Integration**: The standings table adapts automatically, displaying the `"Verify & Issue"` action for enabled events or a muted `"Certs Disabled"` badge when certificates are turned off.
+- **Ironclad Server Enforcement**: Backend endpoints strictly validate event association and reject issuance attempts on disabled events with `HTTP 400 Bad Request`.
+
+<p align="center">
+  <img src="docs/screenshots/admin_event_builder_cert_toggle_off.png" alt="Event Creation with Certificates Optional (OFF by Default)" width="850" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/admin_event_builder_cert_toggle_on.png" alt="Event Creation with Certificates Activated (ON)" width="850" />
+</p>
+
+---
+
+### 3. Dynamic Event Pipeline Designer & Automated Round Quotas
 Before launching an event, college administrators customize every stage of the tournament:
 - **Modular Round Types**: MCQ Debugging rounds, Algorithmic Coding rounds, and Sudden-Death Tiebreakers.
 - **Language & Runtime Selection**: Per-round configuration for Python, JavaScript, C, C++, and Java with custom time limits and penalty rules.

@@ -21,6 +21,7 @@ interface CertificateModalProps {
   name: string;
   rank: number;
   score: number;
+  eventId?: string;
   eventTitle?: string;
   collegeName?: string;
   collegeCode?: string;
@@ -44,6 +45,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   name,
   rank,
   score,
+  eventId,
   eventTitle = 'DebugX Championship 2026',
   collegeName = 'ABC Institute of Technology',
   collegeCode = 'ABC-TECH',
@@ -112,6 +114,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         userId,
         rank,
         totalScore: score,
+        eventId,
         eventTitle,
         collegeName,
         primaryColor,
