@@ -123,6 +123,13 @@ Host colleges enjoy completely private, tenant-isolated experiences:
 
 ---
 
+### 8. Custom Testcase Stdin Playground & Participant Direct Certificate Portal
+- **LeetCode-Style Arbitrary Stdin Playground**: In the coding assessment shell, participants can toggle between official test cases and an interactive **"Custom Testcase"** terminal tab. Candidates can provide arbitrary standard input (`stdin`) to test algorithms with edge cases, inspecting standard output (`stdout`), compilation/runtime error stacks, and execution time (ms) in real-time without affecting leaderboard scoring.
+- **Participant Direct Certificate Portal**: When institutional credentials are awarded, participants receive an official gold attestation banner on their **Round Summary** portal. Candidates can review their verified credential, inspect the cryptographic HMAC-SHA256 signature, and print high-resolution PDF certificates directly without administrative intervention.
+- **Native File Upload & Extended Bulk CSV Ingestion**: Organizers can drag-and-drop or browse `.csv` roster files directly with automated UTF-8 BOM (`\uFEFF`) sanitization, header auto-detection, and extended schema support (`username, team_name, password, department, year, regNo`), rendering student identifiers directly onto participant tables.
+
+---
+
 ## 🛠️ Tech Stack & Architecture
 
 | Layer | Technologies |
@@ -184,6 +191,12 @@ npm run client
 The project includes an end-to-end automated testing suite covering all architectural layers:
 
 ```bash
+# Zero-Flaw Architectural Hardening & Multi-Subsystem Integrity (34/34 tests)
+npx --prefix server tsx src/scripts/verify_architectural_hardening.ts
+
+# High-Impact Features Verification (Custom Stdin, Direct Certs, Bulk CSV)
+npx --prefix server tsx src/scripts/verify_new_features.ts
+
 # Multi-Tenant Privacy & Isolation (15/15 tests)
 npx --prefix server tsx src/scripts/verify_tenant_privacy.ts
 
