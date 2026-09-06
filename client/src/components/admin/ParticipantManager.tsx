@@ -308,7 +308,7 @@ export const ParticipantManager: React.FC = () => {
                         </button>
 
                         <button
-                          onClick={() => setReplayTarget({ id: p.id, username: p.username, questionId: 'demo' })}
+                          onClick={() => setReplayTarget({ id: p.id, username: p.username, questionId: 'latest' })}
                           title="Watch Debugging Journey Replay"
                           className="p-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 transition-colors cursor-pointer border border-indigo-500/30"
                         >

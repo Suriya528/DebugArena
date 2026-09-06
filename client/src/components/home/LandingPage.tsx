@@ -12,43 +12,21 @@ import {
   Building2,
   Users,
   Award,
-  Sparkles,
-  EyeOff,
-  Code2
+  EyeOff
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal';
 import { JoinEventModal } from '../participant/JoinEventModal';
-import { useAuth } from '../../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
-  const { login } = useAuth();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [certLookupId, setCertLookupId] = useState('');
-  const [demoLoading, setDemoLoading] = useState<string | null>(null);
 
   const handleVerifyCert = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = certLookupId.trim();
     if (cleanId) {
       window.location.href = `/verify-cert/${encodeURIComponent(cleanId)}`;
-    }
-  };
-
-  const handleQuickDemo = async (role: 'super_admin' | 'college_admin' | 'participant') => {
-    try {
-      setDemoLoading(role);
-      if (role === 'super_admin') {
-        await login('admin', 'admin123');
-      } else if (role === 'college_admin') {
-        await login('college_admin', 'college123');
-      } else {
-        await login('student1', 'student123');
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to login with demo credentials.');
-    } finally {
-      setDemoLoading(null);
     }
   };
 
@@ -143,66 +121,6 @@ export const LandingPage: React.FC = () => {
               <Shield className="w-4 h-4 text-indigo-400" />
               <span>Organizer Sign-In</span>
             </button>
-          </div>
-
-          {/* Quick Demo Test-Drive Drawer */}
-          <div className="mt-14 max-w-3xl mx-auto p-5 rounded-3xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl shadow-2xl">
-            <div className="flex items-center justify-between flex-wrap gap-3 mb-4 pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Instant Evaluator Demo Access (No Password Needed)
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500 font-mono">1-Click Test Drive</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                disabled={demoLoading !== null}
-                onClick={() => handleQuickDemo('super_admin')}
-                className="p-3 rounded-2xl bg-slate-950/80 border border-indigo-500/30 hover:border-indigo-500 text-left transition-all group disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-indigo-300">Super Admin</span>
-                  <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                </div>
-                <p className="text-[11px] text-slate-400">Full system control, tenant management & global metrics</p>
-                <div className="mt-2 text-[10px] font-mono text-indigo-400 group-hover:underline">
-                  {demoLoading === 'super_admin' ? 'Logging in...' : 'Launch Admin →'}
-                </div>
-              </button>
-
-              <button
-                disabled={demoLoading !== null}
-                onClick={() => handleQuickDemo('college_admin')}
-                className="p-3 rounded-2xl bg-slate-950/80 border border-cyan-500/30 hover:border-cyan-500 text-left transition-all group disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-cyan-300">College Organizer</span>
-                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                </div>
-                <p className="text-[11px] text-slate-400">Create events, seed rosters, set strikes & view live rounds</p>
-                <div className="mt-2 text-[10px] font-mono text-cyan-400 group-hover:underline">
-                  {demoLoading === 'college_admin' ? 'Logging in...' : 'Launch Organizer →'}
-                </div>
-              </button>
-
-              <button
-                disabled={demoLoading !== null}
-                onClick={() => handleQuickDemo('participant')}
-                className="p-3 rounded-2xl bg-slate-950/80 border border-purple-500/30 hover:border-purple-500 text-left transition-all group disabled:opacity-50"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-purple-300">Contestant</span>
-                  <Code2 className="w-3.5 h-3.5 text-purple-400" />
-                </div>
-                <p className="text-[11px] text-slate-400">Experience proctored Monaco code editor & test suite</p>
-                <div className="mt-2 text-[10px] font-mono text-purple-400 group-hover:underline">
-                  {demoLoading === 'participant' ? 'Logging in...' : 'Launch Student →'}
-                </div>
-              </button>
-            </div>
           </div>
         </section>
 

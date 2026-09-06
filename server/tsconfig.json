@@ -15,6 +15,7 @@
     "src/scripts/browser_verify.ts",
     "src/scripts/verify_all.ts",
     "src/scripts/verify_*.ts",
-    "src/scripts/capture_*.ts"
+    "src/scripts/capture_*.ts",
+    "src/scripts/purge_demo_data.ts"
   ]
 }

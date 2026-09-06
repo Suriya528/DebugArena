@@ -8,7 +8,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "tsx src/scripts/seed.ts"
+    "seed": "tsx src/scripts/seed.ts",
+    "clean-demo": "tsx src/scripts/purge_demo_data.ts",
+    "clean-all": "tsx src/scripts/purge_demo_data.ts --all"
   },
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",

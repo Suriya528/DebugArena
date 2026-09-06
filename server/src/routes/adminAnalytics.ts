@@ -49,16 +49,31 @@ adminAnalyticsRouter.get('/journey-replay/:userId/:questionId', async (req: Auth
   try {
     const { userId, questionId } = req.params;
 
-    let milestones: any[] = [];
-    if (mongoose.Types.ObjectId.isValid(userId) && mongoose.Types.ObjectId.isValid(questionId)) {
-      milestones = await CodeMilestone.find({ userId, questionId }).sort({ timestamp: 1 });
+    let targetQuestionId = questionId;
+    if (!mongoose.Types.ObjectId.isValid(targetQuestionId) || targetQuestionId === 'latest') {
+      const latestMilestone = await CodeMilestone.findOne({ userId }).sort({ timestamp: -1 });
+      if (latestMilestone) {
+        targetQuestionId = latestMilestone.questionId.toString();
+      } else {
+        const latestAttempt = await Attempt.findOne({ userId, questionType: 'debugging' }).sort({ updatedAt: -1 });
+        if (latestAttempt) {
+          targetQuestionId = latestAttempt.questionId.toString();
+        }
+      }
     }
 
-    const question = mongoose.Types.ObjectId.isValid(questionId) ? await Question.findById(questionId) : null;
+    let milestones: any[] = [];
+    if (mongoose.Types.ObjectId.isValid(userId) && mongoose.Types.ObjectId.isValid(targetQuestionId)) {
+      milestones = await CodeMilestone.find({ userId, questionId: targetQuestionId }).sort({ timestamp: 1 });
+    }
+
+    const question = mongoose.Types.ObjectId.isValid(targetQuestionId) ? await Question.findById(targetQuestionId) : null;
     const user = mongoose.Types.ObjectId.isValid(userId) ? await User.findById(userId) : null;
 
     if (milestones.length === 0) {
-      const attempt = await Attempt.findOne({ userId, questionId });
+      const attempt = mongoose.Types.ObjectId.isValid(targetQuestionId)
+        ? await Attempt.findOne({ userId, questionId: targetQuestionId })
+        : null;
       const isArchived = attempt?.retentionStatus === 'compacted';
 
       res.json({

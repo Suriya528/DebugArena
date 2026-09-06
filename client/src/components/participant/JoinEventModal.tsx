@@ -285,18 +285,6 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
               <span>{loading ? 'Authenticating...' : 'Resume Competition Session'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            {/* Quick autofill demo contestant */}
-            <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-              <span>Demo Contestant:</span>
-              <button
-                type="button"
-                onClick={() => { setLoginUsername('student1'); setLoginPassword('student123'); }}
-                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 transition-colors font-mono"
-              >
-                student1:student123
-              </button>
-            </div>
           </form>
         )}
       </div>

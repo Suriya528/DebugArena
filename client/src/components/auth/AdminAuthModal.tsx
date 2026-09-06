@@ -240,41 +240,11 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
 
             {/* Google OAuth Environment Status */}
             <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px]">
-              <span className="text-slate-400">OAuth Mode:</span>
-              {googleClientId ? (
-                <span className="text-emerald-400 flex items-center gap-1.5 font-mono font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Live (Client ID Set)
-                </span>
-              ) : (
-                <span className="text-amber-400 flex items-center gap-1.5 font-mono text-[10px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  Dev Verified Mock (Set VITE_GOOGLE_CLIENT_ID)
-                </span>
-              )}
-            </div>
-
-            {/* Dev Demo Quick Accounts */}
-            <div className="pt-3 border-t border-slate-800">
-              <div className="text-[11px] font-medium text-slate-400 mb-2">⚡ Quick 1-Click Dev Admin Accounts:</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleGoogleAuth('superadmin@debugarena.io')}
-                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/70 hover:border-indigo-500/60 text-left text-xs transition-colors"
-                >
-                  <div className="font-semibold text-slate-200">Super Admin</div>
-                  <div className="text-[10px] text-slate-400 truncate">superadmin@debugarena.io</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGoogleAuth('college_organizer@mit.edu')}
-                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/70 hover:border-cyan-500/60 text-left text-xs transition-colors"
-                >
-                  <div className="font-semibold text-slate-200">College Admin</div>
-                  <div className="text-[10px] text-slate-400 truncate">college_organizer@mit.edu</div>
-                </button>
-              </div>
+              <span className="text-slate-400">OAuth Security:</span>
+              <span className="text-emerald-400 flex items-center gap-1.5 font-mono font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Google Identity Services Verified
+              </span>
             </div>
           </div>
         )}
@@ -291,7 +261,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin or college_admin"
+                  placeholder="Enter administrator username"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
@@ -320,25 +290,6 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
               <span>{loading ? 'Authenticating...' : 'Sign In to Admin Dashboard'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            {/* Quick autofill credentials */}
-            <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400">
-              <span>Demo Fill:</span>
-              <button
-                type="button"
-                onClick={() => { setUsername('admin'); setPassword('admin123'); }}
-                className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-400 transition-colors"
-              >
-                admin:admin123
-              </button>
-              <button
-                type="button"
-                onClick={() => { setUsername('college_admin'); setPassword('college123'); }}
-                className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 transition-colors"
-              >
-                college_admin:college123
-              </button>
-            </div>
           </form>
         )}
       </div>

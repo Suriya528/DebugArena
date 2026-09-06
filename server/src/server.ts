@@ -81,19 +81,8 @@ async function bootstrap() {
 
   await connectDB();
 
-  // Seeding Guard: In production, never auto-populate test data on boot
-  const { Round } = await import('./models/Round.js');
-  const roundCount = await Round.countDocuments();
-  if (roundCount === 0) {
-    if (ENV.NODE_ENV === 'production') {
-      console.log('⚠️ [Production Guard] Database has 0 rounds. Automatic test seeding is disabled in production.');
-      console.log('ℹ️ Run "npm run seed" manually or configure events via the Admin Event Builder.');
-    } else {
-      console.log('🌱 Database is empty. Auto-seeding initial competition data...');
-      const { seedData } = await import('./scripts/seed.js');
-      await seedData();
-    }
-  }
+  // Enterprise Policy: Never auto-populate demo test data on boot in any environment
+  console.log('🏛️ Database ready in clean enterprise mode.');
 
   startServerTimerSweep();
 
