@@ -123,7 +123,7 @@ async function generateUniqueCollegeCode(name: string): Promise<string> {
 // Direct email/password registration for event organizers
 authRouter.post('/register-admin', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, collegeName } = req.body;
+    const { name, email, password, collegeName, university } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: 'Name, email, and password are required' });
       return;
@@ -161,13 +161,18 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
     let collegeId = undefined;
     if (collegeName && collegeName.trim().length >= 2) {
       const trimmedName = collegeName.trim();
+      const cleanUniversity = university?.trim() || '';
       let college = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
       if (!college) {
         const generatedCode = await generateUniqueCollegeCode(trimmedName);
         college = await College.create({
           name: trimmedName,
-          code: generatedCode
+          code: generatedCode,
+          university: cleanUniversity
         });
+      } else if (cleanUniversity && !college.university) {
+        college.university = cleanUniversity;
+        await college.save();
       }
       collegeId = college._id;
     }
@@ -214,7 +219,7 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
 // Post-signup onboarding: configures the organizer's institution without requiring a cryptic code
 authRouter.post('/onboarding', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { collegeName } = req.body;
+    const { collegeName, university } = req.body;
     if (!collegeName || collegeName.trim().length < 2) {
       res.status(400).json({ error: 'Please enter a valid institution / college name' });
       return;
@@ -227,13 +232,18 @@ authRouter.post('/onboarding', authenticate, async (req: AuthenticatedRequest, r
     }
 
     const trimmedName = collegeName.trim();
+    const cleanUniversity = university?.trim() || '';
     let college = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
     if (!college) {
       const generatedCode = await generateUniqueCollegeCode(trimmedName);
       college = await College.create({
         name: trimmedName,
-        code: generatedCode
+        code: generatedCode,
+        university: cleanUniversity
       });
+    } else if (cleanUniversity && !college.university) {
+      college.university = cleanUniversity;
+      await college.save();
     }
 
     user.collegeId = college._id;

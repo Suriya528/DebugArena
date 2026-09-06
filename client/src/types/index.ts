@@ -11,6 +11,7 @@ export interface User {
   id: string;
   username: string;
   name: string;
+  email?: string;
   role: UserRole;
   collegeId?: string;
   eventId?: string;
@@ -25,6 +26,7 @@ export interface College {
   _id: string;
   name: string;
   code: string;
+  university?: string;
   logoUrl?: string;
   primaryColor: string;
   secondaryColor: string;

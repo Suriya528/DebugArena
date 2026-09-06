@@ -12,9 +12,9 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<AuthResult>;
-  registerAdmin: (payload: { name: string; email: string; password: string; collegeName?: string }) => Promise<AuthResult>;
+  registerAdmin: (payload: { name: string; email: string; password: string; collegeName?: string; university?: string }) => Promise<AuthResult>;
   loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
-  completeOnboarding: (collegeName: string) => Promise<User>;
+  completeOnboarding: (collegeName: string, university?: string) => Promise<User>;
   joinEventByCode: (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }) => Promise<{ user: User; event: any }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -42,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: userData._id || userData.id,
         username: userData.username,
         name: userData.name,
+        email: userData.email,
         role: userData.role,
         isDisqualified: userData.isDisqualified,
         disqualificationReason: userData.disqualificationReason
@@ -76,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
+      email: receivedUser.email,
       role: receivedUser.role,
       collegeId: receivedUser.collegeId,
       needsOnboarding: !!needsOnboarding
@@ -86,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return formattedUser;
   };
 
-  const registerAdmin = async (payload: { name: string; email: string; password: string; collegeName?: string }): Promise<AuthResult> => {
+  const registerAdmin = async (payload: { name: string; email: string; password: string; collegeName?: string; university?: string }): Promise<AuthResult> => {
     const res = await api.post('/auth/register-admin', payload);
     const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
@@ -100,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
+      email: receivedUser.email,
       role: receivedUser.role,
       collegeId: receivedUser.collegeId,
       needsOnboarding: !!needsOnboarding
@@ -124,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
+      email: receivedUser.email,
       role: receivedUser.role,
       collegeId: receivedUser.collegeId,
       needsOnboarding: !!needsOnboarding
@@ -134,8 +138,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return formattedUser;
   };
 
-  const completeOnboarding = async (collegeName: string): Promise<User> => {
-    const res = await api.post('/auth/onboarding', { collegeName });
+  const completeOnboarding = async (collegeName: string, university?: string): Promise<User> => {
+    const res = await api.post('/auth/onboarding', { collegeName, university });
     const { token: receivedToken, user: receivedUser, college } = res.data;
 
     if (receivedToken) {
