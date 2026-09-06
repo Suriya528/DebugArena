@@ -91,46 +91,49 @@ export const Navbar: React.FC<NavbarProps> = ({
         {user && (
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
             {/* Organizer Profile & Security Passkey Access */}
-            {user.role !== 'participant' && (
+            {user.role !== 'participant' ? (
               <button
+                type="button"
                 onClick={() => setIsPasskeyModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
-                title="Organizer Profile & Security Passkey"
+                className="group flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-500/50 transition-all cursor-pointer shadow-sm text-left"
+                title="Organizer Profile & Passkey Settings"
               >
-                <Key className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Profile & Passkey</span>
-                {user.hasPasskey && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Passkey Active" />
-                )}
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black shadow-inner">
+                  {user.name ? user.name[0].toUpperCase() : 'A'}
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors flex items-center gap-1.5 leading-tight">
+                    <span className="truncate max-w-[120px]">{user.name}</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                      Admin
+                    </span>
+                  </div>
+                  <div className="text-[10px] flex items-center gap-1 font-mono mt-0.5">
+                    {user.hasPasskey ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Passkey Active
+                      </span>
+                    ) : (
+                      <span className="text-amber-400/90 group-hover:text-amber-300 flex items-center gap-1">
+                        <Key className="w-2.5 h-2.5 text-amber-400" />
+                        Set Passkey
+                      </span>
+                    )}
+                  </div>
+                </div>
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                if (user.role !== 'participant') {
-                  setIsPasskeyModalOpen(true);
-                }
-              }}
-              className={`text-right hidden sm:block ${user.role !== 'participant' ? 'cursor-pointer hover:opacity-85 transition-opacity' : ''}`}
-              title={user.role !== 'participant' ? "View Organizer Profile & Passkey Settings" : undefined}
-            >
-              <div className="text-xs font-semibold text-white leading-tight">{user.name}</div>
-              <div className="text-[11px] text-slate-400 flex items-center justify-end gap-1 font-mono">
-                {user.role === 'admin' ? (
-                  <span className="text-amber-400 flex items-center gap-0.5">
-                    <Shield className="w-3 h-3" /> Admin
-                  </span>
-                ) : (
-                  <span>@{user.username}</span>
-                )}
+            ) : (
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-semibold text-white leading-tight">{user.name}</div>
+                <div className="text-[11px] text-slate-400 font-mono">@{user.username}</div>
               </div>
-            </button>
+            )}
 
             <button
               onClick={logout}
               title="Sign Out"
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>

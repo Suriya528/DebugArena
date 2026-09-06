@@ -48,6 +48,11 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   const [passkey, setPasskey] = useState('');
   const [showPasskey, setShowPasskey] = useState(false);
 
+  // Disambiguation state when multiple accounts share a passkey
+  const [needsDisambiguation, setNeedsDisambiguation] = useState(false);
+  const [disambiguationEmail, setDisambiguationEmail] = useState('');
+  const [disambiguationAccounts, setDisambiguationAccounts] = useState<any[]>([]);
+
   // Google Onboarding specific state
   const [authenticatedUserName, setAuthenticatedUserName] = useState('');
   const [authenticatedUserEmail, setAuthenticatedUserEmail] = useState('');
@@ -63,6 +68,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       setError(null);
       setLoading(false);
       setSigninMethod('password');
+      setNeedsDisambiguation(false);
+      setDisambiguationEmail('');
+      setDisambiguationAccounts([]);
       setFullName('');
       setEmailOrUsername('');
       setPassword('');
@@ -153,12 +161,22 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
 
       if (mode === 'signin') {
         if (signinMethod === 'passkey') {
-          if (!emailOrUsername.trim() || !passkey.trim()) {
-            setError('Please enter your email/username and security passkey keyword.');
+          if (!passkey.trim()) {
+            setError('Please enter your security passkey keyword.');
             setLoading(false);
             return;
           }
-          const authRes = await loginWithPasskey(emailOrUsername.trim(), passkey.trim());
+          const disambigEmail = disambiguationEmail.trim() || undefined;
+          const authRes = await loginWithPasskey(passkey.trim(), disambigEmail);
+
+          if ('requiresEmail' in authRes) {
+            setNeedsDisambiguation(true);
+            setDisambiguationAccounts(authRes.maskedAccounts || []);
+            setError(authRes.message || 'Multiple accounts share this passkey. Please confirm your email address.');
+            setLoading(false);
+            return;
+          }
+
           if (authRes.needsOnboarding) {
             setAuthenticatedUserName(authRes.name || authRes.username);
             setAuthenticatedUserEmail(authRes.email || '');
@@ -208,6 +226,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           name: fullName.trim(),
           email: emailOrUsername.trim(),
           password,
+          passkey: passkey.trim() || undefined,
           collegeName: collegeName.trim(),
           university: university.trim()
         });
@@ -330,89 +349,94 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               </div>
             )}
 
-            {/* Google OAuth Action: Displays ONLY ONE button (Official GSI iframe if ready, or styled fallback) */}
-            <div className="w-full flex justify-center mb-1">
-              <div
-                ref={googleButtonRef}
-                className={`w-full flex justify-center ${isGsiReady ? 'block' : 'hidden'}`}
-              />
-
-              {!isGsiReady && (
+            {/* Sign In Method Selector: Email/Password vs Instant Passkey */}
+            {mode === 'signin' && (
+              <div className="grid grid-cols-2 gap-2 mb-5">
                 <button
                   type="button"
-                  disabled={loading}
-                  onClick={handleManualGoogleClick}
-                  className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-3 transition-all shadow-lg shadow-white/5 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                  onClick={() => { setSigninMethod('password'); setError(null); }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    signinMethod === 'password'
+                      ? 'bg-indigo-600/25 border-indigo-500/60 text-white shadow-sm'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`}
                 >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.94H1.24v3.15C3.26 21.36 7.33 24 12 24z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.26c-.25-.72-.38-1.49-.38-2.26s.13-1.54.38-2.26V6.59H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.41l4.04-3.15z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.59l4.04 3.15c.95-2.84 3.6-4.99 6.72-4.99z"
-                    />
-                  </svg>
-                  <span>
-                    {loading
-                      ? 'Verifying with Google...'
-                      : mode === 'signup'
-                      ? 'Sign up with Google'
-                      : 'Continue with Google'}
-                  </span>
+                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Email & Password</span>
                 </button>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="relative my-5 text-center">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-800" />
+                <button
+                  type="button"
+                  onClick={() => { setSigninMethod('passkey'); setError(null); }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    signinMethod === 'passkey'
+                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-sm shadow-amber-500/10'
+                      : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 border-slate-800 bg-slate-900/60'
+                  }`}
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Instant Passkey</span>
+                </button>
               </div>
-              <span className="relative px-3 bg-[#0c1220] text-[11px] uppercase tracking-wider text-slate-500 font-medium">
-                {mode === 'signup' ? 'or register with academic credentials' : 'or continue with email'}
-              </span>
-            </div>
+            )}
+
+            {/* Google OAuth & Divider: Rendered ONLY when using email/password signin or creating an account */}
+            {(mode === 'signup' || (mode === 'signin' && signinMethod === 'password')) && (
+              <>
+                <div className="w-full flex justify-center mb-1">
+                  <div
+                    ref={googleButtonRef}
+                    className={`w-full flex justify-center ${isGsiReady ? 'block' : 'hidden'}`}
+                  />
+
+                  {!isGsiReady && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={handleManualGoogleClick}
+                      className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-3 transition-all shadow-lg shadow-white/5 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                    >
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#4285F4"
+                          d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.94H1.24v3.15C3.26 21.36 7.33 24 12 24z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M5.28 14.26c-.25-.72-.38-1.49-.38-2.26s.13-1.54.38-2.26V6.59H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.41l4.04-3.15z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.59l4.04 3.15c.95-2.84 3.6-4.99 6.72-4.99z"
+                        />
+                      </svg>
+                      <span>
+                        {loading
+                          ? 'Verifying with Google...'
+                          : mode === 'signup'
+                          ? 'Sign up with Google'
+                          : 'Continue with Google'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative my-5 text-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-800" />
+                  </div>
+                  <span className="relative px-3 bg-[#0c1220] text-[11px] uppercase tracking-wider text-slate-500 font-medium">
+                    {mode === 'signup' ? 'or register with academic credentials' : 'or continue with email & password'}
+                  </span>
+                </div>
+              </>
+            )}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-3.5">
-              {mode === 'signin' && (
-                <div className="flex p-1 bg-slate-900/90 border border-slate-800 rounded-xl mb-3">
-                  <button
-                    type="button"
-                    onClick={() => { setSigninMethod('password'); setError(null); }}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      signinMethod === 'password'
-                        ? 'bg-slate-800 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Password</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setSigninMethod('passkey'); setError(null); }}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      signinMethod === 'passkey'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-amber-400'
-                    }`}
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    <span>Security Passkey</span>
-                  </button>
-                </div>
-              )}
 
               {mode === 'signup' && (
                 <>
@@ -470,75 +494,154 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                 </>
               )}
 
-              <div>
-                <label className="text-xs font-medium text-slate-300 mb-1 block">
-                  {mode === 'signup' ? 'Work / Academic Email' : 'Email or Username'}
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type={mode === 'signup' ? 'email' : 'text'}
-                    required
-                    value={emailOrUsername}
-                    onChange={(e) => setEmailOrUsername(e.target.value)}
-                    placeholder={mode === 'signup' ? 'organizer@university.edu' : 'you@university.edu or username'}
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-              </div>
-
+              {/* Passkey-Only Sign-In View */}
               {mode === 'signin' && signinMethod === 'passkey' ? (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-medium text-slate-300">Security Passkey Keyword</label>
-                    <span className="text-[10px] text-amber-400/80 font-mono">Numbers, letters & symbols</span>
+                <div className="space-y-3.5">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-slate-300">Security Passkey Keyword</label>
+                      <span className="text-[10px] text-amber-400/80 font-mono">Numbers, letters & symbols</span>
+                    </div>
+                    <div className="relative">
+                      <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showPasskey ? 'text' : 'password'}
+                        required
+                        autoFocus
+                        value={passkey}
+                        onChange={(e) => {
+                          setPasskey(e.target.value);
+                          setNeedsDisambiguation(false);
+                        }}
+                        placeholder="Enter your security passkey (e.g. 202688 or Admin#Key2026!)"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasskey(!showPasskey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                        aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
+                      >
+                        {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Instant 1-step sign-in: Just enter your passkey. No email ID required.
+                    </p>
                   </div>
-                  <div className="relative">
-                    <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type={showPasskey ? 'text' : 'password'}
-                      required
-                      value={passkey}
-                      onChange={(e) => setPasskey(e.target.value)}
-                      placeholder="Enter passkey keyword (e.g. 202688 or Admin#Key2026!)"
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasskey(!showPasskey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
-                      aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
-                    >
-                      {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Enter the keyword passkey configured in your organizer profile.
-                  </p>
+
+                  {/* Disambiguation Section: Appears ONLY when multiple accounts share this exact passkey */}
+                  {needsDisambiguation && (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                      <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>Confirm Account Email</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Multiple accounts share this passkey. Please confirm your registered email address:
+                      </p>
+                      {disambiguationAccounts.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {disambiguationAccounts.map((acc, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-lg bg-slate-950 border border-amber-500/30 text-[11px] font-mono text-amber-300"
+                            >
+                              {acc.name} ({acc.maskedEmail})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative pt-1">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="email"
+                          required
+                          value={disambiguationEmail}
+                          onChange={(e) => setDisambiguationEmail(e.target.value)}
+                          placeholder="Your registered email (e.g. you@university.edu)"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div>
-                  <label className="text-xs font-medium text-slate-300 mb-1 block">Password</label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={mode === 'signup' ? 'Minimum 6 characters' : '••••••••'}
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                /* Standard Email & Password / Registration Fields */
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 mb-1 block">
+                      {mode === 'signup' ? 'Work / Academic Email' : 'Email or Username'}
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={mode === 'signup' ? 'email' : 'text'}
+                        required
+                        value={emailOrUsername}
+                        onChange={(e) => setEmailOrUsername(e.target.value)}
+                        placeholder={mode === 'signup' ? 'organizer@university.edu' : 'you@university.edu or username'}
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
                   </div>
-                </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 mb-1 block">Password</label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={mode === 'signup' ? 'Minimum 6 characters' : '••••••••'}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Optional Passkey on Signup */}
+                  {mode === 'signup' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-medium text-slate-300">
+                          Security Passkey Keyword <span className="text-slate-500 font-normal">(Optional)</span>
+                        </label>
+                        <span className="text-[10px] text-amber-400/80 font-mono">1-step passkey sign-in</span>
+                      </div>
+                      <div className="relative">
+                        <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type={showPasskey ? 'text' : 'password'}
+                          value={passkey}
+                          onChange={(e) => setPasskey(e.target.value)}
+                          placeholder="Create a keyword (e.g. 202688 or Admin#Key2026!)"
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasskey(!showPasskey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                          aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
+                        >
+                          {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Set a keyword to sign in instantly in 1 step without typing your email.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               <button
@@ -556,7 +659,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                     : mode === 'signup'
                     ? 'Create Organizer Workspace'
                     : signinMethod === 'passkey'
-                    ? 'Sign In with Security Passkey'
+                    ? (needsDisambiguation ? 'Confirm Email & Sign In' : 'Sign In with Security Passkey')
                     : 'Sign In to Dashboard'}
                 </span>
                 <ArrowRight className="w-4 h-4" />

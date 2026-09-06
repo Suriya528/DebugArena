@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { User } from '../models/User.js';
 import { College } from '../models/College.js';
 import { ENV } from '../config/env.js';
@@ -119,65 +120,142 @@ authRouter.post('/logout', authenticate, (_req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
 });
 
+// Helper to safely mask email address for privacy during account disambiguation
+function maskEmailAddress(email: string): string {
+  if (!email || !email.includes('@')) {
+    if (email.length <= 3) return '***';
+    return email.slice(0, 2) + '***' + email.slice(-1);
+  }
+  const [localPart, domain] = email.split('@');
+  const visible = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visible}***@${domain}`;
+}
+
 // -------------------- PASSKEY AUTHENTICATION --------------------
 
 // POST /api/auth/passkey/login
-// Allows an organizer/administrator to sign in using their registered security passkey keyword
+// Allows an organizer/administrator to sign in using ONLY their security passkey keyword.
+// If multiple accounts share the same passkey, requests email confirmation to disambiguate.
 authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { identifier, passkey } = req.body;
-    if (!identifier || !passkey) {
-      res.status(400).json({ error: 'Username/Email and Passkey are required' });
+    const { passkey, email, identifier } = req.body;
+    if (!passkey || String(passkey).trim().length === 0) {
+      res.status(400).json({ error: 'Security passkey keyword is required' });
       return;
     }
 
-    const cleanId = String(identifier).toLowerCase().trim();
     const cleanPasskey = String(passkey).trim();
+    const cleanId = (email || identifier) ? String(email || identifier).toLowerCase().trim() : null;
 
-    const user = await User.findOne({
-      $or: [{ username: cleanId }, { email: cleanId }]
-    });
+    // Generate Keyed HMAC blind-index for indexed lookup
+    const lookupHash = crypto.createHmac('sha256', ENV.JWT_SECRET).update(cleanPasskey).digest('hex');
 
-    if (!user) {
-      res.status(401).json({ error: 'No account found matching this identifier' });
-      return;
+    // Query candidates matching the blind index who are non-participants with active passkeys
+    let query: any = {
+      passkeyLookupHash: lookupHash,
+      hasPasskey: true,
+      role: { $ne: 'participant' }
+    };
+
+    let candidates = await User.find(query);
+
+    // Fallback: If no candidate was found by lookupHash (e.g. legacy passkeys created before blind-indexing)
+    if (candidates.length === 0) {
+      if (cleanId) {
+        const directCandidate = await User.findOne({
+          $or: [{ username: cleanId }, { email: cleanId }],
+          hasPasskey: true,
+          role: { $ne: 'participant' }
+        });
+        if (directCandidate?.passkeyHash && (await bcrypt.compare(cleanPasskey, directCandidate.passkeyHash))) {
+          directCandidate.passkeyLookupHash = lookupHash;
+          await directCandidate.save();
+          candidates = [directCandidate];
+        }
+      } else {
+        // Search legacy organizers with hasPasskey: true and no passkeyLookupHash
+        const legacyCandidates = await User.find({
+          hasPasskey: true,
+          passkeyLookupHash: { $exists: false },
+          role: { $ne: 'participant' }
+        }).limit(25);
+
+        for (const leg of legacyCandidates) {
+          if (leg.passkeyHash && (await bcrypt.compare(cleanPasskey, leg.passkeyHash))) {
+            leg.passkeyLookupHash = lookupHash;
+            await leg.save();
+            candidates.push(leg);
+          }
+        }
+      }
     }
 
-    if (user.role === 'participant') {
-      res.status(403).json({ error: 'Passkey sign-in is reserved for competition organizers and administrators.' });
-      return;
+    // Cryptographic verification of bcrypt hash on candidates
+    const verifiedCandidates: any[] = [];
+    for (const cand of candidates) {
+      if (cand.passkeyHash && (await bcrypt.compare(cleanPasskey, cand.passkeyHash))) {
+        verifiedCandidates.push(cand);
+      }
     }
 
-    if (!user.hasPasskey || !user.passkeyHash) {
+    if (verifiedCandidates.length === 0) {
       res.status(401).json({
-        error: 'No security passkey is configured for this account. Please sign in with your password and create a passkey in your profile.'
+        error: 'Invalid security passkey keyword. Please verify your keyword or sign in with password.'
       });
       return;
     }
 
-    const isMatch = await bcrypt.compare(cleanPasskey, user.passkeyHash);
-    if (!isMatch) {
-      res.status(401).json({ error: 'Invalid security passkey keyword.' });
-      return;
+    // Resolve which user to log in:
+    let targetUser: any = null;
+
+    if (verifiedCandidates.length === 1) {
+      targetUser = verifiedCandidates[0];
+    } else {
+      // Multiple accounts share this passkey!
+      if (!cleanId) {
+        // Disambiguation required: Return masked account previews and ask for email confirmation
+        res.status(200).json({
+          requiresEmail: true,
+          message: 'Multiple organizer accounts match this passkey keyword. Please confirm your registered email address to verify your account.',
+          matchedCount: verifiedCandidates.length,
+          maskedAccounts: verifiedCandidates.map(u => ({
+            name: u.name,
+            maskedEmail: maskEmailAddress(u.email || u.username)
+          }))
+        });
+        return;
+      }
+
+      // Email was provided: match against verified candidates
+      targetUser = verifiedCandidates.find(
+        u => u.email?.toLowerCase() === cleanId || u.username?.toLowerCase() === cleanId
+      );
+
+      if (!targetUser) {
+        res.status(401).json({
+          error: 'The provided email address does not match any organizer account registered with this passkey keyword.'
+        });
+        return;
+      }
     }
 
-    if (user.isDisqualified) {
+    if (targetUser.isDisqualified) {
       res.status(403).json({
         error: 'You have been disqualified from the platform',
-        reason: user.disqualificationReason || 'Security violation'
+        reason: targetUser.disqualificationReason || 'Security violation'
       });
       return;
     }
 
-    const needsOnboarding = !user.collegeId;
+    const needsOnboarding = !targetUser.collegeId;
 
     const payload: AuthPayload = {
-      userId: user._id.toString(),
-      username: user.username,
-      role: user.role,
-      name: user.name,
-      collegeId: user.collegeId ? user.collegeId.toString() : undefined,
-      eventId: user.eventId ? user.eventId.toString() : undefined
+      userId: targetUser._id.toString(),
+      username: targetUser.username,
+      role: targetUser.role,
+      name: targetUser.name,
+      collegeId: targetUser.collegeId ? targetUser.collegeId.toString() : undefined,
+      eventId: targetUser.eventId ? targetUser.eventId.toString() : undefined
     };
 
     const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
@@ -186,13 +264,13 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
       token,
       needsOnboarding,
       user: {
-        id: user._id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        collegeId: user.collegeId,
-        eventId: user.eventId,
+        id: targetUser._id,
+        username: targetUser.username,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        collegeId: targetUser.collegeId,
+        eventId: targetUser.eventId,
         hasPasskey: true,
         needsOnboarding
       }
@@ -222,7 +300,10 @@ authRouter.post('/passkey/setup', authenticate, async (req: AuthenticatedRequest
     const cleanPasskey = String(passkey).trim();
     const isUpdate = Boolean(user.hasPasskey);
 
+    const lookupHash = crypto.createHmac('sha256', ENV.JWT_SECRET).update(cleanPasskey).digest('hex');
     const hashed = await bcrypt.hash(cleanPasskey, 10);
+
+    user.passkeyLookupHash = lookupHash;
     user.passkeyHash = hashed;
     user.hasPasskey = true;
     user.passkeyUpdatedAt = new Date();
@@ -283,6 +364,7 @@ authRouter.delete('/passkey', authenticate, async (req: AuthenticatedRequest, re
     }
     user.hasPasskey = false;
     user.passkeyHash = undefined;
+    user.passkeyLookupHash = undefined;
     await user.save();
     res.json({ success: true, message: 'Passkey successfully revoked' });
   } catch (err) {
@@ -316,7 +398,7 @@ async function generateUniqueCollegeCode(name: string): Promise<string> {
 // Direct email/password registration for event organizers
 authRouter.post('/register-admin', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, collegeName, university } = req.body;
+    const { name, email, password, passkey, collegeName, university } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: 'Name, email, and password are required' });
       return;
@@ -370,16 +452,41 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
       collegeId = college._id;
     }
 
+    let passkeyHash: string | undefined = undefined;
+    let passkeyLookupHash: string | undefined = undefined;
+    let hasPasskey = false;
+
+    if (passkey && String(passkey).trim().length >= 3) {
+      const cleanPasskey = String(passkey).trim();
+      passkeyLookupHash = crypto.createHmac('sha256', ENV.JWT_SECRET).update(cleanPasskey).digest('hex');
+      passkeyHash = await bcrypt.hash(cleanPasskey, 10);
+      hasPasskey = true;
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       username: uniqueUsername,
       name: name.trim(),
       email: cleanEmail,
       passwordHash,
+      passkeyHash,
+      passkeyLookupHash,
+      hasPasskey,
+      passkeyCreatedAt: hasPasskey ? new Date() : undefined,
+      passkeyUpdatedAt: hasPasskey ? new Date() : undefined,
       role: 'college_admin',
       authProvider: 'local',
       collegeId
     });
+
+    if (hasPasskey && user.email) {
+      sendPasskeyNotificationEmail({
+        to: user.email,
+        name: user.name,
+        passkeyKeyword: String(passkey).trim(),
+        isUpdate: false
+      }).catch(err => console.warn('Background email dispatch notice on register:', err));
+    }
 
     const payload: AuthPayload = {
       userId: user._id.toString(),
@@ -399,6 +506,7 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
         name: user.name,
         email: user.email,
         role: user.role,
+        hasPasskey,
         collegeId: user.collegeId
       }
     });

@@ -7,14 +7,23 @@ export interface AuthResult extends User {
   needsOnboarding?: boolean;
 }
 
+export interface PasskeyLoginDisambiguation {
+  requiresEmail: true;
+  message: string;
+  matchedCount: number;
+  maskedAccounts: { name: string; username?: string; maskedEmail: string }[];
+}
+
+export type PasskeyLoginResult = AuthResult | PasskeyLoginDisambiguation;
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<AuthResult>;
-  registerAdmin: (payload: { name: string; email: string; password: string; collegeName?: string; university?: string }) => Promise<AuthResult>;
+  registerAdmin: (payload: { name: string; email: string; password: string; passkey?: string; collegeName?: string; university?: string }) => Promise<AuthResult>;
   loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
-  loginWithPasskey: (identifier: string, passkey: string) => Promise<AuthResult>;
+  loginWithPasskey: (passkey: string, email?: string) => Promise<PasskeyLoginResult>;
   setupPasskey: (passkey: string) => Promise<{ success: boolean; message: string; hasPasskey: boolean }>;
   revokePasskey: () => Promise<void>;
   completeOnboarding: (collegeName: string, university?: string) => Promise<User>;
@@ -195,8 +204,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { user: formattedUser, event: receivedEvent };
   };
 
-  const loginWithPasskey = async (identifier: string, passkey: string): Promise<AuthResult> => {
-    const res = await api.post('/auth/passkey/login', { identifier, passkey });
+  const loginWithPasskey = async (passkey: string, email?: string): Promise<PasskeyLoginResult> => {
+    const res = await api.post('/auth/passkey/login', { passkey, email });
+    if (res.data.requiresEmail) {
+      return res.data as PasskeyLoginDisambiguation;
+    }
+
     const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
     localStorage.setItem('debugarena_token', receivedToken);
