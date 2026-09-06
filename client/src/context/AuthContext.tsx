@@ -38,12 +38,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.get('/auth/me');
       const userData = res.data.user;
+      const needsOnboarding = Boolean(
+        res.data.needsOnboarding ||
+        userData.needsOnboarding ||
+        (!userData.collegeId && userData.role !== 'participant')
+      );
       setUser({
         id: userData._id || userData.id,
         username: userData.username,
         name: userData.name,
         email: userData.email,
         role: userData.role,
+        collegeId: userData.collegeId,
+        eventId: userData.eventId,
+        needsOnboarding,
         isDisqualified: userData.isDisqualified,
         disqualificationReason: userData.disqualificationReason
       });
@@ -154,8 +162,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
+      email: receivedUser.email,
       role: receivedUser.role,
-      collegeId: receivedUser.collegeId
+      collegeId: receivedUser.collegeId,
+      needsOnboarding: false
     };
 
     setUser(formattedUser);

@@ -8,6 +8,8 @@ export interface ITestCase {
 }
 
 export interface IQuestion extends Document {
+  collegeId?: mongoose.Types.ObjectId;
+  eventId?: mongoose.Types.ObjectId;
   roundNumber: number;
   type: 'mcq' | 'coding';
   orderIndex: number;
@@ -42,6 +44,8 @@ const TestCaseSchema = new Schema<ITestCase>(
 
 const QuestionSchema = new Schema<IQuestion>(
   {
+    collegeId: { type: Schema.Types.ObjectId, ref: 'College', index: true },
+    eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     roundNumber: { type: Number, required: true, index: true },
     type: { type: String, enum: ['mcq', 'coding'], required: true },
     orderIndex: { type: Number, required: true, default: 0 },

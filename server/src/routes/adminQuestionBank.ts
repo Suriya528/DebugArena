@@ -4,6 +4,7 @@ import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { Question } from '../models/Question.js';
 import { previewVariants } from '../services/dnaService.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { seedDefaultQuestionTemplates } from '../services/defaultQuestions.js';
 
 export const adminQuestionBankRouter = Router();
 
@@ -12,6 +13,12 @@ adminQuestionBankRouter.use(authenticate, requireAnyAdmin);
 // GET /api/admin/questions/bank
 adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    // Auto-seed if question bank is currently empty
+    const totalCount = await QuestionTemplate.countDocuments();
+    if (totalCount === 0) {
+      await seedDefaultQuestionTemplates();
+    }
+
     const { topic, language, difficulty, type, search } = req.query;
     const filter: Record<string, any> = {};
 
@@ -34,6 +41,16 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     res.json({ questions, topics, languages });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch question bank' });
+  }
+});
+
+// POST /api/admin/questions/bank/seed-defaults
+adminQuestionBankRouter.post('/seed-defaults', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const seededCount = await seedDefaultQuestionTemplates();
+    res.json({ success: true, message: `Question bank initialized with ${seededCount} templates` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to seed default questions' });
   }
 });
 
@@ -139,7 +156,7 @@ adminQuestionBankRouter.post('/:templateId/preview-variants', async (req: Authen
 // POST /api/admin/questions/bank/:templateId/deploy-to-round
 adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { roundNumber } = req.body;
+    const { roundNumber, eventId } = req.body;
     if (!roundNumber) {
       res.status(400).json({ error: 'roundNumber is required' });
       return;
@@ -151,13 +168,20 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
       return;
     }
 
+    const targetEventId = eventId || req.user?.eventId;
+    const targetCollegeId = req.user?.collegeId;
+
     // Determine next order index for round
-    const maxOrder = await Question.findOne({ roundNumber }).sort({ orderIndex: -1 });
+    const orderFilter: Record<string, any> = { roundNumber };
+    if (targetEventId) orderFilter.eventId = targetEventId;
+    const maxOrder = await Question.findOne(orderFilter).sort({ orderIndex: -1 });
     const nextOrder = maxOrder ? maxOrder.orderIndex + 1 : 1;
 
     const deployedQuestion = await Question.create({
       roundNumber,
       orderIndex: nextOrder,
+      eventId: targetEventId,
+      collegeId: targetCollegeId,
       type: template.type === 'mcq' ? 'mcq' : 'coding',
       title: template.title,
       prompt: template.prompt,

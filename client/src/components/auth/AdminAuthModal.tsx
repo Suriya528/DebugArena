@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Shield,
@@ -18,11 +18,18 @@ import { useAuth } from '../../context/AuthContext.js';
 interface AdminAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialStep?: 'auth' | 'onboarding';
+  forcedOnboarding?: boolean;
 }
 
-export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose }) => {
-  const { login, registerAdmin, loginWithGoogle, completeOnboarding } = useAuth();
-  const [step, setStep] = useState<'auth' | 'onboarding'>('auth');
+export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
+  isOpen,
+  onClose,
+  initialStep = 'auth',
+  forcedOnboarding = false
+}) => {
+  const { user, login, registerAdmin, loginWithGoogle, completeOnboarding } = useAuth();
+  const [step, setStep] = useState<'auth' | 'onboarding'>(initialStep);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +52,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
   // Reset state on modal open/close
   useEffect(() => {
     if (isOpen) {
-      setStep('auth');
+      setStep(initialStep);
       setError(null);
       setLoading(false);
       setFullName('');
@@ -54,10 +61,10 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
       setCollegeName('');
       setUniversity('');
       setShowPassword(false);
-      setAuthenticatedUserName('');
-      setAuthenticatedUserEmail('');
+      setAuthenticatedUserName(user?.name || user?.username || '');
+      setAuthenticatedUserEmail(user?.email || '');
     }
-  }, [isOpen]);
+  }, [isOpen, initialStep, user]);
 
   // Initialize and render Google Identity Services button
   useEffect(() => {
@@ -214,20 +221,29 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+      onClick={e => {
+        if (!forcedOnboarding && e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div className="relative w-full max-w-md bg-[#0c1220] border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* Subtle ambient lighting */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer"
-          aria-label="Close dialog"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {!forcedOnboarding && (
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer"
+            aria-label="Close dialog"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
 
         {/* ========================================================= */}
         {/* STEP 1: AUTHENTICATION (SIGN IN / CREATE ACCOUNT)         */}

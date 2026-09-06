@@ -90,6 +90,20 @@ export const EventManager: React.FC = () => {
     }
   };
 
+  const handleEventCreated = async (createdEvent?: any) => {
+    try {
+      const fetchedEvents = await getEvents(selectedCollegeId || undefined);
+      setEvents(fetchedEvents);
+      const targetId = createdEvent?._id || fetchedEvents[0]?._id;
+      if (targetId) {
+        await handleSelectEvent(targetId);
+      }
+    } catch (err) {
+      console.error('Failed to switch to newly created event:', err);
+      fetchData();
+    }
+  };
+
   const handleToggleFreeze = async () => {
     if (!activeEvent) return;
 
@@ -499,7 +513,7 @@ export const EventManager: React.FC = () => {
         isOpen={isEventModalOpen}
         onClose={() => setIsEventModalOpen(false)}
         colleges={colleges}
-        onEventCreated={fetchData}
+        onEventCreated={handleEventCreated}
         onCollegeCreated={fetchData}
       />
 

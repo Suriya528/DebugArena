@@ -3,11 +3,13 @@ import { authenticate, requireAnyAdmin, requireRole, AuthenticatedRequest } from
 import { College } from '../models/College.js';
 import { Event } from '../models/Event.js';
 import { DynamicRound } from '../models/DynamicRound.js';
+import { Competition } from '../models/Competition.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { CleanupAudit } from '../models/CleanupAudit.js';
 import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
 import { finalizeEvent, setRetentionHold } from '../services/lifecycleService.js';
 import { executeCleanupJob } from '../services/cleanupEngine.js';
+import { seedEventRoundQuestions } from '../services/defaultQuestions.js';
 
 export const adminEventRouter = Router();
 
@@ -154,16 +156,17 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    const existing = await Event.findOne({ collegeId: effectiveCollegeId, code: code.toUpperCase().trim() });
+    const cleanCode = code.toUpperCase().trim();
+    const existing = await Event.findOne({ code: cleanCode });
     if (existing) {
-      res.status(400).json({ error: `Event with code ${code} already exists for this college` });
+      res.status(400).json({ error: `Event with code '${cleanCode}' already exists. Please choose a unique code.` });
       return;
     }
 
     const event = await Event.create({
       collegeId: effectiveCollegeId,
       name: name.trim(),
-      code: code.toUpperCase().trim(),
+      code: cleanCode,
       description: description || '',
       bannerUrl: bannerUrl || '',
       status: 'ready',
@@ -228,7 +231,12 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       }
 
       // Final round always has quota 0 (championship round)
-      const resolvedQuota = isFinalRound ? 0 : (r.advancementQuota !== undefined ? r.advancementQuota : 10);
+      const resolvedQuota = isFinalRound ? 0 : (r.advancementQuota !== undefined ? Math.max(0, parseInt(r.advancementQuota, 10) || 10) : 10);
+      const resolvedDuration = Math.max(1, parseInt(r.durationMinutes, 10) || 30);
+      const resolvedQuestionCount = Math.max(1, parseInt(r.questionCount, 10) || 5);
+      const resolvedTotalMarks = Math.max(1, parseInt(r.totalMarks, 10) || 100);
+      const resolvedPassingMarks = Math.max(0, parseInt(r.passingMarks, 10) || 0);
+      const resolvedNegativeMarkValue = Math.max(0, parseFloat(r.negativeMarkValue) || 0);
 
       const newRound = await DynamicRound.create({
         eventId: event._id,
@@ -236,11 +244,11 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
         title: r.title || `Round ${sequentialRoundNum}`,
         description: r.description || '',
         type: r.type || 'debugging',
-        durationMinutes: r.durationMinutes || 30,
-        questionCount: r.questionCount || 5,
-        totalMarks: r.totalMarks || 100,
-        passingMarks: r.passingMarks || 0,
-        negativeMarkValue: r.negativeMarkValue || 0,
+        durationMinutes: resolvedDuration,
+        questionCount: resolvedQuestionCount,
+        totalMarks: resolvedTotalMarks,
+        passingMarks: resolvedPassingMarks,
+        negativeMarkValue: resolvedNegativeMarkValue,
         allowedLanguages: resolvedLanguages,
         advancementQuota: resolvedQuota,
         advancementRule: r.advancementRule || 'top_n',
@@ -251,11 +259,49 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       createdRounds.push(newRound);
     }
 
-    await recordAudit(req, 'EVENT_CREATED', 'Event', event._id.toString(), { name, code, roundsCount: createdRounds.length }, '', collegeId, event._id);
+    // Auto-seed standard curated questions for this event's rounds (Round 1 MCQs, Round 2 Coding, Round 3 Coding, Tie-Breaker)
+    await seedEventRoundQuestions(event._id, effectiveCollegeId);
+
+    // Keep Competition model in sync with latest event
+    await Competition.findOneAndUpdate(
+      {},
+      {
+        title: event.name,
+        currentRoundNumber: 1,
+        status: 'active',
+        violationLimit: event.scoringConfig?.violationLimit || 3,
+        autoSubmitOnViolation: true
+      },
+      { upsert: true }
+    );
+
+    await recordAudit(req, 'EVENT_CREATED', 'Event', event._id.toString(), { name, code: cleanCode, roundsCount: createdRounds.length }, '', effectiveCollegeId, event._id);
     res.status(201).json({ event, rounds: createdRounds });
   } catch (err: any) {
     console.error('Error creating event:', err);
     res.status(500).json({ error: 'Failed to create dynamic event' });
+  }
+});
+
+// POST /api/admin/events/:eventId/populate-round-questions
+adminEventRouter.post('/:eventId/populate-round-questions', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const seededStats = await seedEventRoundQuestions(event._id, event.collegeId);
+    res.json({
+      success: true,
+      message: `Standard questions populated for event: R1=${seededStats.r1Count}, R2=${seededStats.r2Count}, R3=${seededStats.r3Count}`,
+      stats: seededStats
+    });
+  } catch (err: any) {
+    console.error('Error populating event round questions:', err);
+    res.status(500).json({ error: 'Failed to populate round questions' });
   }
 });
 

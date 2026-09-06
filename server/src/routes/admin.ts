@@ -739,11 +739,56 @@ adminRouter.post('/participants/:id/reset-attempt', async (req: AuthenticatedReq
 adminRouter.get('/questions', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = req.query.roundNumber ? parseInt(req.query.roundNumber as string, 10) : undefined;
-    const filter = roundNumber ? { roundNumber } : {};
-    const questions = await Question.find(filter).sort({ roundNumber: 1, orderIndex: 1 });
+    const eventId = req.query.eventId as string | undefined;
+
+    const filter: Record<string, any> = {};
+    if (roundNumber) filter.roundNumber = roundNumber;
+    if (eventId) {
+      filter.$or = [{ eventId }, { eventId: null }, { eventId: { $exists: false } }];
+    }
+
+    let questions = await Question.find(filter).sort({ roundNumber: 1, orderIndex: 1 });
+    if (questions.length === 0 && roundNumber) {
+      questions = await Question.find({ roundNumber }).sort({ orderIndex: 1 });
+    }
+
     res.json({ questions });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch questions' });
+  }
+});
+
+// POST /api/admin/questions/seed-round
+adminRouter.post('/questions/seed-round', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { roundNumber, eventId } = req.body;
+    if (!roundNumber) {
+      res.status(400).json({ error: 'roundNumber is required' });
+      return;
+    }
+
+    const { DEFAULT_ROUND_1_MCQS, DEFAULT_ROUND_2_CODING, DEFAULT_ROUND_3_CODING, DEFAULT_TIE_BREAKER_QUESTION } = await import('../services/defaultQuestions.js');
+    let sourceQuestions: any[] = [];
+    if (roundNumber === 1) sourceQuestions = DEFAULT_ROUND_1_MCQS;
+    else if (roundNumber === 2) sourceQuestions = DEFAULT_ROUND_2_CODING;
+    else if (roundNumber === 3) sourceQuestions = DEFAULT_ROUND_3_CODING;
+    else if (roundNumber === 99) sourceQuestions = [DEFAULT_TIE_BREAKER_QUESTION];
+
+    const targetEventId = eventId || req.user?.eventId;
+    const targetCollegeId = req.user?.collegeId;
+
+    const created = await Question.create(
+      sourceQuestions.map(q => ({
+        ...q,
+        roundNumber,
+        eventId: targetEventId,
+        collegeId: targetCollegeId
+      }))
+    );
+
+    res.json({ success: true, count: created.length, questions: created });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to seed round questions' });
   }
 });
 

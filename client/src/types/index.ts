@@ -18,6 +18,7 @@ export interface User {
   department?: string;
   year?: string;
   regNo?: string;
+  needsOnboarding?: boolean;
   isDisqualified?: boolean;
   disqualificationReason?: string;
 }

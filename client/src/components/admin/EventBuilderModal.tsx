@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { College } from '../../types/index.js';
 import { createEvent, createCollege } from '../../services/api.js';
+import { useAuth } from '../../context/AuthContext.js';
 
 interface PipelineRoundConfig {
   id: string;
@@ -42,7 +43,7 @@ interface EventBuilderModalProps {
   isOpen: boolean;
   onClose: () => void;
   colleges: College[];
-  onEventCreated: () => void;
+  onEventCreated: (createdEvent?: any) => void;
   onCollegeCreated: () => void;
 }
 
@@ -62,15 +63,33 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   onEventCreated,
   onCollegeCreated
 }) => {
-  const [collegeId, setCollegeId] = useState<string>(colleges[0]?._id || '');
+  const { user } = useAuth();
+  const defaultColId = user?.collegeId || colleges[0]?._id || '';
+  const [collegeId, setCollegeId] = useState<string>(defaultColId);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!collegeId && colleges.length > 0) {
-      setCollegeId(colleges[0]._id);
+    if (!collegeId) {
+      const resolved = user?.collegeId || colleges[0]?._id || '';
+      if (resolved) setCollegeId(resolved);
     }
-  }, [colleges, collegeId]);
+  }, [colleges, user, collegeId]);
+
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+
+  const handleGenerateCode = () => {
+    const cleanName = (name.trim() || 'DEBUG').toUpperCase().replace(/[^A-Z0-9\s]/g, '');
+    const words = cleanName.split(/\s+/).filter(Boolean);
+    let prefix = 'DBG';
+    if (words.length >= 2) {
+      prefix = words.map(w => w[0]).join('').slice(0, 4);
+    } else if (words.length === 1) {
+      prefix = words[0].slice(0, 4);
+    }
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    setCode(`${prefix}-${randomSuffix}`);
+  };
   const [description, setDescription] = useState('');
   const [negativeMarking, setNegativeMarking] = useState(false);
   const [violationLimit, setViolationLimit] = useState(3);
@@ -408,26 +427,37 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!collegeId || !name || !code) {
-      alert('Please fill in College, Event Name, and Event Code');
+    setErrorBanner(null);
+
+    const effectiveCollegeId = collegeId || user?.collegeId || colleges[0]?._id;
+    if (!effectiveCollegeId) {
+      setErrorBanner('Please select or bind a host college institution.');
+      return;
+    }
+    if (!name.trim()) {
+      setErrorBanner('Please provide a tournament event name.');
+      return;
+    }
+    if (!code.trim()) {
+      setErrorBanner('Please provide a unique tournament event code (e.g. DX26).');
       return;
     }
 
     if (rounds.length === 0) {
-      alert('Please configure at least one round in the tournament pipeline');
+      setErrorBanner('Please configure at least one round in the tournament pipeline.');
       return;
     }
 
-    // Validate languages for coding/debugging rounds (Flaw 5 fix)
+    // Validate languages for coding/debugging rounds
     for (const r of rounds) {
       if ((r.type === 'coding' || r.type === 'debugging') && (!r.allowedLanguages || r.allowedLanguages.length === 0)) {
-        alert(`Round ${r.roundNumber} (${r.title}) requires at least one allowed programming language.`);
+        setErrorBanner(`Round ${r.roundNumber} (${r.title}) requires at least one allowed programming language.`);
         setExpandedRoundId(r.id);
         return;
       }
     }
 
-    // Validate quota progression (Flaw 2 fix)
+    // Validate quota progression
     for (let i = 0; i < rounds.length - 1; i++) {
       const currentQuota = rounds[i].advancementQuota;
       const nextQuota = rounds[i + 1].advancementQuota;
@@ -442,58 +472,58 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      await createEvent({
-        collegeId,
-        name,
-        code,
-        description,
+      const res = await createEvent({
+        collegeId: effectiveCollegeId,
+        name: name.trim(),
+        code: code.trim().toUpperCase(),
+        description: description.trim(),
         rules,
         scoringConfig: {
           negativeMarking,
-          violationLimit,
+          violationLimit: Math.max(1, violationLimit || 3),
           autoSubmitOnTimeUp: true,
           autoSubmitOnViolation: true,
           tieBreakerPriority: ['codingScore', 'debuggingScore', 'totalTime', 'earliestSubmit']
         },
         branding: {
-          customTitle: customTitle || `${name} Live Championship`,
-          certificateTitle: certificateTitle || `Certificate of Achievement — ${name}`,
-          signatoryName: certSignatoryName,
-          signatoryTitle: certSignatoryTitle
+          customTitle: customTitle.trim() || `${name.trim()} Live Championship`,
+          certificateTitle: certificateTitle.trim() || `Certificate of Achievement — ${name.trim()}`,
+          signatoryName: certSignatoryName.trim(),
+          signatoryTitle: certSignatoryTitle.trim()
         },
         certificateConfig: {
           enabled: enableCertificates,
           useDefaultTemplate: useDefaultCertTemplate,
           customTemplateUrl: enableCertificates ? customCertTemplateUrl.trim() : '',
           textColorMode: certTextColorMode,
-          issuerName: certSignatoryName,
-          issuerTitle: certSignatoryTitle,
+          issuerName: certSignatoryName.trim(),
+          issuerTitle: certSignatoryTitle.trim(),
           primaryColor: '#f59e0b',
           includeQrVerification: enableCertificates
         },
         initialRounds: rounds.map((r, idx) => ({
           roundNumber: idx + 1,
-          title: r.title,
-          description: r.description,
+          title: r.title?.trim() || `Round ${idx + 1}`,
+          description: r.description?.trim() || '',
           type: r.type,
-          durationMinutes: r.durationMinutes,
-          questionCount: r.questionCount,
-          totalMarks: r.totalMarks,
-          passingMarks: r.passingMarks,
-          negativeMarkValue: r.negativeMarkValue,
+          durationMinutes: Math.max(1, parseInt(String(r.durationMinutes), 10) || 15),
+          questionCount: Math.max(1, parseInt(String(r.questionCount), 10) || 5),
+          totalMarks: Math.max(1, parseInt(String(r.totalMarks), 10) || 100),
+          passingMarks: Math.max(0, parseInt(String(r.passingMarks), 10) || 0),
+          negativeMarkValue: Math.max(0, parseFloat(String(r.negativeMarkValue)) || 0),
           allowedLanguages: (r.type === 'coding' || r.type === 'debugging')
-            ? r.allowedLanguages
+            ? (r.allowedLanguages && r.allowedLanguages.length > 0 ? r.allowedLanguages : ['python', 'cpp', 'java', 'c', 'javascript'])
             : (r.type === 'sql' ? ['sql'] : []),
-          advancementQuota: idx === rounds.length - 1 ? 0 : r.advancementQuota,
+          advancementQuota: idx === rounds.length - 1 ? 0 : Math.max(0, parseInt(String(r.advancementQuota), 10) || 10),
           advancementRule: 'top_n',
-          tieResolutionStrategy: r.tieResolutionStrategy
+          tieResolutionStrategy: r.tieResolutionStrategy || 'expand'
         }))
       });
 
-      onEventCreated();
+      onEventCreated(res.event);
       onClose();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to create event');
+      setErrorBanner(err.response?.data?.error || 'Failed to create tournament event');
     } finally {
       setIsSubmitting(false);
     }
@@ -527,6 +557,14 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Prominent Error Banner */}
+        {errorBanner && (
+          <div className="mb-6 p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-3 animate-in fade-in">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            <span>{errorBanner}</span>
+          </div>
+        )}
 
         {/* Inline New College Creation */}
         {showNewCollegeForm && colleges.length > 1 ? (
@@ -653,13 +691,22 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">Event Code</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-300">Event Code</label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateCode}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Zap className="w-3 h-3" /> Auto
+                  </button>
+                </div>
                 <input
                   type="text"
                   placeholder="e.g. DX26"
                   value={code}
                   onChange={e => setCode(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
                   required
                 />
               </div>

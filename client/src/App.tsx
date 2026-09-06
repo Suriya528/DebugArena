@@ -21,6 +21,7 @@ import { EventManager } from './components/admin/EventManager.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
 import { LandingPage } from './components/home/LandingPage.js';
+import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -307,10 +308,10 @@ export const App: React.FC = () => {
     return <LandingPage />;
   }
 
-  // 2. Admin Dashboard Application (Available to all admin roles)
   if (user.role !== 'participant') {
+    const isNeedsOnboarding = Boolean(user.needsOnboarding || !user.collegeId);
     return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col">
+      <div className="min-h-screen bg-[#090d16] flex flex-col relative">
         <Navbar />
         <AdminNav activeTab={adminTab} onTabChange={setAdminTab} />
         <main className="flex-1">
@@ -323,6 +324,16 @@ export const App: React.FC = () => {
           {adminTab === 'tiebreak' && <TieBreakManager />}
           {adminTab === 'leaderboard' && <LeaderboardView />}
         </main>
+
+        {/* Persistent Onboarding Modal for Admins without assigned College/University */}
+        {isNeedsOnboarding && (
+          <AdminAuthModal
+            isOpen={true}
+            onClose={() => {}}
+            initialStep="onboarding"
+            forcedOnboarding={true}
+          />
+        )}
       </div>
     );
   }

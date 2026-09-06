@@ -65,11 +65,13 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
         id: user._id,
         username: user.username,
         name: user.name,
+        email: user.email,
         role: user.role,
         collegeId: user.collegeId,
         eventId: user.eventId,
         department: user.department,
-        regNo: user.regNo
+        regNo: user.regNo,
+        needsOnboarding
       }
     });
   } catch (err: any) {
@@ -86,7 +88,24 @@ authRouter.get('/me', authenticate, async (req: AuthenticatedRequest, res: Respo
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    res.json({ user });
+    const needsOnboarding = !user.collegeId && user.role !== 'participant';
+    res.json({
+      needsOnboarding,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        collegeId: user.collegeId,
+        eventId: user.eventId,
+        department: user.department,
+        regNo: user.regNo,
+        needsOnboarding,
+        isDisqualified: user.isDisqualified,
+        disqualificationReason: user.disqualificationReason
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: 'Server error fetching profile' });
   }
@@ -392,7 +411,8 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
         email: user.email,
         role: user.role,
         collegeId: user.collegeId,
-        eventId: user.eventId
+        eventId: user.eventId,
+        needsOnboarding
       }
     });
   } catch (err: any) {
