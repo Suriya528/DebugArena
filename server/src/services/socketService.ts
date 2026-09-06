@@ -8,9 +8,14 @@ let io: SocketIOServer | null = null;
 const onlineUsers = new Map<string, { socketId: string; user: AuthPayload; currentRound?: number; lastActive: Date }>();
 
 export function initSocketIO(httpServer: HttpServer): SocketIOServer {
+  const allowedOrigins = ENV.NODE_ENV === 'production'
+    ? (ENV.CLIENT_ORIGINS.length === 1 ? ENV.CLIENT_ORIGINS[0] : ENV.CLIENT_ORIGINS)
+    : '*';
+
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: '*',
+      origin: allowedOrigins,
+      credentials: true,
       methods: ['GET', 'POST']
     }
   });

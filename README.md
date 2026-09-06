@@ -191,6 +191,9 @@ npm run client
 The project includes an end-to-end automated testing suite covering all architectural layers:
 
 ```bash
+# Production Database, Seeding Guards & Rate Limiting Verification
+npx --prefix server tsx src/scripts/verify_production_hardening.ts
+
 # Zero-Flaw Architectural Hardening & Multi-Subsystem Integrity (34/34 tests)
 npx --prefix server tsx src/scripts/verify_architectural_hardening.ts
 

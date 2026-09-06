@@ -12,6 +12,11 @@ export async function connectDB(): Promise<void> {
     let uri = ENV.MONGODB_URI;
 
     if (!uri) {
+      if (ENV.NODE_ENV === 'production') {
+        throw new Error(
+          '[FATAL] In-memory database (MongoMemoryServer) is strictly disabled in production. A persistent MONGODB_URI is required.'
+        );
+      }
       console.log('⚡ No external MONGODB_URI specified. Starting MongoMemoryServer for standalone zero-config storage...');
       mongod = await MongoMemoryServer.create({
         instance: {
@@ -22,8 +27,16 @@ export async function connectDB(): Promise<void> {
       console.log(`📦 Embedded MongoDB initialized at: ${uri}`);
     }
 
-    await mongoose.connect(uri, { dbName: 'debugarena' });
-    console.log('✅ Connected to MongoDB successfully (dbName: debugarena).');
+    const options: mongoose.ConnectOptions = {
+      dbName: 'debugarena',
+      maxPoolSize: 50,
+      minPoolSize: 5,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000
+    };
+
+    await mongoose.connect(uri, options);
+    console.log('✅ Connected to MongoDB successfully (dbName: debugarena, maxPoolSize: 50).');
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error);
     process.exit(1);
