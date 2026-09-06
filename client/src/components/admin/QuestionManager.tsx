@@ -20,7 +20,8 @@ import {
   Calendar,
   ArrowRight,
   Filter,
-  Check
+  Check,
+  Database
 } from 'lucide-react';
 import { Question, Event, DynamicRound } from '../../types/index.js';
 import { api, getEvents, getEventDetails } from '../../services/api.js';
@@ -46,11 +47,16 @@ export const QuestionManager: React.FC = () => {
   const [populatingAll, setPopulatingAll] = useState<boolean>(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Question bank state
+  // Question bank state & filters (Multiple choices, Coding, SQL, Debugging, Aptitude)
   const [bankQuestions, setBankQuestions] = useState<any[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>('');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('');
+  const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
+  const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const [countsByType, setCountsByType] = useState<Record<string, number>>({});
+  const [totalBankCount, setTotalBankCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [bankLoading, setBankLoading] = useState<boolean>(false);
   const [seedingBank, setSeedingBank] = useState<boolean>(false);
@@ -124,15 +130,19 @@ export const QuestionManager: React.FC = () => {
   const fetchQuestionBank = async () => {
     try {
       setBankLoading(true);
-      const res = await api.get('/admin/questions/bank', {
-        params: {
-          topic: selectedTopic || undefined,
-          difficulty: selectedDifficulty || undefined,
-          search: searchQuery || undefined
-        }
-      });
+      const params: Record<string, any> = {};
+      if (selectedTopic) params.topic = selectedTopic;
+      if (selectedDifficulty) params.difficulty = selectedDifficulty;
+      if (selectedType) params.type = selectedType;
+      if (selectedLanguage) params.language = selectedLanguage;
+      if (searchQuery) params.search = searchQuery;
+
+      const res = await api.get('/admin/questions/bank', { params });
       setBankQuestions(res.data.questions || []);
       setTopics(res.data.topics || []);
+      if (res.data.languages) setAvailableLanguages(res.data.languages || []);
+      if (res.data.countsByType) setCountsByType(res.data.countsByType || {});
+      if (res.data.totalCount !== undefined) setTotalBankCount(res.data.totalCount);
     } catch (err) {
       console.error('Failed to load question bank:', err);
     } finally {
@@ -147,7 +157,7 @@ export const QuestionManager: React.FC = () => {
     } else {
       fetchQuestionBank();
     }
-  }, [activeView, selectedRound, selectedEventId, selectedTopic, selectedDifficulty]);
+  }, [activeView, selectedRound, selectedEventId, selectedTopic, selectedDifficulty, selectedType, selectedLanguage]);
 
   // Seed single round questions
   const handleSeedRoundQuestions = async (roundNum: number = selectedRound) => {
@@ -338,10 +348,50 @@ export const QuestionManager: React.FC = () => {
             </div>
           </div>
 
+          {/* Category Navigation Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-800">
+            {[
+              { id: '', label: 'All Questions', icon: BookOpen, activeCls: 'bg-purple-600/20 text-purple-300 border-purple-500/50' },
+              { id: 'mcq', label: 'Multiple Choices (MCQ)', icon: CheckCircle2, activeCls: 'bg-emerald-600/20 text-emerald-300 border-emerald-500/50' },
+              { id: 'coding', label: 'Coding Challenges', icon: Code2, activeCls: 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50' },
+              { id: 'sql', label: 'SQL & Database Queries', icon: Database, activeCls: 'bg-amber-600/20 text-amber-300 border-amber-500/50' },
+              { id: 'debugging', label: 'Bug Hunting & Debugging', icon: AlertOctagon, activeCls: 'bg-rose-600/20 text-rose-300 border-rose-500/50' },
+              { id: 'aptitude', label: 'Aptitude & Logic', icon: Sparkles, activeCls: 'bg-cyan-600/20 text-cyan-300 border-cyan-500/50' }
+            ].map(cat => {
+              const Icon = cat.icon;
+              const isActive = selectedType === cat.id;
+              const count = cat.id === ''
+                ? (totalBankCount || bankQuestions.length)
+                : (countsByType[cat.id] || 0);
+
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedType(cat.id)}
+                  className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 cursor-pointer border ${
+                    isActive
+                      ? `${cat.activeCls} shadow-md`
+                      : 'bg-slate-900/60 hover:bg-slate-800/80 text-slate-400 hover:text-white border-slate-800'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{cat.label}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                      isActive ? 'bg-white/10 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Filters & Search Toolbar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
             <div className="flex items-center gap-2 w-full sm:w-80 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
-              <Search className="w-4 h-4 text-slate-500" />
+              <Search className="w-4 h-4 text-slate-500 shrink-0" />
               <input
                 type="text"
                 placeholder="Search titles, prompt, or skill tags..."
@@ -352,7 +402,24 @@ export const QuestionManager: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto">
+              <select
+                value={selectedLanguage}
+                onChange={e => setSelectedLanguage(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none cursor-pointer"
+              >
+                <option value="">All Languages</option>
+                {availableLanguages.length > 0 ? (
+                  availableLanguages.map(l => (
+                    <option key={l} value={l}>{l.toUpperCase()}</option>
+                  ))
+                ) : (
+                  ['python', 'sql', 'java', 'cpp', 'javascript', 'c'].map(l => (
+                    <option key={l} value={l}>{l.toUpperCase()}</option>
+                  ))
+                )}
+              </select>
+
               <select
                 value={selectedTopic}
                 onChange={e => setSelectedTopic(e.target.value)}
@@ -419,15 +486,36 @@ export const QuestionManager: React.FC = () => {
                   <div>
                     {/* Badges */}
                     <div className="flex flex-wrap items-center gap-2 mb-3">
+                      {item.type === 'mcq' ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                          <CheckCircle2 className="w-3 h-3" /> MCQ
+                        </span>
+                      ) : item.type === 'sql' ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 font-mono">
+                          <Database className="w-3 h-3" /> SQL Query
+                        </span>
+                      ) : item.type === 'coding' ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center gap-1 font-mono">
+                          <Code2 className="w-3 h-3" /> Coding
+                        </span>
+                      ) : item.type === 'aptitude' ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 font-mono">
+                          <Sparkles className="w-3 h-3" /> Aptitude
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1 font-mono">
+                          <AlertOctagon className="w-3 h-3" /> Bug Hunting
+                        </span>
+                      )}
+
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300">
                         {item.topic}
                       </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                        {item.language}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono">
-                        {item.type}
-                      </span>
+                      {item.language && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                          {item.language}
+                        </span>
+                      )}
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           item.difficulty === 'easy'
@@ -454,7 +542,69 @@ export const QuestionManager: React.FC = () => {
                     <h3 className="text-base font-black text-white mb-2 group-hover:text-indigo-300 transition-colors">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed font-sans">{item.prompt}</p>
+                    <p className="text-xs text-slate-400 line-clamp-2 mb-3 leading-relaxed font-sans">{item.prompt}</p>
+
+                    {/* MCQ Options Preview */}
+                    {item.type === 'mcq' && item.options && item.options.length > 0 && (
+                      <div className="my-3 p-3 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Multiple Choice Options:
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {item.options.slice(0, 4).map((opt: any, optIdx: number) => (
+                            <div
+                              key={optIdx}
+                              className={`text-[11px] px-2.5 py-1.5 rounded-xl flex items-center gap-2 border font-mono ${
+                                opt.isCorrect
+                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 font-semibold'
+                                  : 'bg-slate-900/60 text-slate-400 border-slate-800/80'
+                              }`}
+                            >
+                              <span
+                                className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                                  opt.isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {String.fromCharCode(65 + optIdx)}
+                              </span>
+                              <span className="truncate flex-1">{opt.text}</span>
+                              {opt.isCorrect && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SQL Starter Query / Schema Preview */}
+                    {item.type === 'sql' && item.starterCode && (
+                      <div className="my-3 p-3 rounded-2xl bg-slate-950/70 border border-amber-500/20 font-mono">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1.5 flex items-center gap-1">
+                          <Database className="w-3 h-3" /> Initial SQL Schema / Query Template:
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-amber-200/90 leading-relaxed overflow-x-auto max-h-24">
+                          <pre className="whitespace-pre-wrap font-mono">
+                            {typeof item.starterCode === 'object'
+                              ? (item.starterCode.sql || Object.values(item.starterCode)[0] || '')
+                              : item.starterCode}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Coding / Debugging Test Cases Preview */}
+                    {(item.type === 'coding' || item.type === 'debugging') && item.testCases && item.testCases.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-400 my-2.5">
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-1">
+                          <Code2 className="w-3 h-3 text-indigo-400" />
+                          {item.testCases.length} Test Case{item.testCases.length > 1 ? 's' : ''} ({item.testCases.filter((tc: any) => tc.isHidden).length} hidden)
+                        </span>
+                        {item.allowedLanguages && item.allowedLanguages.length > 0 && (
+                          <span className="text-slate-500">
+                            Allowed: {item.allowedLanguages.slice(0, 4).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Skill Tags */}
                     {item.skillTags?.length > 0 && (

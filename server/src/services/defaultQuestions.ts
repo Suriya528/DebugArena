@@ -1053,15 +1053,316 @@ print([f(1) for f in funcs])
       { input: '5\n1 2 4 6 10\n8', output: 'YES', isHidden: false, weight: 15 },
       { input: '4\n1 3 5 9\n11', output: 'NO', isHidden: false, weight: 15 }
     ]
+  },
+  // ==========================================
+  // SQL & DATABASE CHALLENGES (type: 'sql')
+  // ==========================================
+  {
+    title: 'Second Highest Salary (SQL Offset & Subqueries)',
+    topic: 'SQL',
+    language: 'sql',
+    type: 'sql' as const,
+    difficulty: 'easy' as const,
+    expectedSolveTimeMinutes: 10,
+    marks: 20,
+    skillTags: ['SQL', 'Aggregate', 'DISTINCT', 'LIMIT OFFSET', 'Subqueries'],
+    prompt: `Write an SQL query to report the second highest distinct salary from the \`Employee\` table. If there is no second highest salary, the query should report \`null\`.\n\n\`\`\`sql\nCREATE TABLE Employee (\n  id INT PRIMARY KEY,\n  salary INT\n);\n\`\`\``,
+    hasDnaMutation: false,
+    testCases: [
+      { input: 'Employee: [(1, 100), (2, 200), (3, 300)]', output: 'SecondHighestSalary: 200', isHidden: false, weight: 10 },
+      { input: 'Employee: [(1, 100)]', output: 'SecondHighestSalary: null', isHidden: false, weight: 10 }
+    ]
+  },
+  {
+    title: 'Duplicate Emails Detection (SQL Aggregate Filtering)',
+    topic: 'SQL',
+    language: 'sql',
+    type: 'sql' as const,
+    difficulty: 'easy' as const,
+    expectedSolveTimeMinutes: 10,
+    marks: 20,
+    skillTags: ['SQL', 'GROUP BY', 'HAVING', 'Aggregations'],
+    prompt: `Write an SQL query to report all the duplicate emails in a table named \`Person\`.\n\n\`\`\`sql\nCREATE TABLE Person (\n  id INT PRIMARY KEY,\n  email VARCHAR(255)\n);\n\`\`\``,
+    hasDnaMutation: false,
+    testCases: [
+      { input: 'Person: [(1, a@b.com), (2, c@d.com), (3, a@b.com)]', output: 'email: a@b.com', isHidden: false, weight: 20 }
+    ]
+  },
+  {
+    title: 'Customers Who Never Order (SQL Left Outer Joins)',
+    topic: 'SQL',
+    language: 'sql',
+    type: 'sql' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 15,
+    marks: 25,
+    skillTags: ['SQL', 'LEFT JOIN', 'IS NULL', 'Foreign Keys'],
+    prompt: `Write an SQL query to find all customers who never placed any orders.\n\n\`\`\`sql\nCustomers (id INT, name VARCHAR(50))\nOrders (id INT, customerId INT REFERENCES Customers(id))\n\`\`\``,
+    hasDnaMutation: false,
+    testCases: [
+      { input: 'Customers: [Joe, Henry, Sam, Max]; Orders: [customerId 3, customerId 1]', output: 'Customers: Henry, Max', isHidden: false, weight: 25 }
+    ]
+  },
+  {
+    title: 'Consecutive Logins & Active Streak (SQL Window Lead/Lag)',
+    topic: 'SQL',
+    language: 'sql',
+    type: 'sql' as const,
+    difficulty: 'hard' as const,
+    expectedSolveTimeMinutes: 25,
+    marks: 35,
+    skillTags: ['SQL', 'Window Functions', 'LEAD', 'LAG', 'Date Arithmetic'],
+    prompt: `Write an SQL query to find all distinct user IDs who logged into the competition portal for at least 3 consecutive days using \`LEAD()\` or \`LAG()\` window functions.\n\n\`\`\`sql\nCREATE TABLE UserLogins (\n  id INT,\n  userId INT,\n  loginDate DATE\n);\n\`\`\``,
+    hasDnaMutation: false,
+    testCases: [
+      { input: 'UserLogins (10 records across users 101, 102, 103)', output: 'userId: 101', isHidden: false, weight: 35 }
+    ]
+  },
+  {
+    title: 'Department Highest Salary (SQL Grouping & Joins)',
+    topic: 'SQL',
+    language: 'sql',
+    type: 'sql' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 15,
+    marks: 25,
+    skillTags: ['SQL', 'JOIN', 'MAX()', 'Subqueries', 'Group Aggregation'],
+    prompt: `Write an SQL query to find employees who have the highest salary in each of the departments.\n\n\`\`\`sql\nEmployee (id INT, name VARCHAR, salary INT, departmentId INT)\nDepartment (id INT, name VARCHAR)\n\`\`\``,
+    hasDnaMutation: false,
+    testCases: [
+      { input: 'IT: [Max $90k, Joe $85k]; Sales: [Henry $80k, Sam $60k]', output: 'IT: Max ($90k), Sales: Henry ($80k)', isHidden: false, weight: 25 }
+    ]
+  },
+
+  // ==========================================
+  // CODING CHALLENGES (type: 'coding')
+  // ==========================================
+  {
+    title: 'Longest Substring Without Repeating Characters (Sliding Window)',
+    topic: 'Algorithms',
+    language: 'python',
+    type: 'coding' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 20,
+    marks: 30,
+    skillTags: ['Sliding Window', 'Strings', 'Hash Map', 'Two Pointers'],
+    prompt: 'Given a string `s`, find the length of the longest substring without duplicate characters using an optimal $O(N)$ sliding window approach.',
+    hasDnaMutation: false,
+    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    starterCode: {
+      python: `def lengthOfLongestSubstring(s: str) -> int:\n    # Write optimal O(N) sliding window logic\n    pass`,
+      javascript: `function lengthOfLongestSubstring(s) {\n    // Write optimal O(N) sliding window logic\n}`,
+      java: `class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        // Write optimal O(N) sliding window logic\n        return 0;\n    }\n}`,
+      cpp: `class Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        // Write optimal O(N) sliding window logic\n        return 0;\n    }\n};`
+    },
+    testCases: [
+      { input: 'abcabcbb', output: '3', isHidden: false, weight: 10 },
+      { input: 'bbbbb', output: '1', isHidden: false, weight: 10 },
+      { input: 'pwwkew', output: '3', isHidden: false, weight: 10 }
+    ]
+  },
+  {
+    title: 'Merge Overlapping Intervals (Array Scheduling)',
+    topic: 'Algorithms',
+    language: 'python',
+    type: 'coding' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 20,
+    marks: 30,
+    skillTags: ['Intervals', 'Sorting', 'Greedy Algorithms'],
+    prompt: 'Given an array of `intervals` where `intervals[i] = [start_i, end_i]`, merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all the intervals in the input.',
+    hasDnaMutation: false,
+    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    starterCode: {
+      python: `def merge(intervals: list[list[int]]) -> list[list[int]]:\n    # Sort intervals and merge in O(N log N)\n    pass`
+    },
+    testCases: [
+      { input: '[[1,3],[2,6],[8,10],[15,18]]', output: '[[1,6],[8,10],[15,18]]', isHidden: false, weight: 15 },
+      { input: '[[1,4],[4,5]]', output: '[[1,5]]', isHidden: false, weight: 15 }
+    ]
+  },
+  {
+    title: 'Valid Parentheses String Validator (Stack Invariant)',
+    topic: 'Data Structures',
+    language: 'python',
+    type: 'coding' as const,
+    difficulty: 'easy' as const,
+    expectedSolveTimeMinutes: 10,
+    marks: 20,
+    skillTags: ['Stack', 'Strings', 'Parentheses Matching'],
+    prompt: "Given a string `s` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid. An input string is valid if brackets close in correct order with corresponding matching pairs.",
+    hasDnaMutation: false,
+    allowedLanguages: ['python', 'cpp', 'java', 'javascript', 'c'],
+    starterCode: {
+      python: `def isValid(s: str) -> bool:\n    # Use stack to validate bracket matching\n    pass`
+    },
+    testCases: [
+      { input: '()[]{}', output: 'True', isHidden: false, weight: 10 },
+      { input: '(]', output: 'False', isHidden: false, weight: 10 }
+    ]
+  },
+  {
+    title: 'Product of Array Except Self (Prefix/Suffix Products)',
+    topic: 'Arrays',
+    language: 'python',
+    type: 'coding' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 20,
+    marks: 30,
+    skillTags: ['Arrays', 'Prefix Sum', 'Time Complexity O(N)'],
+    prompt: 'Given an integer array `nums`, return an array `answer` such that `answer[i]` is equal to the product of all the elements of `nums` except `nums[i]`. You must write an algorithm that runs in $O(N)$ time and without using the division operation.',
+    hasDnaMutation: false,
+    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    starterCode: {
+      python: `def productExceptSelf(nums: list[int]) -> list[int]:\n    # Implement without division in O(N)\n    pass`
+    },
+    testCases: [
+      { input: '[1,2,3,4]', output: '[24,12,8,6]', isHidden: false, weight: 15 },
+      { input: '[-1,1,0,-3,3]', output: '[0,0,9,0,0]', isHidden: false, weight: 15 }
+    ]
+  },
+
+  // ==========================================
+  // MULTIPLE CHOICE QUESTIONS (type: 'mcq')
+  // ==========================================
+  {
+    title: 'SQL WHERE vs HAVING Execution Pipeline',
+    topic: 'SQL Semantics',
+    language: 'sql',
+    type: 'mcq' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['SQL', 'Query Lifecycle', 'Aggregates', 'WHERE vs HAVING'],
+    prompt: 'In SQL query processing order of operations, what is the architectural distinction between the WHERE and HAVING clauses?',
+    options: [
+      { text: 'WHERE filters individual row records before grouping; HAVING filters aggregated groups after the GROUP BY clause.', isCorrect: true },
+      { text: 'WHERE filters records after aggregate functions compute; HAVING filters rows before indexing.', isCorrect: false },
+      { text: 'WHERE applies exclusively to indexed primary keys; HAVING applies to non-indexed columns.', isCorrect: false },
+      { text: 'WHERE and HAVING are completely identical in ANSI SQL execution engines.', isCorrect: false }
+    ],
+    explanation: 'The SQL logical query processing order executes FROM -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY. WHERE eliminates rows prior to grouping, while HAVING evaluates group-level aggregate criteria.'
+  },
+  {
+    title: 'JavaScript Microtask vs Macrotask Event Loop',
+    topic: 'JavaScript Concurrency',
+    language: 'javascript',
+    type: 'mcq' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['JavaScript', 'V8 Engine', 'Event Loop', 'Microtasks'],
+    prompt: `What will be the console output order of the following JavaScript snippet?\n\n\`\`\`javascript\nconsole.log('1');\nsetTimeout(() => console.log('2'), 0);\nPromise.resolve().then(() => console.log('3'));\nconsole.log('4');\n\`\`\``,
+    options: [
+      { text: '1, 4, 3, 2', isCorrect: true },
+      { text: '1, 2, 3, 4', isCorrect: false },
+      { text: '1, 4, 2, 3', isCorrect: false },
+      { text: '1, 3, 4, 2', isCorrect: false }
+    ],
+    explanation: 'Synchronous code runs first (1, 4). Next, the microtask queue (Promise.then callbacks) is completely exhausted (3). Finally, macrotasks like setTimeout(..., 0) execute in the next tick (2).'
+  },
+  {
+    title: 'Java Volatile vs Synchronized Memory Barrier',
+    topic: 'Java Concurrency',
+    language: 'java',
+    type: 'mcq' as const,
+    difficulty: 'hard' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['Java', 'Multithreading', 'Memory Model', 'Volatile'],
+    prompt: 'What guarantee does the `volatile` keyword establish in Java regarding variable access across threads?',
+    options: [
+      { text: 'Guarantees direct main memory read/write visibility across CPU caches and prevents instruction reordering, but does NOT guarantee compound atomicity (such as count++).', isCorrect: true },
+      { text: 'Acquires an implicit monitor lock ensuring full atomicity and synchronized critical sections.', isCorrect: false },
+      { text: 'Copies the variable into local thread-local storage (TLS) exclusively.', isCorrect: false },
+      { text: 'Permanently disables garbage collection for that instance.', isCorrect: false }
+    ],
+    explanation: 'In the Java Memory Model, volatile ensures visibility (reads and writes go directly to RAM rather than CPU registers/L1 caches) and inserts memory fences, but does not provide mutual exclusion or compound atomicity.'
+  },
+  {
+    title: 'Database ACID: Dirty Reads & Isolation Levels',
+    topic: 'Database Transactions',
+    language: 'sql',
+    type: 'mcq' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['Databases', 'ACID', 'Isolation Levels', 'Concurrency'],
+    prompt: 'Which standard ANSI SQL transaction isolation level prevents Dirty Reads, but still allows Non-Repeatable Reads and Phantom Reads?',
+    options: [
+      { text: 'Read Committed', isCorrect: true },
+      { text: 'Read Uncommitted', isCorrect: false },
+      { text: 'Repeatable Read', isCorrect: false },
+      { text: 'Serializable', isCorrect: false }
+    ],
+    explanation: 'Read Uncommitted allows dirty reads. Read Committed guarantees that any data read was committed at the moment it is read, preventing dirty reads while still permitting non-repeatable reads.'
+  },
+  {
+    title: 'C++ RAII & Unique Pointer Move Semantics',
+    topic: 'C++ Memory',
+    language: 'cpp',
+    type: 'mcq' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['C++', 'RAII', 'Smart Pointers', 'Move Semantics'],
+    prompt: 'Why does compiling `std::unique_ptr<int> p2 = p1;` fail in modern C++?',
+    options: [
+      { text: '`std::unique_ptr` explicitly deletes its copy constructor to enforce strict single ownership; transfer requires `std::move(p1)`.', isCorrect: true },
+      { text: '`std::unique_ptr` cannot be pointed to heap memory.', isCorrect: false },
+      { text: 'C++ smart pointers do not support assignment operations.', isCorrect: false },
+      { text: 'A compiler warning is raised, but it compiles successfully into a shared reference.', isCorrect: false }
+    ],
+    explanation: '`std::unique_ptr` owns and manages another object through a pointer and disposes of that object when the unique_ptr goes out of scope. Its copy constructor is deleted (= delete), requiring explicit std::move() for ownership transfer.'
+  },
+
+  // ==========================================
+  // APTITUDE & LOGICAL REASONING (type: 'aptitude')
+  // ==========================================
+  {
+    title: 'Clock Angle Calculation at 3:15',
+    topic: 'Aptitude & Logic',
+    language: 'general',
+    type: 'aptitude' as const,
+    difficulty: 'easy' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['Aptitude', 'Analytical Geometry', 'Clock Angles'],
+    prompt: 'At 3:15, what is the exact degree measure of the smaller angle between the hour hand and the minute hand of a standard analog clock?',
+    options: [
+      { text: '7.5°', isCorrect: true },
+      { text: '0°', isCorrect: false },
+      { text: '12.5°', isCorrect: false },
+      { text: '15°', isCorrect: false }
+    ],
+    explanation: 'At 3:15, the minute hand is at 90° (3 on the face). The hour hand has moved forward by 15/60 of 30° = 7.5° past 90°. Therefore, 97.5° - 90° = 7.5°.'
+  },
+  {
+    title: 'Probability of Consecutive Heads in Coin Flips',
+    topic: 'Probability & Math',
+    language: 'general',
+    type: 'aptitude' as const,
+    difficulty: 'medium' as const,
+    expectedSolveTimeMinutes: 5,
+    marks: 10,
+    skillTags: ['Aptitude', 'Probability', 'Combinatorics'],
+    prompt: 'A fair coin is tossed 3 consecutive times. What is the probability of obtaining at least two consecutive heads (HH)?',
+    options: [
+      { text: '3/8', isCorrect: true },
+      { text: '1/2', isCorrect: false },
+      { text: '1/4', isCorrect: false },
+      { text: '5/8', isCorrect: false }
+    ],
+    explanation: 'Total possible outcomes = 2^3 = 8. Favorable outcomes with at least two consecutive heads: HHH, HHT, THH (3 total outcomes). Probability = 3/8.'
   }
 ];
 
 /**
- * Seed Default Question Bank Templates (if bank is empty)
+ * Seed Default Question Bank Templates (upserts all curated templates into QuestionTemplate collection)
  */
-export async function seedDefaultQuestionTemplates(): Promise<number> {
+export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false): Promise<number> {
   const existingCount = await QuestionTemplate.countDocuments();
-  if (existingCount > 0) {
+  if (existingCount >= 25 && !forceRefresh) {
     return existingCount;
   }
 
@@ -1182,9 +1483,17 @@ export async function seedDefaultQuestionTemplates(): Promise<number> {
     tbTemplate
   ];
 
-  const created = await QuestionTemplate.create(allTemplates);
-  console.log(`✅ Central Question Bank initialized with ${created.length} comprehensive templates`);
-  return created.length;
+  let upsertedCount = 0;
+  for (const tmpl of allTemplates) {
+    await QuestionTemplate.updateOne(
+      { title: tmpl.title },
+      { $set: tmpl },
+      { upsert: true }
+    );
+    upsertedCount++;
+  }
+  console.log(`✅ Central Question Bank initialized with ${upsertedCount} comprehensive templates (MCQ, Coding, SQL, Debugging, Aptitude)`);
+  return upsertedCount;
 }
 
 /**

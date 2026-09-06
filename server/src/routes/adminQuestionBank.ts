@@ -13,9 +13,9 @@ adminQuestionBankRouter.use(authenticate, requireAnyAdmin);
 // GET /api/admin/questions/bank
 adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Auto-seed if question bank is currently empty
+    // Auto-seed if question bank is currently empty or missing newly added categories
     const totalCount = await QuestionTemplate.countDocuments();
-    if (totalCount === 0) {
+    if (totalCount < 25) {
       await seedDefaultQuestionTemplates();
     }
 
@@ -37,8 +37,20 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     const questions = await QuestionTemplate.find(filter).sort({ topic: 1, difficulty: 1 });
     const topics = await QuestionTemplate.distinct('topic');
     const languages = await QuestionTemplate.distinct('language');
+    const types = await QuestionTemplate.distinct('type');
 
-    res.json({ questions, topics, languages });
+    // Aggregate counts by type for fast UI stats tabs
+    const typeAgg = await QuestionTemplate.aggregate([
+      { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]);
+    const countsByType: Record<string, number> = {};
+    for (const item of typeAgg) {
+      if (item._id) countsByType[item._id] = item.count;
+    }
+
+    const grandTotal = await QuestionTemplate.countDocuments();
+
+    res.json({ questions, topics, languages, types, countsByType, totalCount: grandTotal });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch question bank' });
   }
@@ -47,8 +59,11 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
 // POST /api/admin/questions/bank/seed-defaults
 adminQuestionBankRouter.post('/seed-defaults', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const seededCount = await seedDefaultQuestionTemplates();
-    res.json({ success: true, message: `Question bank initialized with ${seededCount} templates` });
+    const seededCount = await seedDefaultQuestionTemplates(true);
+    res.json({
+      success: true,
+      message: `Question bank initialized and updated with ${seededCount} curated templates across Multiple Choices, Coding, SQL, and Debugging`
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to seed default questions' });
   }

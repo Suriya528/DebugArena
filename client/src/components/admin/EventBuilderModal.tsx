@@ -172,6 +172,19 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   const [newCollegeName, setNewCollegeName] = useState('');
   const [newCollegeCode, setNewCollegeCode] = useState('');
   const [newCollegeColor, setNewCollegeColor] = useState('#6366f1');
+  // CSV Rules Import & File Cleanup
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [csvNotification, setCsvNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isDraggingCsv, setIsDraggingCsv] = useState(false);
+
+  useEffect(() => {
+    if (csvNotification) {
+      const timer = setTimeout(() => {
+        setCsvNotification(null);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [csvNotification]);
 
   if (!isOpen) return null;
 
@@ -416,19 +429,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     setRules(prev => prev.filter((_, i) => i !== index));
   };
 
-  // CSV Rules Import & File Cleanup
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [csvNotification, setCsvNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isDraggingCsv, setIsDraggingCsv] = useState(false);
 
-  useEffect(() => {
-    if (csvNotification) {
-      const timer = setTimeout(() => {
-        setCsvNotification(null);
-      }, 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [csvNotification]);
 
   const parseCsvLine = (text: string): string[] => {
     const result: string[] = [];
