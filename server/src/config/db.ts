@@ -8,9 +8,8 @@ export async function connectDB(): Promise<void> {
   if (mongoose.connection.readyState === 1) {
     return;
   }
+  let uri = ENV.MONGODB_URI;
   try {
-    let uri = ENV.MONGODB_URI;
-
     if (!uri) {
       if (ENV.NODE_ENV === 'production') {
         throw new Error(
@@ -38,7 +37,12 @@ export async function connectDB(): Promise<void> {
     await mongoose.connect(uri, options);
     console.log('✅ Connected to MongoDB successfully (dbName: debugarena, maxPoolSize: 50).');
   } catch (error) {
-    console.error('❌ Failed to connect to MongoDB:', error);
+    const maskedUri = (uri || '').replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
+    console.error(`❌ [FATAL] Failed to connect to MongoDB at: ${maskedUri}`);
+    console.error('Diagnostic error details:', (error as Error).message);
+    if ((error as Error).message?.includes('whitelist') || (error as Error).message?.includes('servers in your MongoDB Atlas cluster')) {
+      console.error('👉 TIP: Render uses dynamic IP addresses. In MongoDB Atlas, go to "Network Access" -> "Add IP Address" -> click "Allow Access From Anywhere" (0.0.0.0/0).');
+    }
     if (ENV.NODE_ENV !== 'production' && !mongod) {
       console.log('⚠️ Remote MongoDB connection failed in development. Falling back to embedded MongoMemoryServer...');
       try {
@@ -55,7 +59,7 @@ export async function connectDB(): Promise<void> {
         console.error('❌ Embedded MongoDB fallback also failed:', fallbackErr);
       }
     }
-    process.exit(1);
+    throw error;
   }
 }
 

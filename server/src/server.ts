@@ -97,15 +97,17 @@ async function bootstrap() {
 
   startServerTimerSweep();
 
-  server.listen(ENV.PORT, () => {
-    console.log(`🚀 DebugArena Backend Server running on http://localhost:${ENV.PORT}`);
+  server.listen(ENV.PORT, '0.0.0.0', () => {
+    console.log(`🚀 DebugArena Backend Server running on port ${ENV.PORT}`);
     console.log(`🔌 Socket.io ready for live monitoring`);
   });
 }
 
 bootstrap().catch((err) => {
-  console.error('Fatal bootstrap error:', err);
-  process.exit(1);
+  console.error('\n💥 ================= FATAL SERVER BOOTSTRAP ERROR =================');
+  console.error(err?.message || err);
+  console.error('=================================================================\n');
+  setTimeout(() => process.exit(1), 500);
 });
 
 export { app, server };
