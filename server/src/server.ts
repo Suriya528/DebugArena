@@ -1,5 +1,5 @@
 import http from 'http';
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { ENV, validateProductionEnv } from './config/env.js';
 import { connectDB } from './config/db.js';
@@ -50,7 +50,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(tenantContext as any);
 
 // Health Check (Always open and unthrottled)
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'DebugArena API', timestamp: new Date() });
 });
 

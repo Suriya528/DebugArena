@@ -11,5 +11,10 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/scripts/browser_verify.ts", "src/scripts/verify_all.ts"]
+  "exclude": [
+    "src/scripts/browser_verify.ts",
+    "src/scripts/verify_all.ts",
+    "src/scripts/verify_*.ts",
+    "src/scripts/capture_*.ts"
+  ]
 }
