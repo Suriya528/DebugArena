@@ -48,6 +48,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  const [isGsiReady, setIsGsiReady] = useState(false);
 
   // Reset state on modal open/close
   useEffect(() => {
@@ -96,23 +97,28 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           });
 
           if (googleButtonRef.current) {
+            googleButtonRef.current.innerHTML = '';
             (window as any).google.accounts.id.renderButton(googleButtonRef.current, {
               theme: 'outline',
               size: 'large',
               width: 382,
-              text: 'continue_with',
+              text: mode === 'signup' ? 'signup_with' : 'continue_with',
               shape: 'pill'
             });
+            setIsGsiReady(true);
           }
         } catch (e) {
           console.warn('GSI render error:', e);
+          setIsGsiReady(false);
         }
+      } else {
+        setIsGsiReady(false);
       }
     };
 
     const timer = setTimeout(initGsi, 150);
     return () => clearTimeout(timer);
-  }, [isOpen, step, googleClientId]);
+  }, [isOpen, step, mode, googleClientId]);
 
   if (!isOpen) return null;
 
@@ -294,38 +300,48 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               </div>
             )}
 
-            {/* Google OAuth GSI Button Container */}
+            {/* Google OAuth Action: Displays ONLY ONE button (Official GSI iframe if ready, or styled fallback) */}
             <div className="w-full flex justify-center mb-1">
-              <div ref={googleButtonRef} className="w-full flex justify-center" />
-            </div>
+              <div
+                ref={googleButtonRef}
+                className={`w-full flex justify-center ${isGsiReady ? 'block' : 'hidden'}`}
+              />
 
-            {/* Custom Fallback Button if GSI renders slow */}
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleManualGoogleClick}
-              className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-3 transition-all shadow-lg shadow-white/5 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.94H1.24v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.26c-.25-.72-.38-1.49-.38-2.26s.13-1.54.38-2.26V6.59H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.41l4.04-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.59l4.04 3.15c.95-2.84 3.6-4.99 6.72-4.99z"
-                />
-              </svg>
-              <span>{loading ? 'Verifying with Google...' : 'Continue with Google'}</span>
-            </button>
+              {!isGsiReady && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleManualGoogleClick}
+                  className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs flex items-center justify-center gap-3 transition-all shadow-lg shadow-white/5 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.15z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.94H1.24v3.15C3.26 21.36 7.33 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.26c-.25-.72-.38-1.49-.38-2.26s.13-1.54.38-2.26V6.59H1.24C.45 8.16 0 9.94 0 12s.45 3.84 1.24 5.41l4.04-3.15z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.24 6.59l4.04 3.15c.95-2.84 3.6-4.99 6.72-4.99z"
+                    />
+                  </svg>
+                  <span>
+                    {loading
+                      ? 'Verifying with Google...'
+                      : mode === 'signup'
+                      ? 'Sign up with Google'
+                      : 'Continue with Google'}
+                  </span>
+                </button>
+              )}
+            </div>
 
             {/* Divider */}
             <div className="relative my-5 text-center">
