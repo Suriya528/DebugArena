@@ -14,6 +14,9 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<AuthResult>;
   registerAdmin: (payload: { name: string; email: string; password: string; collegeName?: string; university?: string }) => Promise<AuthResult>;
   loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
+  loginWithPasskey: (identifier: string, passkey: string) => Promise<AuthResult>;
+  setupPasskey: (passkey: string) => Promise<{ success: boolean; message: string; hasPasskey: boolean }>;
+  revokePasskey: () => Promise<void>;
   completeOnboarding: (collegeName: string, university?: string) => Promise<User>;
   joinEventByCode: (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }) => Promise<{ user: User; event: any }>;
   logout: () => void;
@@ -51,6 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: userData.role,
         collegeId: userData.collegeId,
         eventId: userData.eventId,
+        hasPasskey: Boolean(userData.hasPasskey),
         needsOnboarding,
         isDisqualified: userData.isDisqualified,
         disqualificationReason: userData.disqualificationReason
@@ -191,6 +195,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { user: formattedUser, event: receivedEvent };
   };
 
+  const loginWithPasskey = async (identifier: string, passkey: string): Promise<AuthResult> => {
+    const res = await api.post('/auth/passkey/login', { identifier, passkey });
+    const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
+
+    localStorage.setItem('debugarena_token', receivedToken);
+    if (receivedUser.collegeId) {
+      localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+    }
+    setToken(receivedToken);
+
+    const formattedUser: AuthResult = {
+      id: receivedUser.id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      email: receivedUser.email,
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId,
+      hasPasskey: true,
+      needsOnboarding: !!needsOnboarding
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return formattedUser;
+  };
+
+  const setupPasskey = async (passkey: string): Promise<{ success: boolean; message: string; hasPasskey: boolean }> => {
+    const res = await api.post('/auth/passkey/setup', { passkey });
+    setUser(prev => prev ? { ...prev, hasPasskey: true } : prev);
+    return res.data;
+  };
+
+  const revokePasskey = async (): Promise<void> => {
+    await api.delete('/auth/passkey');
+    setUser(prev => prev ? { ...prev, hasPasskey: false } : prev);
+  };
+
   const logout = () => {
     localStorage.removeItem('debugarena_token');
     localStorage.removeItem('debugarena_active_college_id');
@@ -201,7 +242,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, registerAdmin, loginWithGoogle, completeOnboarding, joinEventByCode, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        registerAdmin,
+        loginWithGoogle,
+        loginWithPasskey,
+        setupPasskey,
+        revokePasskey,
+        completeOnboarding,
+        joinEventByCode,
+        logout,
+        refreshUser
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

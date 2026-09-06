@@ -1,7 +1,8 @@
-import React from 'react';
-import { Terminal, LogOut, Shield, User as UserIcon, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Terminal, LogOut, Shield, User as UserIcon, Clock, Key } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { ConnectionBadge } from './ConnectionBadge.js';
+import { PasskeyProfileModal } from '../admin/PasskeyProfileModal.js';
 
 interface NavbarProps {
   roundTitle?: string;
@@ -23,6 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   violationLimit = 3
 }) => {
   const { user, logout } = useAuth();
+  const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
 
   return (
     <header className="h-16 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
@@ -88,7 +90,31 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {user && (
           <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
-            <div className="text-right hidden sm:block">
+            {/* Organizer Profile & Security Passkey Access */}
+            {user.role !== 'participant' && (
+              <button
+                onClick={() => setIsPasskeyModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+                title="Organizer Profile & Security Passkey"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Profile & Passkey</span>
+                {user.hasPasskey && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Passkey Active" />
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (user.role !== 'participant') {
+                  setIsPasskeyModalOpen(true);
+                }
+              }}
+              className={`text-right hidden sm:block ${user.role !== 'participant' ? 'cursor-pointer hover:opacity-85 transition-opacity' : ''}`}
+              title={user.role !== 'participant' ? "View Organizer Profile & Passkey Settings" : undefined}
+            >
               <div className="text-xs font-semibold text-white leading-tight">{user.name}</div>
               <div className="text-[11px] text-slate-400 flex items-center justify-end gap-1 font-mono">
                 {user.role === 'admin' ? (
@@ -99,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>@{user.username}</span>
                 )}
               </div>
-            </div>
+            </button>
 
             <button
               onClick={logout}
@@ -111,6 +137,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Organizer Profile & Security Passkey Modal */}
+      {user && user.role !== 'participant' && (
+        <PasskeyProfileModal
+          isOpen={isPasskeyModalOpen}
+          onClose={() => setIsPasskeyModalOpen(false)}
+        />
+      )}
     </header>
   );
 };

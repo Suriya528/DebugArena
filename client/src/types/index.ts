@@ -19,6 +19,7 @@ export interface User {
   year?: string;
   regNo?: string;
   needsOnboarding?: boolean;
+  hasPasskey?: boolean;
   isDisqualified?: boolean;
   disqualificationReason?: string;
 }

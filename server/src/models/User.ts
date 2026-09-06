@@ -25,6 +25,10 @@ export interface IUser extends Document {
   section?: string;
   isDisqualified: boolean;
   disqualificationReason?: string;
+  passkeyHash?: string;
+  hasPasskey?: boolean;
+  passkeyCreatedAt?: Date;
+  passkeyUpdatedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +41,10 @@ const UserSchema = new Schema<IUser>(
     passwordHash: { type: String, required: function(this: any) { return this.authProvider !== 'google'; } },
     authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
     googleId: { type: String },
+    passkeyHash: { type: String },
+    hasPasskey: { type: Boolean, default: false },
+    passkeyCreatedAt: { type: Date },
+    passkeyUpdatedAt: { type: Date },
     role: {
       type: String,
       enum: [
