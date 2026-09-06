@@ -22,7 +22,8 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { College } from '../../types/index.js';
 import { createEvent, createCollege } from '../../services/api.js';
@@ -69,16 +70,22 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
   onCollegeCreated
 }) => {
   const { user } = useAuth();
+  const [localColleges, setLocalColleges] = useState<College[]>(colleges);
   const defaultColId = user?.collegeId || colleges[0]?._id || '';
   const [collegeId, setCollegeId] = useState<string>(defaultColId);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [isCreatingCollege, setIsCreatingCollege] = useState<boolean>(false);
+
+  useEffect(() => {
+    setLocalColleges(colleges);
+  }, [colleges]);
 
   useEffect(() => {
     if (!collegeId) {
-      const resolved = user?.collegeId || colleges[0]?._id || '';
+      const resolved = user?.collegeId || localColleges[0]?._id || colleges[0]?._id || '';
       if (resolved) setCollegeId(resolved);
     }
-  }, [colleges, user, collegeId]);
+  }, [colleges, localColleges, user, collegeId]);
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -94,6 +101,19 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     }
     const randomSuffix = Math.floor(100 + Math.random() * 900);
     setCode(`${prefix}${randomSuffix}`);
+  };
+
+  const handleGenerateCollegeCode = () => {
+    const clean = (newCollegeName.trim() || 'COLLEGE').toUpperCase().replace(/[^A-Z0-9\s]/g, '');
+    const words = clean.split(/\s+/).filter(Boolean);
+    let codeStr = 'COL';
+    if (words.length >= 2) {
+      codeStr = words.map(w => w[0]).join('').slice(0, 4) + '-ENG';
+    } else if (words.length === 1) {
+      codeStr = words[0].slice(0, 4) + '-ENG';
+    }
+    const rand = Math.floor(10 + Math.random() * 90);
+    setNewCollegeCode(`${codeStr}${rand}`);
   };
   const [description, setDescription] = useState('');
   const [negativeMarking, setNegativeMarking] = useState(false);
@@ -595,25 +615,33 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleCreateCollege = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateCollege = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    setErrorBanner(null);
     if (!newCollegeName.trim() || !newCollegeCode.trim()) {
       setErrorBanner('Please enter both College Name and College Code.');
       return;
     }
     try {
+      setIsCreatingCollege(true);
       const college = await createCollege({
         name: newCollegeName.trim(),
         code: newCollegeCode.trim().toUpperCase(),
         primaryColor: newCollegeColor
       });
-      onCollegeCreated();
+      setLocalColleges(prev => {
+        if (prev.some(c => c._id === college._id)) return prev;
+        return [college, ...prev];
+      });
       setCollegeId(college._id);
       setShowNewCollegeForm(false);
       setNewCollegeName('');
       setNewCollegeCode('');
+      onCollegeCreated();
     } catch (err: any) {
       setErrorBanner(err.response?.data?.error || 'Failed to create college');
+    } finally {
+      setIsCreatingCollege(false);
     }
   };
 
@@ -621,7 +649,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     e.preventDefault();
     setErrorBanner(null);
 
-    const effectiveCollegeId = collegeId || user?.collegeId || colleges[0]?._id;
+    const effectiveCollegeId = collegeId || user?.collegeId || localColleges[0]?._id || colleges[0]?._id;
     if (!effectiveCollegeId) {
       setErrorBanner('Please select or bind a host college institution.');
       return;
@@ -759,24 +787,57 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
         )}
 
         {/* Inline New College Creation */}
-        {showNewCollegeForm && colleges.length > 1 ? (
-          <div className="mb-6 p-4 rounded-2xl bg-slate-950 border border-indigo-500/40 animate-in fade-in">
-            <h3 className="text-sm font-bold text-indigo-400 mb-3 flex items-center gap-2">
-              <Building2 className="w-4 h-4" /> Add New College Organization
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        {showNewCollegeForm ? (
+          <div className="mb-6 p-5 rounded-3xl bg-slate-950 border border-indigo-500/50 shadow-xl shadow-indigo-950/20 animate-in fade-in space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <div className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <span>Register New Host College / Institution</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowNewCollegeForm(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 rounded-lg hover:bg-slate-900 transition-all cursor-pointer"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">College Name</label>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">College Name *</label>
                 <input
                   type="text"
-                  placeholder="e.g. Stanford Engineering"
+                  placeholder="e.g. Stanford University"
                   value={newCollegeName}
-                  onChange={e => setNewCollegeName(e.target.value)}
+                  onChange={e => {
+                    setNewCollegeName(e.target.value);
+                    if (!newCollegeCode) {
+                      const clean = e.target.value.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '');
+                      const words = clean.split(/\s+/).filter(Boolean);
+                      if (words.length >= 2) {
+                        setNewCollegeCode(words.map(w => w[0]).join('').slice(0, 4) + '-ENG');
+                      } else if (words.length === 1 && words[0].length >= 3) {
+                        setNewCollegeCode(words[0].slice(0, 4) + '-ENG');
+                      }
+                    }
+                  }}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">College Code</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-300">College Code *</label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateCollegeCode}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold cursor-pointer"
+                  >
+                    ⚡ Auto-Gen
+                  </button>
+                </div>
                 <input
                   type="text"
                   placeholder="e.g. STAN-ENG"
@@ -786,30 +847,46 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                 />
               </div>
               <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Primary Color</label>
-                <input
-                  type="color"
-                  value={newCollegeColor}
-                  onChange={e => setNewCollegeColor(e.target.value)}
-                  className="w-full h-9 bg-slate-900 border border-slate-800 rounded-xl px-1 py-1 cursor-pointer"
-                />
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">Primary Color / Brand</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newCollegeColor}
+                    onChange={e => setNewCollegeColor(e.target.value)}
+                    className="w-10 h-8 bg-slate-900 border border-slate-800 rounded-xl p-0.5 cursor-pointer shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={newCollegeColor}
+                    onChange={e => setNewCollegeColor(e.target.value)}
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono uppercase"
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowNewCollegeForm(false)}
-                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateCollege}
-                className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
-              >
-                Save College
-              </button>
+
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-[11px] text-slate-400">
+                This college will be registered as the hosting institution for this event.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewCollegeForm(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs text-slate-400 hover:text-white font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateCollege}
+                  disabled={isCreatingCollege}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isCreatingCollege ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  <span>{isCreatingCollege ? 'Registering...' : 'Save & Select College'}</span>
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -835,34 +912,19 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                   </button>
                 )}
               </div>
-              {colleges.length > 1 ? (
+              {localColleges.length > 0 ? (
                 <select
                   value={collegeId}
                   onChange={e => setCollegeId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
                   required
                 >
-                  {colleges.map(col => (
+                  {localColleges.map(col => (
                     <option key={col._id} value={col._id}>
                       {col.name} ({col.code})
                     </option>
                   ))}
                 </select>
-              ) : colleges.length === 1 ? (
-                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold text-white">{colleges[0].name}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">Code: {colleges[0].code}</div>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    Verified Host
-                  </span>
-                </div>
               ) : (
                 <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
                   <div className="flex items-center gap-3">

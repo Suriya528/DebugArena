@@ -9,6 +9,7 @@ export interface ICollege extends Document {
   secondaryColor: string;
   contactEmail?: string;
   website?: string;
+  createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,7 +23,8 @@ const CollegeSchema = new Schema<ICollege>(
     primaryColor: { type: String, default: '#6366f1' }, // Indigo default
     secondaryColor: { type: String, default: '#06b6d4' }, // Cyan default
     contactEmail: { type: String, default: '' },
-    website: { type: String, default: '' }
+    website: { type: String, default: '' },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' }
   },
   { timestamps: true }
 );

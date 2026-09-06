@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireAnyAdmin, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { College } from '../models/College.js';
 import { Event } from '../models/Event.js';
+import { User } from '../models/User.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { Competition } from '../models/Competition.js';
 import { AuditLog } from '../models/AuditLog.js';
@@ -50,13 +51,25 @@ async function recordAudit(
 // GET /api/admin/events/colleges
 adminEventRouter.get('/colleges', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Multi-Tenant Isolation: Non-global admins can NEVER see other colleges!
     const filter: Record<string, any> = {};
-    if (req.user?.collegeId) {
-      filter._id = req.user.collegeId;
-    } else if (req.user?.role !== 'super_admin') {
-      const defaultCol = await College.findOne().sort({ createdAt: 1 });
-      if (defaultCol) filter._id = defaultCol._id;
+
+    if (req.user?.role === 'super_admin') {
+      // Global root operators see all colleges
+    } else if (req.user?.collegeId) {
+      // Return assigned college AND any colleges created by this user
+      filter.$or = [
+        { _id: req.user.collegeId },
+        { createdBy: req.user.userId }
+      ];
+    } else if (req.user?.userId) {
+      // Admin without collegeId sees colleges they created, or default college fallback
+      const createdCount = await College.countDocuments({ createdBy: req.user.userId });
+      if (createdCount > 0) {
+        filter.createdBy = req.user.userId;
+      } else {
+        const defaultCol = await College.findOne().sort({ createdAt: 1 });
+        if (defaultCol) filter._id = defaultCol._id;
+      }
     }
 
     const colleges = await College.find(filter).sort({ name: 1 });
@@ -69,35 +82,37 @@ adminEventRouter.get('/colleges', async (req: AuthenticatedRequest, res: Respons
 // POST /api/admin/events/colleges
 adminEventRouter.post('/colleges', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Strict Tenant Isolation: Only unconstrained global root operators can add colleges
-    if (req.user?.role !== 'super_admin' || req.user?.collegeId) {
-      res.status(403).json({ error: 'Tenant restriction: Multi-tenant college registration is restricted to root platform operators.' });
-      return;
-    }
-
-    const { name, code, logoUrl, primaryColor, secondaryColor, contactEmail, website } = req.body;
+    const { name, code, logoUrl, primaryColor, secondaryColor, contactEmail, website, university } = req.body;
     if (!name || !code) {
       res.status(400).json({ error: 'College name and code are required' });
       return;
     }
 
-    const existing = await College.findOne({ code: code.toUpperCase().trim() });
+    const cleanCode = code.toUpperCase().trim();
+    const existing = await College.findOne({ code: cleanCode });
     if (existing) {
-      res.status(400).json({ error: `College with code ${code.toUpperCase()} already exists` });
+      res.status(400).json({ error: `College with code ${cleanCode} already exists` });
       return;
     }
 
     const college = await College.create({
       name: name.trim(),
-      code: code.toUpperCase().trim(),
+      code: cleanCode,
+      university: university || '',
       logoUrl: logoUrl || '',
       primaryColor: primaryColor || '#6366f1',
       secondaryColor: secondaryColor || '#06b6d4',
       contactEmail: contactEmail || '',
-      website: website || ''
+      website: website || '',
+      createdBy: req.user?.userId
     });
 
-    await recordAudit(req, 'COLLEGE_CREATED', 'College', college._id.toString(), { name, code }, '', college._id);
+    // If current organizer had no collegeId bound, bind to this new college
+    if (req.user?.userId && !req.user.collegeId) {
+      await User.findByIdAndUpdate(req.user.userId, { collegeId: college._id });
+    }
+
+    await recordAudit(req, 'COLLEGE_CREATED', 'College', college._id.toString(), { name, code: cleanCode }, '', college._id);
     res.status(201).json({ college });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create college' });
@@ -142,8 +157,21 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       initialRounds
     } = req.body;
 
-    // Multi-Tenant Isolation: Force collegeId to user's assigned college
-    const effectiveCollegeId = req.user?.collegeId || collegeId;
+    // Multi-Tenant Isolation & College Resolution:
+    // 1. Super admin can create event under any college
+    // 2. User can create event under a college they created (createdBy == req.user.userId)
+    // 3. User can create event under their assigned college (collegeId == req.user.collegeId)
+    // 4. Fallback to assigned college or provided collegeId
+    let effectiveCollegeId = collegeId || req.user?.collegeId;
+
+    if (req.user?.role !== 'super_admin' && collegeId && req.user?.collegeId && collegeId.toString() !== req.user.collegeId.toString()) {
+      const targetCollege = await College.findById(collegeId);
+      if (targetCollege && targetCollege.createdBy?.toString() === req.user.userId?.toString()) {
+        effectiveCollegeId = collegeId;
+      } else {
+        effectiveCollegeId = req.user.collegeId;
+      }
+    }
 
     if (!effectiveCollegeId || !name || !code) {
       res.status(400).json({ error: 'collegeId, event name, and event code are required' });
