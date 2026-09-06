@@ -9,13 +9,13 @@ interface RoundBuilderModalProps {
   onRoundCreated: () => void;
 }
 
-const ALL_LANGUAGES: { id: string; label: string; badge: string; color: string }[] = [
-  { id: 'python', label: 'Python 3', badge: 'PY', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  { id: 'cpp', label: 'C++ (GCC)', badge: 'C++', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'java', label: 'Java 17', badge: 'JAVA', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { id: 'c', label: 'C (GCC)', badge: 'C', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
-  { id: 'javascript', label: 'JavaScript (Node)', badge: 'JS', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  { id: 'sql', label: 'SQL', badge: 'SQL', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
+const ALL_LANGUAGES: { id: string; label: string; color: string }[] = [
+  { id: 'python', label: 'Python 3', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+  { id: 'cpp', label: 'C++ (GCC)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+  { id: 'java', label: 'Java 17', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+  { id: 'c', label: 'C (GCC)', color: 'bg-slate-500/20 text-slate-200 border-slate-500/40' },
+  { id: 'javascript', label: 'JavaScript (Node)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+  { id: 'sql', label: 'SQL', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' }
 ];
 
 export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
@@ -190,12 +190,12 @@ export const RoundBuilderModal: React.FC<RoundBuilderModalProps> = ({
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                           isSelected
                             ? `${lang.color} shadow-sm`
-                            : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                         }`}
                       >
-                        <span className="font-mono text-[10px] uppercase font-black">{lang.badge}</span>
+                        <Code2 className="w-3.5 h-3.5 opacity-70" />
                         <span>{lang.label}</span>
-                        {isSelected && <Check className="w-3 h-3" />}
+                        {isSelected && <Check className="w-3 h-3 ml-0.5" />}
                       </button>
                     );
                   })}

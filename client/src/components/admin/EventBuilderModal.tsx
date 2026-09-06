@@ -47,13 +47,13 @@ interface EventBuilderModalProps {
   onCollegeCreated: () => void;
 }
 
-const ALL_LANGUAGES: { id: string; label: string; badge: string; color: string }[] = [
-  { id: 'python', label: 'Python 3', badge: 'PY', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  { id: 'cpp', label: 'C++ (GCC)', badge: 'C++', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'java', label: 'Java 17', badge: 'JAVA', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { id: 'c', label: 'C (GCC)', badge: 'C', color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
-  { id: 'javascript', label: 'JavaScript (Node)', badge: 'JS', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  { id: 'sql', label: 'SQL (SQLite/Postgres)', badge: 'SQL', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
+const ALL_LANGUAGES: { id: string; label: string; color: string }[] = [
+  { id: 'python', label: 'Python 3', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+  { id: 'cpp', label: 'C++ (GCC)', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+  { id: 'java', label: 'Java 17', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+  { id: 'c', label: 'C (GCC)', color: 'bg-slate-500/20 text-slate-200 border-slate-500/40' },
+  { id: 'javascript', label: 'JavaScript (Node)', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+  { id: 'sql', label: 'SQL (PostgreSQL/SQLite)', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' }
 ];
 
 export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
@@ -88,7 +88,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
       prefix = words[0].slice(0, 4);
     }
     const randomSuffix = Math.floor(100 + Math.random() * 900);
-    setCode(`${prefix}-${randomSuffix}`);
+    setCode(`${prefix}${randomSuffix}`);
   };
   const [description, setDescription] = useState('');
   const [negativeMarking, setNegativeMarking] = useState(false);
@@ -349,10 +349,10 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     setExpandedRoundId(newRound.id);
   };
 
-  // Remove Round and re-index sequentially (Flaw 4 fix)
+  // Remove Round and re-index sequentially
   const handleRemoveRound = (idToRemove: string) => {
     if (rounds.length <= 1) {
-      alert('A competition must have at least one round.');
+      setErrorBanner('A tournament competition must have at least one round.');
       return;
     }
 
@@ -396,23 +396,31 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
     updateRound(roundId, { allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'] });
   };
 
-  const handleAddRule = () => {
-    if (!newRule.trim()) return;
-    setRules([...rules, newRule.trim()]);
+  const handleAddRule = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const trimmed = newRule.trim();
+    if (!trimmed) return;
+    setRules(prev => [...prev, trimmed]);
     setNewRule('');
   };
 
   const handleRemoveRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
+    setRules(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleCreateCollege = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCollegeName || !newCollegeCode) return;
+    if (!newCollegeName.trim() || !newCollegeCode.trim()) {
+      setErrorBanner('Please enter both College Name and College Code.');
+      return;
+    }
     try {
       const college = await createCollege({
-        name: newCollegeName,
-        code: newCollegeCode,
+        name: newCollegeName.trim(),
+        code: newCollegeCode.trim().toUpperCase(),
         primaryColor: newCollegeColor
       });
       onCollegeCreated();
@@ -421,7 +429,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
       setNewCollegeName('');
       setNewCollegeCode('');
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to create college');
+      setErrorBanner(err.response?.data?.error || 'Failed to create college');
     }
   };
 
@@ -633,7 +641,7 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs font-bold text-slate-300">Host College / Institution</label>
-                {!showNewCollegeForm && colleges.length > 1 && (
+                {!showNewCollegeForm && (
                   <button
                     type="button"
                     onClick={() => setShowNewCollegeForm(true)}
@@ -672,8 +680,24 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                   </span>
                 </div>
               ) : (
-                <div className="p-3.5 text-xs text-slate-400 italic bg-slate-950 rounded-2xl border border-slate-800">
-                  No institutional profile bound.
+                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">No College Bound</div>
+                      <div className="text-[11px] text-slate-400">Register your institution to host this tournament</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCollegeForm(true)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Register College</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -982,12 +1006,12 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
                                       className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                                         isSelected
                                           ? `${lang.color} shadow-sm`
-                                          : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                                       }`}
                                     >
-                                      <span className="font-mono text-[10px] uppercase font-black">{lang.badge}</span>
+                                      <Code2 className="w-3.5 h-3.5 opacity-70" />
                                       <span>{lang.label}</span>
-                                      {isSelected && <Check className="w-3 h-3" />}
+                                      {isSelected && <Check className="w-3 h-3 ml-0.5" />}
                                     </button>
                                   );
                                 })}
@@ -1131,54 +1155,108 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
           {/* SECTION 3: Proctoring & Rules */}
           <div className="space-y-4">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-              3. Competition Rules & Proctoring Limits
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                3. Competition Rules & Proctoring Limits ({rules.length})
+              </h3>
+              {rules.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setRules([])}
+                  className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Quick Rule Presets */}
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-[10px] font-bold text-slate-500 self-center mr-1">Presets:</span>
+              {[
+                'Full-screen proctoring strictly enforced',
+                'No external IDEs or editors permitted',
+                'Window minimization triggers immediate strike',
+                'Camera and microphone must stay active',
+                'Submissions evaluated against hidden test suites',
+                'Zero negative marking on all challenges'
+              ].map(preset => {
+                const isAdded = rules.includes(preset);
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={isAdded}
+                    onClick={() => setRules(prev => [...prev, preset])}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-all cursor-pointer ${
+                      isAdded
+                        ? 'bg-slate-900 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'
+                        : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
+                    }`}
+                  >
+                    + {preset}
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Rules List */}
-            <div>
-              <div className="space-y-2 mb-2 max-h-32 overflow-y-auto">
-                {rules.map((rule, idx) => (
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+              {rules.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-500 italic">
+                  No rules configured yet. Click a preset above or type a custom rule below.
+                </div>
+              ) : (
+                rules.map((rule, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-300"
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-300 group hover:border-slate-700 transition-colors"
                   >
-                    <span className="truncate pr-2">
-                      {idx + 1}. {rule}
+                    <span className="truncate pr-2 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-md bg-slate-900 text-slate-400 font-mono text-[10px] flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <span>{rule}</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => handleRemoveRule(idx)}
-                      className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                      className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-900 transition-colors cursor-pointer shrink-0"
+                      title="Delete Rule"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Add custom rule..."
-                  value={newRule}
-                  onChange={e => setNewRule(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddRule();
-                    }
-                  }}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddRule}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white cursor-pointer"
-                >
-                  Add
-                </button>
-              </div>
+                ))
+              )}
+            </div>
+
+            {/* Add Custom Rule Input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type a custom rule (e.g. Scratch paper allowed, no earphones)..."
+                value={newRule}
+                onChange={e => setNewRule(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAddRule();
+                  }
+                }}
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={handleAddRule}
+                disabled={!newRule.trim()}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-bold text-white shadow-md shadow-indigo-600/30 cursor-pointer flex items-center gap-1.5 shrink-0 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Rule</span>
+              </button>
             </div>
 
             {/* Proctoring Settings */}
