@@ -12,7 +12,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<AuthResult>;
-  registerAdmin: (payload: { name: string; email: string; password: string }) => Promise<AuthResult>;
+  registerAdmin: (payload: { name: string; email: string; password: string; collegeName?: string }) => Promise<AuthResult>;
   loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
   completeOnboarding: (collegeName: string) => Promise<User>;
   joinEventByCode: (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }) => Promise<{ user: User; event: any }>;
@@ -86,11 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return formattedUser;
   };
 
-  const registerAdmin = async (payload: { name: string; email: string; password: string }): Promise<AuthResult> => {
+  const registerAdmin = async (payload: { name: string; email: string; password: string; collegeName?: string }): Promise<AuthResult> => {
     const res = await api.post('/auth/register-admin', payload);
     const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
     localStorage.setItem('debugarena_token', receivedToken);
+    if (receivedUser.collegeId) {
+      localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+    }
     setToken(receivedToken);
 
     const formattedUser: AuthResult = {

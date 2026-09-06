@@ -123,7 +123,7 @@ async function generateUniqueCollegeCode(name: string): Promise<string> {
 // Direct email/password registration for event organizers
 authRouter.post('/register-admin', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, collegeName } = req.body;
     if (!name || !email || !password) {
       res.status(400).json({ error: 'Name, email, and password are required' });
       return;
@@ -157,6 +157,21 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
       uniqueUsername = `${baseUsername}_${counter++}`;
     }
 
+    // If collegeName is provided during general registration, link college immediately
+    let collegeId = undefined;
+    if (collegeName && collegeName.trim().length >= 2) {
+      const trimmedName = collegeName.trim();
+      let college = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
+      if (!college) {
+        const generatedCode = await generateUniqueCollegeCode(trimmedName);
+        college = await College.create({
+          name: trimmedName,
+          code: generatedCode
+        });
+      }
+      collegeId = college._id;
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       username: uniqueUsername,
@@ -164,26 +179,29 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
       email: cleanEmail,
       passwordHash,
       role: 'college_admin',
-      authProvider: 'local'
+      authProvider: 'local',
+      collegeId
     });
 
     const payload: AuthPayload = {
       userId: user._id.toString(),
       username: user.username,
       role: user.role,
-      name: user.name
+      name: user.name,
+      collegeId: collegeId ? collegeId.toString() : undefined
     };
     const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
 
     res.status(201).json({
       token,
-      needsOnboarding: true,
+      needsOnboarding: !collegeId,
       user: {
         id: user._id,
         username: user.username,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        collegeId: user.collegeId
       }
     });
   } catch (err: any) {

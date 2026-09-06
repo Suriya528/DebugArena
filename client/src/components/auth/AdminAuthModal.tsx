@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Shield, Lock, Building2, Mail, ArrowRight, User as UserIcon, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+ï»¿import React, { useState, useEffect } from 'react';
+import { X, Shield, Lock, Building2, Mail, ArrowRight, User as UserIcon, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.js';
 
 interface AdminAuthModalProps {
   isOpen: boolean;
@@ -17,11 +17,11 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
   // Form fields
   const [fullName, setFullName] = useState('');
   const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [collegeName, setCollegeName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Onboarding fields
-  const [collegeName, setCollegeName] = useState('');
+  // Google Onboarding specific state
   const [authenticatedUserName, setAuthenticatedUserName] = useState('');
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -36,6 +36,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
       setEmailOrUsername('');
       setPassword('');
       setCollegeName('');
+      setShowPassword(false);
     }
   }, [isOpen]);
 
@@ -72,8 +73,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
         return;
       }
 
-      // If Google Client ID is not yet configured, show clear guidance
-      setError('Google Sign-In is initializing. If testing locally, please set VITE_GOOGLE_CLIENT_ID or use Email & Password below.');
+      setError('Google Sign-In is initializing. Please verify your Google Client ID or continue with institutional email below.');
       setLoading(false);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to initialize Google authentication.');
@@ -102,9 +102,14 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
           onClose();
         }
       } else {
-        // Sign up
+        // Sign up with general registration: requires Name, Email, College/University, and Password
         if (!fullName.trim() || !emailOrUsername.trim() || !password) {
-          setError('Please fill in your name, email, and password.');
+          setError('Please fill in your name, work email, and password.');
+          setLoading(false);
+          return;
+        }
+        if (!collegeName.trim() || collegeName.trim().length < 2) {
+          setError('Please enter your college or university name.');
           setLoading(false);
           return;
         }
@@ -113,13 +118,20 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
           setLoading(false);
           return;
         }
+
         const authRes = await registerAdmin({
           name: fullName.trim(),
           email: emailOrUsername.trim(),
-          password
+          password,
+          collegeName: collegeName.trim()
         });
-        setAuthenticatedUserName(authRes.name || authRes.username);
-        setStep('onboarding');
+
+        if (authRes.needsOnboarding) {
+          setAuthenticatedUserName(authRes.name || authRes.username);
+          setStep('onboarding');
+        } else {
+          onClose();
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.error || (mode === 'signin' ? 'Invalid credentials.' : 'Registration failed.'));
@@ -128,7 +140,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
     }
   };
 
-  // Handle post-signup institution onboarding
+  // Handle post-Google-verification institution onboarding
   const handleOnboardingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!collegeName.trim() || collegeName.trim().length < 2) {
@@ -149,8 +161,8 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-[#0c1220] border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0c1220] border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
         {/* Subtle ambient lighting */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -159,12 +171,13 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
         <button
           onClick={onClose}
           className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+          aria-label="Close dialog"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* ========================================================= */}
-        {/* STEP 1: AUTHENTICATION (SIGN IN / SIGN UP)                */}
+        {/* STEP 1: AUTHENTICATION (SIGN IN / CREATE ACCOUNT)         */}
         {/* ========================================================= */}
         {step === 'auth' && (
           <div>
@@ -175,7 +188,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white tracking-tight">Organizer Portal</h2>
-                <p className="text-xs text-slate-400">Host and manage proctored college tournaments</p>
+                <p className="text-xs text-slate-400">Host, proctor, and manage college tournaments</p>
               </div>
             </div>
 
@@ -206,8 +219,8 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
             </div>
 
             {error && (
-              <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+              <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
@@ -241,37 +254,59 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
             </button>
 
             {/* Divider */}
-            <div className="relative my-6 text-center">
+            <div className="relative my-5 text-center">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-800" />
               </div>
               <span className="relative px-3 bg-[#0c1220] text-[11px] uppercase tracking-wider text-slate-500 font-medium">
-                or continue with email
+                {mode === 'signup' ? 'or register with academic email' : 'or continue with email'}
               </span>
             </div>
 
-            {/* Email Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               {mode === 'signup' && (
-                <div>
-                  <label className="text-xs font-medium text-slate-300 mb-1.5 block">Full Name</label>
-                  <div className="relative">
-                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Prof. Alex Morgan"
-                      className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                    />
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 mb-1 block">Full Name</label>
+                    <div className="relative">
+                      <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Prof. Alex Morgan or Sarah Chen"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
                   </div>
-                </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-300 mb-1 block">
+                      College or University Name
+                    </label>
+                    <div className="relative">
+                      <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        required
+                        value={collegeName}
+                        onChange={(e) => setCollegeName(e.target.value)}
+                        placeholder="e.g. Massachusetts Institute of Technology"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Your college workspace and unique codes will be automatically generated.
+                    </p>
+                  </div>
+                </>
               )}
 
               <div>
-                <label className="text-xs font-medium text-slate-300 mb-1.5 block">
-                  {mode === 'signup' ? 'Work Email' : 'Email or Username'}
+                <label className="text-xs font-medium text-slate-300 mb-1 block">
+                  {mode === 'signup' ? 'Work / Academic Email' : 'Email or Username'}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -287,7 +322,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Password</label>
+                <label className="text-xs font-medium text-slate-300 mb-1 block">Password</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                   <input
@@ -295,13 +330,14 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={mode === 'signup' ? 'Minimum 6 characters' : '••••••••'}
+                    placeholder={mode === 'signup' ? 'Minimum 6 characters' : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}
                     className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -311,13 +347,13 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/30 active:scale-[0.99] disabled:opacity-50"
+                className="w-full mt-1 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/30 active:scale-[0.99] disabled:opacity-50"
               >
                 <span>
                   {loading
-                    ? 'Processing...'
+                    ? 'Authenticating...'
                     : mode === 'signup'
-                    ? 'Create Organizer Account'
+                    ? 'Create Organizer Workspace'
                     : 'Sign In to Dashboard'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
@@ -332,7 +368,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                   <button
                     type="button"
                     onClick={() => { setMode('signup'); setError(null); }}
-                    className="text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2"
+                    className="text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 cursor-pointer"
                   >
                     Create an account
                   </button>
@@ -343,7 +379,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                   <button
                     type="button"
                     onClick={() => { setMode('signin'); setError(null); }}
-                    className="text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2"
+                    className="text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 cursor-pointer"
                   >
                     Sign in here
                   </button>
@@ -354,10 +390,10 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
         )}
 
         {/* ========================================================= */}
-        {/* STEP 2: POST-AUTH INSTITUTION ONBOARDING                  */}
+        {/* STEP 2: POST-GOOGLE-VERIFICATION INSTITUTION ONBOARDING   */}
         {/* ========================================================= */}
         {step === 'onboarding' && (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+          <div>
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
@@ -367,13 +403,18 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                 <h2 className="text-xl font-bold text-white tracking-tight">
                   Welcome{authenticatedUserName ? `, ${authenticatedUserName}` : ''}!
                 </h2>
-                <p className="text-xs text-slate-400">Set up your institution to finish creating your workspace</p>
+                <p className="text-xs text-slate-400">Google account verified. Name your institution to launch.</p>
               </div>
+            </div>
+
+            <div className="mb-5 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Google authentication successful! Finalize your university workspace below.</span>
             </div>
 
             {error && (
               <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
@@ -396,14 +437,14 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ isOpen, onClose 
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                  We will automatically configure your college tournament workspace, branding, and event codes.
+                  We automatically configure your university tournament tenancy, branding, and event codes.
                 </p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/30 active:scale-[0.99] disabled:opacity-50"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
               >
                 <span>{loading ? 'Configuring Workspace...' : 'Launch Organizer Dashboard'}</span>
                 <ArrowRight className="w-4 h-4" />
