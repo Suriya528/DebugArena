@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Building2,
@@ -17,7 +17,12 @@ import {
   HelpCircle,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  AlertCircle
 } from 'lucide-react';
 import { College } from '../../types/index.js';
 import { createEvent, createCollege } from '../../services/api.js';
@@ -409,6 +414,184 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
 
   const handleRemoveRule = (index: number) => {
     setRules(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // CSV Rules Import & File Cleanup
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [csvNotification, setCsvNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isDraggingCsv, setIsDraggingCsv] = useState(false);
+
+  useEffect(() => {
+    if (csvNotification) {
+      const timer = setTimeout(() => {
+        setCsvNotification(null);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [csvNotification]);
+
+  const parseCsvLine = (text: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        if (inQuotes && text[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const extractRulesFromCsv = (content: string): string[] => {
+    const clean = content.replace(/^\uFEFF/, '').trim();
+    if (!clean) return [];
+
+    const rawLines = clean.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (rawLines.length === 0) return [];
+
+    const firstLineCells = parseCsvLine(rawLines[0]);
+    let ruleColIdx = 0;
+    let startLine = 0;
+
+    // Header detection
+    const lowerHeader = firstLineCells.map(c => c.toLowerCase().trim());
+    const exactMatch = lowerHeader.findIndex(h =>
+      h === 'rule' || h === 'rules' || h === 'rule description' || h === 'description' || h === 'guideline' || h === 'guidelines'
+    );
+
+    if (exactMatch !== -1) {
+      ruleColIdx = exactMatch;
+      startLine = 1;
+    } else if (lowerHeader.some(h => h.includes('rule') || h.includes('desc') || h.includes('guideline') || h.includes('instruction'))) {
+      const match = lowerHeader.findIndex(h => h.includes('rule') || h.includes('desc') || h.includes('guideline') || h.includes('instruction'));
+      ruleColIdx = match !== -1 ? match : 0;
+      startLine = 1;
+    } else if (firstLineCells.length > 1 && (/^(#|no\.?|id|s\.no\.?|sl\.?)$/i.test(firstLineCells[0]) || /^\d+$/.test(firstLineCells[0]))) {
+      if (/^(#|no\.?|id|s\.no\.?|sl\.?)$/i.test(firstLineCells[0])) {
+        startLine = 1;
+      }
+      ruleColIdx = 1;
+    }
+
+    const results: string[] = [];
+    for (let i = startLine; i < rawLines.length; i++) {
+      const cells = parseCsvLine(rawLines[i]);
+      if (cells.length === 0) continue;
+
+      let candidate = '';
+      if (cells[ruleColIdx] !== undefined && cells[ruleColIdx].trim().length > 0) {
+        candidate = cells[ruleColIdx];
+      } else if (cells.length > 1 && /^\d+$/.test(cells[0])) {
+        candidate = cells[1];
+      } else {
+        candidate = cells.reduce((longest, c) => (c.length > longest.length ? c : longest), '');
+      }
+
+      // Strip wrapping quotes
+      candidate = candidate.replace(/^["']|["']$/g, '').trim();
+      // Strip leading list enumerators e.g. "1. ", "Rule 1: ", "- "
+      candidate = candidate.replace(/^(\d+[\.\)]\s*|rule\s*\d+[:\.\-]?\s*|[-•*]\s*)/i, '').trim();
+
+      if (candidate.length >= 3) {
+        results.push(candidate);
+      }
+    }
+
+    return results;
+  };
+
+  const processCsvFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type && !file.type.includes('csv') && !file.type.includes('text')) {
+      setCsvNotification({
+        type: 'error',
+        message: `"${file.name}" is not a valid CSV file. Please upload a .csv document.`
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = (event.target?.result as string) || '';
+        const extracted = extractRulesFromCsv(text);
+        if (extracted.length === 0) {
+          setCsvNotification({
+            type: 'error',
+            message: `No rules found in "${file.name}". Please ensure rows contain descriptive rule text.`
+          });
+          return;
+        }
+
+        let addedCount = 0;
+        setRules(prev => {
+          const existingSet = new Set(prev.map(r => r.toLowerCase().trim()));
+          const newRulesToAdd = extracted.filter(r => !existingSet.has(r.toLowerCase().trim()));
+          addedCount = newRulesToAdd.length;
+          return [...prev, ...newRulesToAdd];
+        });
+
+        setCsvNotification({
+          type: 'success',
+          message: `Extracted ${extracted.length} rules (${addedCount} new added) from "${file.name}". File removed and cleared.`
+        });
+      } catch (err) {
+        setCsvNotification({
+          type: 'error',
+          message: 'Error parsing CSV file contents. Please verify file formatting.'
+        });
+      } finally {
+        // Remove file reference from DOM input and memory
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    };
+
+    reader.onerror = () => {
+      setCsvNotification({
+        type: 'error',
+        message: `Failed to read file "${file.name}".`
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processCsvFile(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleDownloadSampleCsv = () => {
+    const sampleCsv = `Rule\n"Full-screen proctoring is strictly enforced throughout the competition."\n"Zero negative marking on all debugging challenges."\n"Tab switching and window minimization incur escalated security strikes."\n"All code submissions are evaluated server-side against hidden test suites."\n"No external IDEs, secondary monitors, or browser tabs permitted."\n"Only proctor-approved scratchpad and calculators are allowed."`;
+    const blob = new Blob([sampleCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'debugarena_rules_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleCreateCollege = async (e: React.FormEvent) => {
@@ -1154,21 +1337,127 @@ export const EventBuilderModal: React.FC<EventBuilderModalProps> = ({
           </div>
 
           {/* SECTION 3: Proctoring & Rules */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                3. Competition Rules & Proctoring Limits ({rules.length})
-              </h3>
-              {rules.length > 0 && (
+          <div
+            className={`p-5 rounded-3xl bg-slate-950/80 border transition-all space-y-4 ${
+              isDraggingCsv
+                ? 'border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30'
+                : 'border-slate-800'
+            }`}
+            onDragOver={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingCsv(true);
+            }}
+            onDragLeave={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingCsv(false);
+            }}
+            onDrop={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingCsv(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                processCsvFile(file);
+              }
+            }}
+          >
+            {/* Hidden File Input (Immediately reset upon extraction) */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvFileUpload}
+              className="hidden"
+            />
+
+            {/* Header with Title and CSV Import / Clear Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-400">
+                  <ShieldCheck className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">
+                    3. Competition Rules & Proctoring Limits ({rules.length})
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Define tournament guidelines or upload rules via a CSV document
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {/* Upload Rules CSV Button */}
                 <button
                   type="button"
-                  onClick={() => setRules([])}
-                  className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  title="Upload rules from a CSV file (file is automatically removed after extraction)"
                 >
-                  Clear All
+                  <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Upload Rules CSV</span>
                 </button>
-              )}
+
+                {/* Sample CSV Template */}
+                <button
+                  type="button"
+                  onClick={handleDownloadSampleCsv}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Download sample CSV template for rules"
+                >
+                  <Download className="w-3 h-3 text-slate-400" />
+                  <span className="hidden sm:inline">Sample CSV</span>
+                </button>
+
+                {/* Clear All */}
+                {rules.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRules([])}
+                    className="text-[11px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer px-2 py-1"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* CSV Notification Banner */}
+            {csvNotification && (
+              <div
+                className={`p-3 rounded-2xl border text-xs flex items-center justify-between gap-2 animate-in fade-in ${
+                  csvNotification.type === 'success'
+                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+                    : 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {csvNotification.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span>{csvNotification.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCsvNotification(null)}
+                  className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Drag & Drop Hint or Helper Notice */}
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/50 border border-slate-800/60 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>Upload a <code>.csv</code> file with a <code>Rule</code> column. File is automatically cleared once extracted.</span>
+              </span>
+              <span className="hidden md:inline text-[10px] text-slate-500">Drag & drop supported</span>
             </div>
 
             {/* Quick Rule Presets */}
