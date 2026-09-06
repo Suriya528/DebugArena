@@ -256,30 +256,45 @@ async function runVerification() {
     }
     console.log('  ✔ Invalid email format rejected by Google endpoint.');
 
-    // Valid Google Admin Onboarding
+    // Valid Google Admin Sign-Up (Step 1: Auth)
     const goodGoogleRes = await fetch(`${baseUrl}/api/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mockEmail: 'organizer.dean@oxford.edu',
-        name: 'Dean Oxford',
-        collegeName: 'University of Oxford',
-        collegeCode: 'OXF'
+        name: 'Dean Oxford'
       })
     });
 
     const goodGoogleData: any = await goodGoogleRes.json();
-    if (goodGoogleRes.status !== 200 || goodGoogleData.user.role !== 'college_admin') {
-      throw new Error(`Test 5 Failed: Google admin onboarding failed: ${JSON.stringify(goodGoogleData)}`);
+    if (goodGoogleRes.status !== 200 || goodGoogleData.user.role !== 'college_admin' || !goodGoogleData.needsOnboarding) {
+      throw new Error(`Test 5 Failed: Google admin signup step 1 failed: ${JSON.stringify(goodGoogleData)}`);
+    }
+
+    // Step 2: Post-auth institution onboarding
+    const onboardRes = await fetch(`${baseUrl}/api/auth/onboarding`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${goodGoogleData.token}`
+      },
+      body: JSON.stringify({
+        collegeName: 'University of Oxford'
+      })
+    });
+
+    const onboardData: any = await onboardRes.json();
+    if (onboardRes.status !== 200 || !onboardData.college) {
+      throw new Error(`Test 5 Failed: Onboarding step 2 failed: ${JSON.stringify(onboardData)}`);
     }
 
     const createdAdmin = await User.findById(goodGoogleData.user.id);
     const createdCollege = await College.findById(createdAdmin?.collegeId);
 
-    if (!createdAdmin || !createdCollege || createdCollege.code !== 'OXF') {
+    if (!createdAdmin || !createdCollege || !createdCollege.name.includes('Oxford')) {
       throw new Error('Test 5 Failed: College tenant not provisioned or linked to Google admin');
     }
-    console.log('  ✔ Google admin provisioned as "college_admin" with linked Oxford institution.');
+    console.log('  ✔ Google admin provisioned as "college_admin" with auto-derived Oxford institution code.');
 
     // Existing participant role collision protection
     await User.create({

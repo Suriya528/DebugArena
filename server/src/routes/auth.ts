@@ -17,7 +17,10 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const user = await User.findOne({ username: username.toLowerCase().trim() });
+    const identifier = username.toLowerCase().trim();
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }]
+    });
     if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
@@ -42,6 +45,8 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    const needsOnboarding = !user.collegeId && user.role !== 'participant';
+
     const payload: AuthPayload = {
       userId: user._id.toString(),
       username: user.username,
@@ -55,6 +60,7 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
 
     res.json({
       token,
+      needsOnboarding,
       user: {
         id: user._id,
         username: user.username,
@@ -91,11 +97,163 @@ authRouter.post('/logout', authenticate, (_req: Request, res: Response) => {
   res.json({ message: 'Logged out successfully' });
 });
 
+// Helper to auto-generate clean uppercase college codes without user friction
+async function generateUniqueCollegeCode(name: string): Promise<string> {
+  const clean = name.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, '');
+  const words = clean.split(/\s+/).filter(Boolean);
+  let baseCode = '';
+  if (words.length >= 2) {
+    baseCode = words.map(w => w[0]).join('').slice(0, 6);
+  } else if (words.length === 1) {
+    baseCode = words[0].slice(0, 6);
+  }
+  if (!baseCode || baseCode.length < 2) {
+    baseCode = 'COL';
+  }
+
+  let code = baseCode;
+  let counter = 1;
+  while (await College.exists({ code })) {
+    code = `${baseCode}${counter++}`;
+  }
+  return code;
+}
+
+// POST /api/auth/register-admin
+// Direct email/password registration for event organizers
+authRouter.post('/register-admin', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      res.status(400).json({ error: 'Name, email, and password are required' });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      res.status(400).json({ error: 'Please enter a valid email address' });
+      return;
+    }
+
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      return;
+    }
+
+    const existingUser = await User.findOne({
+      $or: [{ email: cleanEmail }, { username: cleanEmail.split('@')[0] }]
+    });
+    if (existingUser) {
+      res.status(400).json({ error: 'An account with this email already exists. Please sign in.' });
+      return;
+    }
+
+    let baseUsername = cleanEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
+    if (baseUsername.length < 3) baseUsername = 'organizer_' + baseUsername;
+    let uniqueUsername = baseUsername;
+    let counter = 1;
+    while (await User.exists({ username: uniqueUsername })) {
+      uniqueUsername = `${baseUsername}_${counter++}`;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      username: uniqueUsername,
+      name: name.trim(),
+      email: cleanEmail,
+      passwordHash,
+      role: 'college_admin',
+      authProvider: 'local'
+    });
+
+    const payload: AuthPayload = {
+      userId: user._id.toString(),
+      username: user.username,
+      role: user.role,
+      name: user.name
+    };
+    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+
+    res.status(201).json({
+      token,
+      needsOnboarding: true,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (err: any) {
+    console.error('Register admin error:', err);
+    res.status(500).json({ error: 'Failed to create organizer account' });
+  }
+});
+
+// POST /api/auth/onboarding
+// Post-signup onboarding: configures the organizer's institution without requiring a cryptic code
+authRouter.post('/onboarding', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { collegeName } = req.body;
+    if (!collegeName || collegeName.trim().length < 2) {
+      res.status(400).json({ error: 'Please enter a valid institution / college name' });
+      return;
+    }
+
+    const user = await User.findById(req.user?.userId);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const trimmedName = collegeName.trim();
+    let college = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
+    if (!college) {
+      const generatedCode = await generateUniqueCollegeCode(trimmedName);
+      college = await College.create({
+        name: trimmedName,
+        code: generatedCode
+      });
+    }
+
+    user.collegeId = college._id;
+    await user.save();
+
+    const payload: AuthPayload = {
+      userId: user._id.toString(),
+      username: user.username,
+      role: user.role,
+      name: user.name,
+      collegeId: college._id.toString()
+    };
+    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+
+    res.json({
+      success: true,
+      token,
+      college,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        collegeId: user.collegeId
+      }
+    });
+  } catch (err: any) {
+    console.error('Onboarding error:', err);
+    res.status(500).json({ error: 'Failed to complete institution onboarding' });
+  }
+});
+
 // POST /api/auth/google
-// Authenticates or provisions an administrator with a verified real-world Google account
+// Authenticates or provisions an administrator with a verified Google account
 authRouter.post('/google', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { credential, mockEmail, name, collegeName, collegeCode } = req.body;
+    const { credential, mockEmail, name } = req.body;
 
     let verifiedEmail: string;
     let verifiedName: string;
@@ -114,13 +272,13 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
 
       // Enforce verified real-world existing email
       if (payload.email_verified !== 'true' && payload.email_verified !== true) {
-        res.status(400).json({ error: 'Google email is not verified. Real existing email required.' });
+        res.status(400).json({ error: 'Google email is not verified' });
         return;
       }
 
       // Audience check if configured in production
       if (ENV.GOOGLE_CLIENT_ID && payload.aud !== ENV.GOOGLE_CLIENT_ID) {
-        res.status(401).json({ error: 'Google token audience mismatch (confused deputy protection).' });
+        res.status(401).json({ error: 'Google token audience mismatch' });
         return;
       }
 
@@ -128,39 +286,38 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
       verifiedName = payload.name || verifiedEmail.split('@')[0];
       googleId = payload.sub;
     } else if (ENV.NODE_ENV !== 'production' && mockEmail) {
-      // Strict Production Guard: Mock email allowed ONLY in non-production environments
+      // Development mock fallback
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(mockEmail)) {
-        res.status(400).json({ error: 'Invalid real-world email format.' });
+        res.status(400).json({ error: 'Invalid email format' });
         return;
       }
       verifiedEmail = mockEmail.toLowerCase().trim();
       verifiedName = name || mockEmail.split('@')[0];
       googleId = `mock-google-${verifiedEmail.replace(/[^a-zA-Z0-9]/g, '')}`;
     } else {
-      res.status(400).json({ error: 'Google credential ID token is required in production.' });
+      res.status(400).json({ error: 'Google credential is required' });
       return;
     }
 
-    // Lookup user by verified email or googleId
+    // Lookup user by verified email, googleId, or username
     let user = await User.findOne({ $or: [{ email: verifiedEmail }, { googleId }] });
     if (!user) {
       user = await User.findOne({ username: verifiedEmail.split('@')[0] });
     }
 
+    let isNewUser = false;
     if (user) {
-      // Privilege Escalation Guard: Existing participants cannot take over admin role via Google auth
       if (user.role === 'participant') {
         res.status(403).json({ error: 'This email is already associated with a participant account. Admin portal access denied.' });
         return;
       }
-      // Existing User linking
       user.email = verifiedEmail;
       user.authProvider = 'google';
       user.googleId = googleId;
       await user.save();
     } else {
-      // New Admin Sign-Up Flow: Assign college_admin role
+      isNewUser = true;
       let baseUsername = verifiedEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
       if (baseUsername.length < 3) baseUsername = 'admin_' + baseUsername;
       let uniqueUsername = baseUsername;
@@ -169,36 +326,13 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
         uniqueUsername = `${baseUsername}_${counter++}`;
       }
 
-      // Resolve or create College
-      let college: any = null;
-      if (collegeName) {
-        const resolvedCode = (collegeCode || collegeName.substring(0, 5)).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'COLL';
-        college = await College.findOne({ code: resolvedCode });
-        if (!college) {
-          college = await College.create({
-            name: collegeName.trim(),
-            code: resolvedCode
-          });
-        }
-      } else {
-        // Find first college or create default institutional tenant
-        college = await College.findOne();
-        if (!college) {
-          college = await College.create({
-            name: `${verifiedName}'s Institute`,
-            code: `COL${Date.now().toString().slice(-4)}`
-          });
-        }
-      }
-
       user = await User.create({
         username: uniqueUsername,
         name: verifiedName,
         email: verifiedEmail,
         authProvider: 'google',
         googleId,
-        role: 'college_admin',
-        collegeId: college._id
+        role: 'college_admin'
       });
     }
 
@@ -206,6 +340,8 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
       res.status(403).json({ error: 'Account suspended.' });
       return;
     }
+
+    const needsOnboarding = isNewUser || !user.collegeId;
 
     const payload: AuthPayload = {
       userId: user._id.toString(),
@@ -220,6 +356,7 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
 
     res.json({
       token,
+      needsOnboarding,
       user: {
         id: user._id,
         username: user.username,

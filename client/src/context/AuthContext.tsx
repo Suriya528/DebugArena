@@ -3,12 +3,18 @@ import { api } from '../services/api.js';
 import { connectSocket, disconnectSocket } from '../services/socket.js';
 import { User } from '../types/index.js';
 
+export interface AuthResult extends User {
+  needsOnboarding?: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<User>;
-  loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string; collegeName?: string; collegeCode?: string }) => Promise<User>;
+  login: (username: string, password: string) => Promise<AuthResult>;
+  registerAdmin: (payload: { name: string; email: string; password: string }) => Promise<AuthResult>;
+  loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
+  completeOnboarding: (collegeName: string) => Promise<User>;
   joinEventByCode: (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }) => Promise<{ user: User; event: any }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -56,18 +62,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshUser();
   }, []);
 
-  const login = async (username: string, password: string): Promise<User> => {
+  const login = async (username: string, password: string): Promise<AuthResult> => {
     const res = await api.post('/auth/login', { username, password });
-    const { token: receivedToken, user: receivedUser } = res.data;
+    const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
     localStorage.setItem('debugarena_token', receivedToken);
+    if (receivedUser.collegeId) {
+      localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+    }
     setToken(receivedToken);
 
-    const formattedUser: User = {
+    const formattedUser: AuthResult = {
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
-      role: receivedUser.role
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId,
+      needsOnboarding: !!needsOnboarding
     };
 
     setUser(formattedUser);
@@ -75,22 +86,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return formattedUser;
   };
 
-  const loginWithGoogle = async (payload: { credential?: string; mockEmail?: string; name?: string; collegeName?: string; collegeCode?: string }): Promise<User> => {
-    const res = await api.post('/auth/google', payload);
-    const { token: receivedToken, user: receivedUser } = res.data;
+  const registerAdmin = async (payload: { name: string; email: string; password: string }): Promise<AuthResult> => {
+    const res = await api.post('/auth/register-admin', payload);
+    const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
     localStorage.setItem('debugarena_token', receivedToken);
     setToken(receivedToken);
+
+    const formattedUser: AuthResult = {
+      id: receivedUser.id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId,
+      needsOnboarding: !!needsOnboarding
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return formattedUser;
+  };
+
+  const loginWithGoogle = async (payload: { credential?: string; mockEmail?: string; name?: string }): Promise<AuthResult> => {
+    const res = await api.post('/auth/google', payload);
+    const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
+
+    localStorage.setItem('debugarena_token', receivedToken);
+    if (receivedUser.collegeId) {
+      localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+    }
+    setToken(receivedToken);
+
+    const formattedUser: AuthResult = {
+      id: receivedUser.id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId,
+      needsOnboarding: !!needsOnboarding
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return formattedUser;
+  };
+
+  const completeOnboarding = async (collegeName: string): Promise<User> => {
+    const res = await api.post('/auth/onboarding', { collegeName });
+    const { token: receivedToken, user: receivedUser, college } = res.data;
+
+    if (receivedToken) {
+      localStorage.setItem('debugarena_token', receivedToken);
+      setToken(receivedToken);
+    }
+    if (college?._id) {
+      localStorage.setItem('debugarena_active_college_id', college._id);
+    }
 
     const formattedUser: User = {
       id: receivedUser.id,
       username: receivedUser.username,
       name: receivedUser.name,
-      role: receivedUser.role
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId
     };
 
     setUser(formattedUser);
-    connectSocket(receivedToken);
     return formattedUser;
   };
 
@@ -115,13 +176,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     localStorage.removeItem('debugarena_token');
+    localStorage.removeItem('debugarena_active_college_id');
+    localStorage.removeItem('debugarena_active_event_id');
     setToken(null);
     setUser(null);
     disconnectSocket();
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, loginWithGoogle, joinEventByCode, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, registerAdmin, loginWithGoogle, completeOnboarding, joinEventByCode, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
