@@ -4,9 +4,10 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { User } from '../models/User.js';
 import { College } from '../models/College.js';
+import { PasskeySignInSession } from '../models/PasskeySignInSession.js';
 import { ENV } from '../config/env.js';
 import { authenticate, AuthenticatedRequest, AuthPayload } from '../middleware/auth.js';
-import { sendPasskeyNotificationEmail } from '../services/emailService.js';
+import { sendPasskeyNotificationEmail, sendPasskeyMagicSignInEmail } from '../services/emailService.js';
 
 export const authRouter = Router();
 
@@ -249,35 +250,209 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
 
     const needsOnboarding = !targetUser.collegeId;
 
-    const payload: AuthPayload = {
-      userId: targetUser._id.toString(),
-      username: targetUser.username,
-      role: targetUser.role,
-      name: targetUser.name,
-      collegeId: targetUser.collegeId ? targetUser.collegeId.toString() : undefined,
-      eventId: targetUser.eventId ? targetUser.eventId.toString() : undefined
-    };
+    // Security Feature: Dispatch One-Click Magic Sign-In Email to Organizer
+    const sessionId = crypto.randomBytes(32).toString('hex');
+    const magicToken = crypto.randomBytes(32).toString('hex');
 
-    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+    await PasskeySignInSession.create({
+      sessionId,
+      token: magicToken,
+      userId: targetUser._id,
+      email: targetUser.email || `${targetUser.username}@debugarena.internal`,
+      username: targetUser.username,
+      name: targetUser.name || targetUser.username,
+      status: 'pending',
+      needsOnboarding,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+    });
+
+    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const signInUrl = `${clientOrigin}/verify-signin?token=${magicToken}&session=${sessionId}`;
+
+    if (targetUser.email) {
+      sendPasskeyMagicSignInEmail({
+        to: targetUser.email,
+        name: targetUser.name || targetUser.username,
+        username: targetUser.username,
+        signInUrl,
+        expiresInMinutes: 15
+      }).catch(err => console.warn('Background magic sign-in email dispatch error:', err));
+    }
 
     res.json({
-      token,
-      needsOnboarding,
-      user: {
-        id: targetUser._id,
-        username: targetUser.username,
-        name: targetUser.name,
-        email: targetUser.email,
-        role: targetUser.role,
-        collegeId: targetUser.collegeId,
-        eventId: targetUser.eventId,
-        hasPasskey: true,
-        needsOnboarding
-      }
+      requiresEmailVerification: true,
+      sessionId,
+      maskedEmail: maskEmailAddress(targetUser.email || targetUser.username),
+      username: targetUser.username,
+      devSignInUrl: process.env.NODE_ENV !== 'production' ? signInUrl : undefined,
+      message: `A secure sign-in authorization link has been sent to ${maskEmailAddress(targetUser.email || targetUser.username)}.`
     });
   } catch (err: any) {
     console.error('Passkey login error:', err);
     res.status(500).json({ error: 'Server error during passkey verification' });
+  }
+});
+
+// GET /api/auth/passkey/session-status?sessionId=...
+// Allows the waiting sign-in modal to automatically detect when the organizer clicks the email link
+authRouter.get('/passkey/session-status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.query;
+    if (!sessionId) {
+      res.status(400).json({ error: 'Session ID is required' });
+      return;
+    }
+
+    const session = await PasskeySignInSession.findOne({ sessionId: String(sessionId) });
+    if (!session) {
+      res.status(404).json({ verified: false, expired: true, error: 'Session expired or not found' });
+      return;
+    }
+
+    if (session.expiresAt < new Date()) {
+      res.json({ verified: false, expired: true, error: 'Session expired' });
+      return;
+    }
+
+    if (session.status === 'verified' && session.authToken) {
+      const user = await User.findById(session.userId);
+      res.json({
+        verified: true,
+        token: session.authToken,
+        needsOnboarding: session.needsOnboarding,
+        user: {
+          id: user?._id || session.userId,
+          username: user?.username || session.username,
+          name: user?.name || session.name,
+          email: user?.email || session.email,
+          role: user?.role,
+          collegeId: user?.collegeId,
+          eventId: user?.eventId,
+          hasPasskey: true,
+          needsOnboarding: session.needsOnboarding
+        }
+      });
+      return;
+    }
+
+    res.json({ verified: false, status: 'pending' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check passkey session status' });
+  }
+});
+
+// POST /api/auth/passkey/verify-magic-token
+// Invoked when the organizer clicks the "Sign In to DebugArena" button in their authorization email
+authRouter.post('/passkey/verify-magic-token', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, session: sessionParam, sessionId } = req.body;
+    if (!token) {
+      res.status(400).json({ error: 'Verification token is required' });
+      return;
+    }
+
+    const effectiveSessionId = sessionParam || sessionId;
+    const query: Record<string, any> = { token: String(token) };
+    if (effectiveSessionId) query.sessionId = String(effectiveSessionId);
+
+    const session = await PasskeySignInSession.findOne(query);
+    if (!session) {
+      res.status(400).json({ error: 'Invalid or expired sign-in link. Please request a new passkey sign-in link.' });
+      return;
+    }
+
+    if (session.expiresAt < new Date()) {
+      res.status(400).json({ error: 'This sign-in link has expired. Please initiate a new passkey sign-in.' });
+      return;
+    }
+
+    const user = await User.findById(session.userId);
+    if (!user) {
+      res.status(404).json({ error: 'User account not found.' });
+      return;
+    }
+
+    if (user.isDisqualified) {
+      res.status(403).json({ error: 'You have been disqualified from the platform.' });
+      return;
+    }
+
+    const needsOnboarding = !user.collegeId;
+    const payload: AuthPayload = {
+      userId: user._id.toString(),
+      username: user.username,
+      role: user.role,
+      name: user.name,
+      collegeId: user.collegeId ? user.collegeId.toString() : undefined,
+      eventId: user.eventId ? user.eventId.toString() : undefined
+    };
+
+    const authToken = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+
+    session.status = 'verified';
+    session.authToken = authToken;
+    session.needsOnboarding = needsOnboarding;
+    await session.save();
+
+    res.json({
+      success: true,
+      token: authToken,
+      needsOnboarding,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        collegeId: user.collegeId,
+        eventId: user.eventId,
+        hasPasskey: true,
+        needsOnboarding
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to verify sign-in link' });
+  }
+});
+
+// POST /api/auth/passkey/resend-verification
+authRouter.post('/passkey/resend-verification', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      res.status(400).json({ error: 'Session ID is required' });
+      return;
+    }
+
+    const session = await PasskeySignInSession.findOne({ sessionId: String(sessionId) });
+    if (!session || session.status !== 'pending') {
+      res.status(400).json({ error: 'Session not found or already verified' });
+      return;
+    }
+
+    const freshToken = crypto.randomBytes(32).toString('hex');
+    session.token = freshToken;
+    session.expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await session.save();
+
+    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const signInUrl = `${clientOrigin}/verify-signin?token=${freshToken}&session=${session.sessionId}`;
+
+    await sendPasskeyMagicSignInEmail({
+      to: session.email,
+      name: session.name || session.username,
+      username: session.username,
+      signInUrl,
+      expiresInMinutes: 15
+    });
+
+    res.json({
+      success: true,
+      message: 'A fresh sign-in link has been sent to your email.',
+      devSignInUrl: process.env.NODE_ENV !== 'production' ? signInUrl : undefined
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to resend verification email' });
   }
 });
 

@@ -156,3 +156,149 @@ If you did not perform this action, please access your account immediately to re
 
   return { success: true, simulated: true };
 }
+
+interface SendPasskeyMagicSignInEmailParams {
+  to: string;
+  name: string;
+  username: string;
+  signInUrl: string;
+  expiresInMinutes?: number;
+}
+
+export async function sendPasskeyMagicSignInEmail({
+  to,
+  name,
+  username,
+  signInUrl,
+  expiresInMinutes = 15
+}: SendPasskeyMagicSignInEmailParams): Promise<{ success: boolean; simulated?: boolean; messageId?: string }> {
+  const timestamp = new Date().toUTCString();
+  const subject = `🔐 Sign In to DebugArena Organizer Portal`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0c1220; color: #e2e8f0; margin: 0; padding: 24px; }
+          .container { max-width: 580px; margin: 0 auto; background: #111827; border: 1px solid #1f2937; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+          .header { background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); padding: 32px 24px; text-align: center; }
+          .header h1 { color: #ffffff; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+          .content { padding: 32px 28px; }
+          .greeting { font-size: 16px; font-weight: 600; color: #f8fafc; margin-bottom: 16px; }
+          .btn-container { text-align: center; margin: 32px 0; }
+          .signin-btn { display: inline-block; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 14px; font-weight: 800; font-size: 15px; letter-spacing: 0.3px; box-shadow: 0 4px 18px rgba(79, 70, 229, 0.4); }
+          .notice-box { background: #1e1b4b; border: 1px solid #3730a3; border-radius: 12px; padding: 16px 20px; margin: 20px 0; font-size: 13px; color: #cbd5e1; }
+          .warning { background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.25); border-radius: 10px; padding: 14px 16px; margin-top: 24px; font-size: 12px; color: #fda4af; line-height: 1.5; }
+          .link-fallback { word-break: break-all; font-family: monospace; font-size: 11px; color: #818cf8; background: #090d16; padding: 10px; border-radius: 8px; border: 1px solid #1e293b; margin-top: 8px; }
+          .footer { background: #0b0f19; padding: 20px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1f2937; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>DebugArena Organizer Authorization</h1>
+          </div>
+          <div class="content">
+            <div class="greeting">Hello ${name || username},</div>
+            <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1; margin: 0 0 16px 0;">
+              A sign-in request was initiated for your administrator account <strong>(${username})</strong> using your security passkey.
+            </p>
+
+            <p style="font-size: 14px; line-height: 1.6; color: #cbd5e1; margin: 0 0 24px 0;">
+              Click the button below to authorize and complete your sign-in to the organizer portal:
+            </p>
+
+            <div class="btn-container">
+              <a href="${signInUrl}" class="signin-btn" target="_blank">
+                Sign In to DebugArena →
+              </a>
+            </div>
+
+            <div class="notice-box">
+              <strong>🔒 Security Verification Details:</strong>
+              <div style="margin-top: 6px; font-size: 12px; color: #94a3b8;">
+                • Target Account: <span style="color: #f1f5f9;">${username} (${to})</span><br>
+                • Request Time: <span style="color: #f1f5f9;">${timestamp}</span><br>
+                • Expiration: <span style="color: #34d399;">Valid for ${expiresInMinutes} minutes</span>
+              </div>
+            </div>
+
+            <p style="font-size: 12px; color: #94a3b8; margin: 24px 0 6px 0;">
+              If the button above does not work, copy and paste this link into your browser:
+            </p>
+            <div class="link-fallback">${signInUrl}</div>
+
+            <div class="warning">
+              <strong>⚠️ Did not initiate this request?</strong><br>
+              If you did not enter your passkey to sign in, please disregard this email. Your account remains protected, and this link will expire automatically.
+            </div>
+          </div>
+          <div class="footer">
+            DebugArena Automated Security Service • Real-time Multi-Round Tournament Platform
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  const textContent = `
+DebugArena Organizer Authorization
+Hello ${name || username},
+
+A sign-in request was initiated for your administrator account (${username}) using your security passkey at ${timestamp}.
+
+To authorize and complete your sign-in, open the following link:
+${signInUrl}
+
+This verification link is valid for ${expiresInMinutes} minutes and can only be used once.
+
+If you did not initiate this request, you can safely ignore this email.
+  `;
+
+  // SMTP dispatch if configured
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM || '"DebugArena Security" <no-reply@debugarena.internal>';
+
+  if (smtpHost && smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass }
+      });
+
+      const info = await transporter.sendMail({
+        from: smtpFrom,
+        to,
+        subject,
+        text: textContent,
+        html: htmlContent
+      });
+
+      console.log(`✉️ [EMAIL] Passkey Magic Sign-In email sent to ${to} (Message ID: ${info.messageId})`);
+      return { success: true, messageId: info.messageId };
+    } catch (err) {
+      console.warn(`⚠️ [EMAIL] Failed to send Magic Sign-In email via SMTP, falling back to console logger:`, err);
+    }
+  }
+
+  // Graceful simulation / dev dispatch logger
+  console.log(`\n================================================================`);
+  console.log(`✉️  [SIMULATED DISPATCH] PASSKEY MAGIC SIGN-IN EMAIL`);
+  console.log(`================================================================`);
+  console.log(`To:        ${name || username} <${to}>`);
+  console.log(`Subject:   ${subject}`);
+  console.log(`Sign-In:   ${signInUrl}`);
+  console.log(`Expires:   ${expiresInMinutes} minutes`);
+  console.log(`Time:      ${timestamp}`);
+  console.log(`Status:    DISPATCHED SUCCESSFULLY`);
+  console.log(`================================================================\n`);
+
+  return { success: true, simulated: true };
+}

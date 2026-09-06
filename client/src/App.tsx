@@ -22,6 +22,7 @@ import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
 import { LandingPage } from './components/home/LandingPage.js';
 import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
+import { VerifySignInView } from './components/auth/VerifySignInView.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -297,6 +298,21 @@ export const App: React.FC = () => {
       <CertificateVerifyView
         certificateId={verifyCertId}
         onBack={() => {
+          window.location.href = '/';
+        }}
+      />
+    );
+  }
+
+  // Magic Passkey Sign-In Authorization Portal
+  const isVerifySignInRoute =
+    window.location.pathname.startsWith('/verify-signin') ||
+    (new URLSearchParams(window.location.search).has('token') && (window.location.pathname === '/' || window.location.pathname === '/verify-signin'));
+
+  if (isVerifySignInRoute) {
+    return (
+      <VerifySignInView
+        onBackToHome={() => {
           window.location.href = '/';
         }}
       />

@@ -14,7 +14,16 @@ export interface PasskeyLoginDisambiguation {
   maskedAccounts: { name: string; username?: string; maskedEmail: string }[];
 }
 
-export type PasskeyLoginResult = AuthResult | PasskeyLoginDisambiguation;
+export interface PasskeyLoginEmailVerification {
+  requiresEmailVerification: true;
+  sessionId: string;
+  maskedEmail: string;
+  username: string;
+  message: string;
+  devSignInUrl?: string;
+}
+
+export type PasskeyLoginResult = AuthResult | PasskeyLoginDisambiguation | PasskeyLoginEmailVerification;
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +33,7 @@ interface AuthContextType {
   registerAdmin: (payload: { name: string; email: string; password: string; passkey?: string; collegeName?: string; university?: string }) => Promise<AuthResult>;
   loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string }) => Promise<AuthResult>;
   loginWithPasskey: (passkey: string, email?: string) => Promise<PasskeyLoginResult>;
+  verifyPasskeyMagicToken: (magicToken: string, sessionId?: string) => Promise<AuthResult>;
   setupPasskey: (passkey: string) => Promise<{ success: boolean; message: string; hasPasskey: boolean }>;
   revokePasskey: () => Promise<void>;
   completeOnboarding: (collegeName: string, university?: string) => Promise<User>;
@@ -209,6 +219,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (res.data.requiresEmail) {
       return res.data as PasskeyLoginDisambiguation;
     }
+    if (res.data.requiresEmailVerification) {
+      return res.data as PasskeyLoginEmailVerification;
+    }
 
     const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
@@ -219,7 +232,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(receivedToken);
 
     const formattedUser: AuthResult = {
-      id: receivedUser.id,
+      id: receivedUser.id || receivedUser._id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      email: receivedUser.email,
+      role: receivedUser.role,
+      collegeId: receivedUser.collegeId,
+      hasPasskey: true,
+      needsOnboarding: !!needsOnboarding
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return formattedUser;
+  };
+
+  const verifyPasskeyMagicToken = async (magicToken: string, sessionId?: string): Promise<AuthResult> => {
+    const res = await api.post('/auth/passkey/verify-magic-token', { token: magicToken, sessionId });
+    const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
+
+    localStorage.setItem('debugarena_token', receivedToken);
+    if (receivedUser.collegeId) {
+      localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+    }
+    setToken(receivedToken);
+
+    const formattedUser: AuthResult = {
+      id: receivedUser.id || receivedUser._id,
       username: receivedUser.username,
       name: receivedUser.name,
       email: receivedUser.email,
@@ -264,6 +303,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registerAdmin,
         loginWithGoogle,
         loginWithPasskey,
+        verifyPasskeyMagicToken,
         setupPasskey,
         revokePasskey,
         completeOnboarding,

@@ -12,9 +12,14 @@ import {
   CheckCircle2,
   AlertCircle,
   GraduationCap,
-  Key
+  Key,
+  Loader2,
+  RefreshCw,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
+import { api } from '../../services/api.js';
 
 interface AdminAuthModalProps {
   isOpen: boolean;
@@ -29,12 +34,23 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   initialStep = 'auth',
   forcedOnboarding = false
 }) => {
-  const { user, login, registerAdmin, loginWithGoogle, completeOnboarding, loginWithPasskey } = useAuth();
+  const { user, login, registerAdmin, loginWithGoogle, completeOnboarding, loginWithPasskey, refreshUser } = useAuth();
   const [step, setStep] = useState<'auth' | 'onboarding'>(initialStep);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [signinMethod, setSigninMethod] = useState<'password' | 'passkey'>('password');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Email authorization pending state for passkey sign-in
+  const [emailVerificationPending, setEmailVerificationPending] = useState<{
+    sessionId: string;
+    maskedEmail: string;
+    username: string;
+    devSignInUrl?: string;
+  } | null>(null);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [verificationSuccessMessage, setVerificationSuccessMessage] = useState<string | null>(null);
 
   // Form fields
   const [fullName, setFullName] = useState('');
@@ -79,6 +95,10 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       setUniversity('');
       setShowPassword(false);
       setShowPasskey(false);
+      setEmailVerificationPending(null);
+      setResendingEmail(false);
+      setResendCooldown(0);
+      setVerificationSuccessMessage(null);
       setAuthenticatedUserName(user?.name || user?.username || '');
       setAuthenticatedUserEmail(user?.email || '');
     }
@@ -93,6 +113,10 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
         try {
           (window as any).google.accounts.id.initialize({
             client_id: googleClientId,
+            auto_select: true,
+            itp_support: true,
+            use_fedcm_for_prompt: true,
+            context: mode === 'signup' ? 'signup' : 'signin',
             callback: async (response: any) => {
               try {
                 setLoading(true);
@@ -119,7 +143,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               theme: 'outline',
               size: 'large',
               width: 382,
-              text: mode === 'signup' ? 'signup_with' : 'continue_with',
+              text: mode === 'signup' ? 'signup_with' : 'signin_with',
               shape: 'pill'
             });
             setIsGsiReady(true);
@@ -136,6 +160,81 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     const timer = setTimeout(initGsi, 150);
     return () => clearTimeout(timer);
   }, [isOpen, step, mode, googleClientId]);
+
+  // Real-time polling for passkey email authorization status
+  useEffect(() => {
+    if (!emailVerificationPending?.sessionId || !isOpen) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/auth/passkey/session-status?sessionId=${emailVerificationPending.sessionId}`);
+        if (!isMounted) return;
+
+        if (res.data.verified && res.data.token) {
+          clearInterval(interval);
+          const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
+
+          localStorage.setItem('debugarena_token', receivedToken);
+          if (receivedUser?.collegeId) {
+            localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
+          }
+
+          // Show celebration toast / message
+          setVerificationSuccessMessage(`Logged in successfully! Welcome, ${receivedUser.name || receivedUser.username}! 🎉`);
+
+          setTimeout(() => {
+            if (!isMounted) return;
+            refreshUser();
+            if (needsOnboarding) {
+              setAuthenticatedUserName(receivedUser.name || receivedUser.username);
+              setAuthenticatedUserEmail(receivedUser.email || '');
+              setEmailVerificationPending(null);
+              setStep('onboarding');
+            } else {
+              setEmailVerificationPending(null);
+              onClose();
+            }
+          }, 1200);
+        }
+      } catch (e) {
+        // Silently continue polling
+      }
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [emailVerificationPending, isOpen, refreshUser, onClose]);
+
+  // Resend cooldown countdown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setResendCooldown(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleResendEmail = async () => {
+    if (!emailVerificationPending?.sessionId || resendCooldown > 0 || resendingEmail) return;
+    try {
+      setResendingEmail(true);
+      setError(null);
+      const res = await api.post('/auth/passkey/resend-verification', {
+        sessionId: emailVerificationPending.sessionId
+      });
+      setResendCooldown(30);
+      if (res.data.devSignInUrl) {
+        setEmailVerificationPending(prev => prev ? { ...prev, devSignInUrl: res.data.devSignInUrl } : prev);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to resend authorization email.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -173,6 +272,18 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
             setNeedsDisambiguation(true);
             setDisambiguationAccounts(authRes.maskedAccounts || []);
             setError(authRes.message || 'Multiple accounts share this passkey. Please confirm your email address.');
+            setLoading(false);
+            return;
+          }
+
+          if ('requiresEmailVerification' in authRes) {
+            setEmailVerificationPending({
+              sessionId: authRes.sessionId,
+              maskedEmail: authRes.maskedEmail,
+              username: authRes.username,
+              devSignInUrl: authRes.devSignInUrl
+            });
+            setResendCooldown(30);
             setLoading(false);
             return;
           }
@@ -304,7 +415,154 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
         {/* STEP 1: AUTHENTICATION (SIGN IN / CREATE ACCOUNT)         */}
         {/* ========================================================= */}
         {step === 'auth' && (
-          <div>
+          emailVerificationPending ? (
+            <div className="space-y-6 py-1 animate-in fade-in duration-300">
+              {verificationSuccessMessage ? (
+                /* Celebration Confirmation */
+                <div className="text-center py-6 space-y-4 animate-in zoom-in-95 duration-300">
+                  <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full bg-emerald-500/20 blur-xl animate-pulse" />
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Security Verified</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-white tracking-tight">
+                      {verificationSuccessMessage}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Redirecting to your organizer dashboard...
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                /* Awaiting Authorization Email View */
+                <div className="space-y-5">
+                  {/* Top Badge & Header */}
+                  <div className="text-center space-y-3">
+                    <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                      <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-md animate-pulse" />
+                      <div className="w-16 h-16 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
+                        <Mail className="w-8 h-8 text-indigo-400 animate-bounce" style={{ animationDuration: '2.5s' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white tracking-tight">
+                        Check Your Email to Sign In
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Passkey Security Verification Link Sent
+                      </p>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+
+                  {/* Recipient Details Card */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-indigo-500/30 text-center space-y-1.5">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold block">
+                      Target Organizer Account
+                    </span>
+                    <div className="text-sm font-mono font-bold text-indigo-300">
+                      {emailVerificationPending.maskedEmail}
+                    </div>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-800 text-[11px] font-mono text-slate-400">
+                      @{emailVerificationPending.username}
+                    </span>
+                  </div>
+
+                  {/* Step instructions */}
+                  <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs space-y-2 text-slate-300">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Open the authorization email sent to your registered inbox.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Click the <strong className="text-white">Sign In to DebugArena →</strong> button in your email.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        This modal will automatically detect verification and grant instant access.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Realtime Live Pulse Indicator */}
+                  <div className="flex items-center justify-center gap-2 text-xs text-slate-400 bg-slate-950/60 py-2.5 px-4 rounded-xl border border-slate-800/80">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="text-[11px]">Awaiting authorization from email link...</span>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-2 pt-1">
+                    {/* Dev Quick Link */}
+                    {emailVerificationPending.devSignInUrl && (
+                      <a
+                        href={emailVerificationPending.devSignInUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:border-amber-400 text-amber-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open Direct Sign-In Link (Dev Preview)</span>
+                      </a>
+                    )}
+
+                    {/* Resend Email Button */}
+                    <button
+                      type="button"
+                      disabled={resendCooldown > 0 || resendingEmail}
+                      onClick={handleResendEmail}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${resendingEmail ? 'animate-spin' : ''}`} />
+                      <span>
+                        {resendingEmail
+                          ? 'Sending fresh authorization email...'
+                          : resendCooldown > 0
+                          ? `Resend link in ${resendCooldown}s`
+                          : 'Resend Authorization Email'}
+                      </span>
+                    </button>
+
+                    {/* Back to standard login */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailVerificationPending(null);
+                        setError(null);
+                      }}
+                      className="w-full py-2 text-center text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      Use a different sign-in method
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
               <div className="w-11 h-11 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
@@ -693,6 +951,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               )}
             </div>
           </div>
+          )
         )}
 
         {/* ========================================================= */}
