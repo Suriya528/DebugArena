@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Shield,
   Terminal,
@@ -90,17 +90,17 @@ export const LandingPage: React.FC = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all flex items-center gap-2 cursor-pointer"
+              className="h-10 px-4 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Shield className="w-4 h-4 text-indigo-400" />
+              <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
               <span>Organizer Portal</span>
             </button>
 
             <button
               onClick={() => setIsJoinModalOpen(true)}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+              className="h-10 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
             >
-              <Trophy className="w-4 h-4 text-slate-950" />
+              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
               <span>Join Tournament</span>
             </button>
           </div>
@@ -132,22 +132,23 @@ export const LandingPage: React.FC = () => {
           </p>
 
           {/* Action CTAs */}
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-xl mx-auto">
             <button
               onClick={() => setIsJoinModalOpen(true)}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl text-sm font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-xl shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              className="w-full sm:w-auto sm:min-w-[230px] h-12 px-7 rounded-2xl text-sm font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-xl shadow-cyan-500/20 border border-transparent transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap"
             >
-              <Trophy className="w-4 h-4" />
+              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
               <span>Enter with Event Code</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-4 h-4 text-slate-950 shrink-0" />
             </button>
 
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl text-sm font-semibold text-white bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto sm:min-w-[230px] h-12 px-7 rounded-2xl text-sm font-semibold text-white bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group"
             >
-              <Shield className="w-4 h-4 text-indigo-400" />
+              <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
               <span>Organizer Sign-In</span>
+              <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors shrink-0" />
             </button>
           </div>
 

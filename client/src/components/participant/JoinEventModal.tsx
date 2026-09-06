@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Trophy, KeyRound, User as UserIcon, BookOpen, GraduationCap, ArrowRight, Lock, Hash, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 
@@ -156,7 +156,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1 block">Event Access Code</label>
               <div className="relative">
-                <Hash className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                <Hash className="w-4 h-4 text-cyan-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   required
@@ -173,7 +173,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1 block">Full Name</label>
                 <div className="relative">
-                  <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     required
@@ -201,7 +201,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1 block">Department</label>
                 <div className="relative">
-                  <BookOpen className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <BookOpen className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={department}
@@ -214,7 +214,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
               <div>
                 <label className="text-xs font-medium text-slate-300 mb-1 block">Year / Semester</label>
                 <div className="relative">
-                  <GraduationCap className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <GraduationCap className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={year}
@@ -231,7 +231,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                 Session PIN / Password
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
@@ -243,7 +243,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -271,7 +271,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1.5 block">Roll Number or Participant Username</label>
               <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   required
@@ -286,7 +286,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1.5 block">Session Password / PIN</label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type={showLoginPassword ? 'text' : 'password'}
                   required
@@ -298,7 +298,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowLoginPassword(!showLoginPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
                   aria-label={showLoginPassword ? "Hide password" : "Show password"}
                 >
                   {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
