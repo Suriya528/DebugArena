@@ -266,7 +266,9 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
       expiresAt: new Date(Date.now() + 15 * 60 * 1000)
     });
 
-    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const clientOrigin = process.env.CLIENT_ORIGIN && process.env.CLIENT_ORIGIN !== 'http://localhost:5173'
+      ? process.env.CLIENT_ORIGIN
+      : (req.get('origin') || process.env.CLIENT_ORIGIN || 'http://localhost:5173');
     const signInUrl = `${clientOrigin}/verify-signin?token=${magicToken}&session=${sessionId}`;
 
     if (targetUser.email) {
@@ -435,7 +437,9 @@ authRouter.post('/passkey/resend-verification', async (req: Request, res: Respon
     session.expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     await session.save();
 
-    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const clientOrigin = process.env.CLIENT_ORIGIN && process.env.CLIENT_ORIGIN !== 'http://localhost:5173'
+      ? process.env.CLIENT_ORIGIN
+      : (req.get('origin') || process.env.CLIENT_ORIGIN || 'http://localhost:5173');
     const signInUrl = `${clientOrigin}/verify-signin?token=${freshToken}&session=${session.sessionId}`;
 
     await sendPasskeyMagicSignInEmail({
