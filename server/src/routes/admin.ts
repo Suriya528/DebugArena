@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
+import { authenticate, requireAnyAdmin, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { Event } from '../models/Event.js';
 import { Competition } from '../models/Competition.js';
@@ -13,13 +13,13 @@ import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { AuditLog } from '../models/AuditLog.js';
-import { broadcastToParticipants, broadcastToAdmins } from '../services/socketService.js';
+import { broadcastToParticipants, broadcastToAdmins, emitToUser } from '../services/socketService.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
 
 export const adminRouter = Router();
 
 adminRouter.use(authenticate);
-adminRouter.use(requireRole('admin'));
+adminRouter.use(requireAnyAdmin);
 
 // GET /api/admin/competition
 adminRouter.get('/competition', async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -106,7 +106,7 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
     // Update competition currentRoundNumber
     await Competition.updateOne({}, { currentRoundNumber: roundNumber, status: 'active' });
 
-    // Mark eligible participants as in_progress
+    // Mark eligible participants as in_progress (Preserving submitted or eliminated status)
     if (roundNumber === 1) {
       const userFilter: any = { role: 'participant', isDisqualified: false };
       if (req.user?.eventId) {
@@ -114,11 +114,19 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
       }
       const participants = await User.find(userFilter);
       for (const p of participants) {
-        await RoundProgress.findOneAndUpdate(
-          { userId: p._id, roundNumber: 1 },
-          { $set: { status: 'in_progress', startedAt: effectiveRound.startedAt } },
-          { upsert: true }
-        );
+        const existing = await RoundProgress.findOne({ userId: p._id, roundNumber: 1 });
+        if (!existing) {
+          await RoundProgress.create({
+            userId: p._id,
+            roundNumber: 1,
+            status: 'in_progress',
+            startedAt: effectiveRound.startedAt || new Date()
+          });
+        } else if (existing.status === 'not_started') {
+          existing.status = 'in_progress';
+          existing.startedAt = effectiveRound.startedAt || new Date();
+          await existing.save();
+        }
       }
     } else {
       // For Round 2 and 3, only advanced participants from this event start
@@ -134,11 +142,19 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
         status: 'advanced'
       });
       for (const adv of advancedFromPrev) {
-        await RoundProgress.findOneAndUpdate(
-          { userId: adv.userId, roundNumber },
-          { $set: { status: 'in_progress', startedAt: effectiveRound.startedAt } },
-          { upsert: true }
-        );
+        const existing = await RoundProgress.findOne({ userId: adv.userId, roundNumber });
+        if (!existing) {
+          await RoundProgress.create({
+            userId: adv.userId,
+            roundNumber,
+            status: 'in_progress',
+            startedAt: effectiveRound.startedAt || new Date()
+          });
+        } else if (existing.status === 'not_started') {
+          existing.status = 'in_progress';
+          existing.startedAt = effectiveRound.startedAt || new Date();
+          await existing.save();
+        }
       }
     }
 
@@ -679,6 +695,12 @@ adminRouter.patch('/participants/:id/disqualify', async (req: AuthenticatedReque
       isDisqualified,
       reason: user.disqualificationReason
     });
+
+    if (isDisqualified) {
+      emitToUser(user._id.toString(), 'participant:disqualified', {
+        reason: user.disqualificationReason
+      });
+    }
 
     res.json({ success: true, user });
   } catch (err) {

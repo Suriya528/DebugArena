@@ -1,6 +1,11 @@
-import { Router, Response } from 'express';
-import { authenticate, requireRole, checkNotDisqualified, AuthenticatedRequest } from '../middleware/auth.js';
+import { Router, Request, Response } from 'express';
+import { Types } from 'mongoose';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { ENV } from '../config/env.js';
+import { authenticate, requireRole, checkNotDisqualified, AuthenticatedRequest, AuthPayload } from '../middleware/auth.js';
 import { Competition } from '../models/Competition.js';
+import { Event } from '../models/Event.js';
 import { Round } from '../models/Round.js';
 import { Question } from '../models/Question.js';
 import { Attempt } from '../models/Attempt.js';
@@ -23,6 +28,134 @@ export const participantRouter = Router();
 // In-memory concurrency locks and anti-cheat debounce state
 const activeEvaluationLocks = new Set<string>();
 const recentViolationMap = new Map<string, { time: number; type: string; count: number }>();
+
+// -------------------- PUBLIC PARTICIPANT ACCESS --------------------
+
+// POST /api/participant/join-by-code
+// Allows a participant to join an active event using an event code, supporting idempotent reconnection
+participantRouter.post('/join-by-code', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { eventCode, name, regNo, department, year, password } = req.body;
+
+    if (!eventCode || !name || !regNo || !password) {
+      res.status(400).json({ error: 'Event code, full name, roll number (regNo), and password are required' });
+      return;
+    }
+
+    const cleanCode = eventCode.trim().toUpperCase();
+    const event = await Event.findOne({ code: cleanCode });
+    if (!event) {
+      res.status(404).json({ error: `Event with code '${cleanCode}' not found.` });
+      return;
+    }
+
+    // State machine guard: event must allow participant entry
+    if (event.status !== 'registration' && event.status !== 'ready' && event.status !== 'live') {
+      res.status(403).json({
+        error: `Event '${event.name}' is currently ${event.status.toUpperCase()}. Registration is closed.`
+      });
+      return;
+    }
+
+    const cleanRegNo = regNo.trim().toUpperCase();
+    if (!cleanRegNo || cleanRegNo.replace(/[^A-Z0-9]/g, '').length === 0) {
+      res.status(400).json({ error: 'Roll number must contain alphanumeric characters' });
+      return;
+    }
+    const scopedUsername = `${cleanCode.toLowerCase()}_${cleanRegNo.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+    // Reconnect Idempotency: Check if student already registered in this event
+    let user = await User.findOne({
+      eventId: event._id,
+      $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+    });
+
+    if (user) {
+      // Existing student reconnecting: Verify password
+      if (user.passwordHash) {
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!isMatch) {
+          res.status(401).json({
+            error: 'Invalid credentials. This roll number is already registered for this event with a different password.'
+          });
+          return;
+        }
+      }
+    } else {
+      // New Student Registration
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      try {
+        user = await User.create({
+          username: scopedUsername,
+          name: name.trim(),
+          passwordHash,
+          role: 'participant',
+          collegeId: event.collegeId,
+          eventId: event._id,
+          regNo: cleanRegNo,
+          department: (department || '').trim(),
+          year: (year || '').trim()
+        });
+      } catch (createErr: any) {
+        if (createErr.code === 11000) {
+          user = await User.findOne({
+            eventId: event._id,
+            $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+          });
+          if (!user) throw createErr;
+        } else {
+          throw createErr;
+        }
+      }
+    }
+
+    if (user.isDisqualified) {
+      res.status(403).json({
+        error: 'You have been disqualified from this competition.',
+        reason: user.disqualificationReason || 'Rule violation'
+      });
+      return;
+    }
+
+    const payload: AuthPayload = {
+      userId: user._id.toString(),
+      username: user.username,
+      role: user.role,
+      name: user.name,
+      collegeId: user.collegeId ? user.collegeId.toString() : undefined,
+      eventId: user.eventId ? user.eventId.toString() : undefined
+    };
+
+    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        collegeId: user.collegeId,
+        eventId: user.eventId,
+        department: user.department,
+        regNo: user.regNo
+      },
+      event: {
+        id: event._id,
+        name: event.name,
+        code: event.code,
+        status: event.status
+      }
+    });
+  } catch (err: any) {
+    console.error('Join by code error:', err);
+    res.status(500).json({ error: 'Failed to join event with code' });
+  }
+});
+
+// -------------------- AUTHENTICATED PARTICIPANT ROUTES --------------------
 
 participantRouter.use(authenticate);
 participantRouter.use(requireRole('participant'));
@@ -247,11 +380,26 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Fetch existing attempts for this participant in this round
     const existingAttempts = await Attempt.find({ userId, roundNumber });
 
+    let eventTitle = competition.title;
+    let eventStatus: string = competition.status;
+    let effectiveViolationLimit = competition.violationLimit;
+
+    if (req.user?.eventId) {
+      const event = await Event.findById(req.user.eventId).select('name status scoringConfig');
+      if (event) {
+        eventTitle = event.name;
+        eventStatus = event.status;
+        if (event.scoringConfig?.violationLimit) {
+          effectiveViolationLimit = event.scoringConfig.violationLimit;
+        }
+      }
+    }
+
     res.json({
       competition: {
-        title: competition.title,
-        status: competition.status,
-        violationLimit: competition.violationLimit
+        title: eventTitle,
+        status: eventStatus,
+        violationLimit: effectiveViolationLimit
       },
       round: {
         roundNumber: round.roundNumber,
@@ -334,6 +482,10 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'This round is not currently active' });
         return;
       }
+      if (round.startedAt && getRemainingSeconds(round) < -5) {
+        res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
+        return;
+      }
     }
 
     let attempt = await Attempt.findOne({ userId, roundNumber, questionId });
@@ -410,14 +562,47 @@ participantRouter.post('/mark-review', async (req: AuthenticatedRequest, res: Re
 
 // POST /api/participant/run-code
 participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user!.userId;
-    const { questionId, code, language } = req.body;
+  const userId = req.user!.userId;
+  const { questionId, code, language, roundNumber } = req.body;
 
+  // Concurrency Lock: Prevent race conditions & simultaneous run-code evaluations per user/question
+  const lockKey = `run:${userId}:${questionId}`;
+  if (activeEvaluationLocks.has(lockKey)) {
+    res.status(429).json({ error: 'Code execution is already running. Please wait.' });
+    return;
+  }
+  activeEvaluationLocks.add(lockKey);
+
+  try {
     // Reject run-code if participant was eliminated
     const eliminatedCheck = await RoundProgress.findOne({ userId, status: 'eliminated' });
     if (eliminatedCheck) {
       res.status(403).json({ error: 'You are eliminated from the competition' });
+      return;
+    }
+
+    const activeRoundNumber = roundNumber || 2;
+    // Check if participant already submitted this round
+    const progress = await RoundProgress.findOne({ userId, roundNumber: activeRoundNumber });
+    if (progress && (progress.status === 'submitted' || progress.status === 'eliminated')) {
+      res.status(403).json({ error: `Cannot run code: round status is ${progress.status}` });
+      return;
+    }
+
+    // Check round active status and server-authoritative timer deadline
+    let round: any = null;
+    if (req.user?.eventId) {
+      round = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: activeRoundNumber });
+    }
+    if (!round) {
+      round = await Round.findOne({ roundNumber: activeRoundNumber });
+    }
+    if (!round || round.status !== 'active') {
+      res.status(400).json({ error: 'Cannot run code: round is not active' });
+      return;
+    }
+    if (round.startedAt && getRemainingSeconds(round) < -5) {
+      res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
       return;
     }
 
@@ -433,7 +618,6 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       : ['python', 'cpp', 'java', 'c', 'javascript'];
 
     if (req.user?.eventId) {
-      const activeRoundNumber = req.body.roundNumber || question.roundNumber;
       const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: activeRoundNumber });
       if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
         allowedLangs = dynRound.allowedLanguages;
@@ -495,7 +679,7 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     await CodeMilestone.create({
       userId,
       questionId,
-      roundNumber: req.body.roundNumber || 2,
+      roundNumber: activeRoundNumber,
       code,
       language,
       eventType: 'run',
@@ -519,6 +703,8 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
   } catch (err: any) {
     console.error('Run code error:', err);
     res.status(500).json({ error: 'Error during code execution' });
+  } finally {
+    activeEvaluationLocks.delete(lockKey);
   }
 });
 
@@ -568,6 +754,10 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       }
       if (!round || round.status !== 'active') {
         res.status(400).json({ error: 'Cannot submit: round is not active' });
+        return;
+      }
+      if (round.startedAt && getRemainingSeconds(round) < -5) {
+        res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
         return;
       }
     }
@@ -739,6 +929,23 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
       }
     }
 
+    // Guard against submitting an already eliminated or submitted round
+    const existingProgress = await RoundProgress.findOne({ userId, roundNumber });
+    if (existingProgress && existingProgress.status === 'eliminated') {
+      res.status(403).json({ error: 'Cannot submit round: candidate was eliminated from this competition.' });
+      return;
+    }
+    if (existingProgress && existingProgress.status === 'submitted') {
+      res.json({
+        success: true,
+        message: `Round ${roundNumber} already submitted`,
+        totalScore: existingProgress.totalScore,
+        timeTakenSeconds: existingProgress.timeTakenSeconds,
+        alreadySubmitted: true
+      });
+      return;
+    }
+
     let round: any = null;
     if (req.user?.eventId) {
       round = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
@@ -751,12 +958,11 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    // Auto-grade MCQs: Evaluate all MCQ questions for this round regardless of round template
-    const mcqQuestions = await Question.find({ roundNumber, type: 'mcq' });
-    for (const q of mcqQuestions) {
-      const attempt = await Attempt.findOne({ userId, roundNumber, questionId: q._id });
-      if (attempt && attempt.selectedOption !== null && attempt.selectedOption !== undefined) {
-        const { score } = await computeQuestionScore(q._id, attempt);
+    // Auto-grade MCQs: Evaluate all MCQ attempts for this participant in this round
+    const userAttempts = await Attempt.find({ userId, roundNumber });
+    for (const attempt of userAttempts) {
+      if (attempt.selectedOption !== null && attempt.selectedOption !== undefined) {
+        const { score } = await computeQuestionScore(attempt.questionId, attempt);
         attempt.score = score;
         attempt.status = 'submitted';
         await attempt.save();
@@ -797,9 +1003,36 @@ participantRouter.post('/log-violation', async (req: AuthenticatedRequest, res: 
     const userId = req.user!.userId;
     const { roundNumber, type, details } = req.body;
 
-    const competition = await Competition.findOne();
-    const violationLimit = competition?.violationLimit || 3;
-    const autoSubmit = competition?.autoSubmitOnViolation ?? true;
+    // Prioritize Event-scoped scoringConfig for dynamic multi-tenant events, fallback to legacy Competition
+    let violationLimit = 3;
+    let autoSubmit = true;
+    if (req.user?.eventId) {
+      const event = await Event.findById(req.user.eventId).select('scoringConfig');
+      if (event?.scoringConfig?.violationLimit) {
+        violationLimit = event.scoringConfig.violationLimit;
+      }
+      if (event?.scoringConfig?.autoSubmitOnViolation !== undefined) {
+        autoSubmit = event.scoringConfig.autoSubmitOnViolation;
+      }
+    } else {
+      const competition = await Competition.findOne();
+      if (competition?.violationLimit) violationLimit = competition.violationLimit;
+      if (competition?.autoSubmitOnViolation !== undefined) autoSubmit = competition.autoSubmitOnViolation;
+    }
+
+    // Absolute Proctoring Guard: Disarm proctoring immediately if round is submitted or completed
+    const progress = await RoundProgress.findOne({ userId, roundNumber });
+    if (progress && progress.status !== 'in_progress') {
+      res.json({
+        success: true,
+        ignored: true,
+        message: 'Proctoring is disarmed for rounds not actively in progress',
+        violationCount: progress.violationCount || 0,
+        violationLimit,
+        autoSubmitted: false
+      });
+      return;
+    }
 
     // Anti-cheat Coalescing/Debounce: Ignore duplicate simultaneous blur and visibilitychange within 1.5s
     const now = Date.now();
@@ -820,12 +1053,12 @@ participantRouter.post('/log-violation', async (req: AuthenticatedRequest, res: 
 
     await ViolationLog.create({
       userId,
+      eventId: req.user?.eventId ? new Types.ObjectId(req.user.eventId) : undefined,
       roundNumber: roundNumber || 1,
       type: type || 'fullscreen_exit',
       details
     });
 
-    const progress = await RoundProgress.findOne({ userId, roundNumber });
     let violationCount = 1;
     if (progress) {
       // Intentional breach triage: tab_switch and window_blur incur a 2-strike penalty
@@ -915,7 +1148,12 @@ participantRouter.post('/sync-batch', async (req: AuthenticatedRequest, res: Res
           continue; // Cannot update after submission or elimination
         }
 
+        const updateTime = item.timestamp ? new Date(item.timestamp) : new Date();
         let attempt = await Attempt.findOne({ userId, roundNumber: item.roundNumber, questionId: item.questionId });
+        if (attempt && attempt.lastSavedAt && attempt.lastSavedAt > updateTime) {
+          // Last-Write-Wins: Newer server revision exists, skip stale offline packet
+          continue;
+        }
         if (!attempt) {
           attempt = new Attempt({
             userId,
@@ -927,7 +1165,7 @@ participantRouter.post('/sync-batch', async (req: AuthenticatedRequest, res: Res
         if (item.selectedOption !== undefined) attempt.selectedOption = item.selectedOption;
         if (item.code !== undefined) attempt.code = item.code;
         if (item.language !== undefined) attempt.language = item.language;
-        attempt.lastSavedAt = item.timestamp ? new Date(item.timestamp) : new Date();
+        attempt.lastSavedAt = updateTime;
         await attempt.save();
 
         if (item.operationId) {

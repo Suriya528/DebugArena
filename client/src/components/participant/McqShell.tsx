@@ -247,7 +247,10 @@ export const McqShell: React.FC<McqShellProps> = ({
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
+                  onClick={() => {
+                    debouncedSave.flush();
+                    setCurrentIndex(prev => Math.max(0, prev - 1));
+                  }}
                   disabled={currentIndex === 0}
                   className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
                 >
@@ -256,7 +259,10 @@ export const McqShell: React.FC<McqShellProps> = ({
 
                 {currentIndex < totalCount - 1 ? (
                   <button
-                    onClick={() => setCurrentIndex(prev => Math.min(totalCount - 1, prev + 1))}
+                    onClick={() => {
+                      debouncedSave.flush();
+                      setCurrentIndex(prev => Math.min(totalCount - 1, prev + 1));
+                    }}
                     className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
                   >
                     <span>Next Question</span>
@@ -264,7 +270,10 @@ export const McqShell: React.FC<McqShellProps> = ({
                   </button>
                 ) : (
                   <button
-                    onClick={() => setShowSubmitModal(true)}
+                    onClick={() => {
+                      debouncedSave.flush();
+                      setShowSubmitModal(true);
+                    }}
                     className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
@@ -324,7 +333,10 @@ export const McqShell: React.FC<McqShellProps> = ({
                 return (
                   <button
                     key={q._id}
-                    onClick={() => setCurrentIndex(idx)}
+                    onClick={() => {
+                      debouncedSave.flush();
+                      setCurrentIndex(idx);
+                    }}
                     className={`relative h-11 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer border ${btnStyle} ${
                       isCurrent ? 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-900 scale-105' : 'hover:scale-102'
                     }`}
@@ -342,7 +354,10 @@ export const McqShell: React.FC<McqShellProps> = ({
 
             {/* Submit Assessment Button */}
             <button
-              onClick={() => setShowSubmitModal(true)}
+              onClick={() => {
+                debouncedSave.flush();
+                setShowSubmitModal(true);
+              }}
               className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
             >
               <Send className="w-4 h-4" />
@@ -395,6 +410,7 @@ export const McqShell: React.FC<McqShellProps> = ({
               </button>
               <button
                 onClick={() => {
+                  debouncedSave.flush();
                   setShowSubmitModal(false);
                   onSubmitRound();
                 }}

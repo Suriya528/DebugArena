@@ -1,5 +1,7 @@
 import { ViolationLog } from '../models/ViolationLog.js';
 import { RoundProgress } from '../models/RoundProgress.js';
+import { User } from '../models/User.js';
+import { Event } from '../models/Event.js';
 
 export interface ISuspicionReport {
   userId: string;
@@ -21,7 +23,45 @@ export interface ISuspicionReport {
 }
 
 export async function recalculateUserSuspicion(userId: string, roundNumber: number): Promise<ISuspicionReport> {
+  const progress = await RoundProgress.findOne({ userId, roundNumber });
+
+  // Check if event is finalized or cleaned
+  const user = await User.findById(userId).select('eventId');
+  let isEventSealed = false;
+  if (user?.eventId) {
+    const event = await Event.findById(user.eventId).select('status cleanupStatus');
+    if (
+      event &&
+      (event.status === 'finalized' || event.status === 'cleaned' || event.cleanupStatus === 'completed')
+    ) {
+      isEventSealed = true;
+    }
+  }
+
   const logs = await ViolationLog.find({ userId, roundNumber }).sort({ timestamp: -1 });
+
+  // If the event is finalized or if raw violation logs were already cleaned up,
+  // preserve the permanent, frozen suspicion score in RoundProgress and never overwrite it.
+  if (isEventSealed || (logs.length === 0 && progress && (progress.suspicionScore || 0) > 0)) {
+    return {
+      userId,
+      totalScore: progress?.suspicionScore || 0,
+      level: progress?.suspicionLevel || 'low',
+      factors: {
+        tabSwitches: 0,
+        fullscreenExits: 0,
+        largePastes: 0,
+        rapidSolves: 0
+      },
+      evidenceLogs: logs.map((l) => ({
+        id: l._id.toString(),
+        type: l.type,
+        points: l.suspicionPoints || 15,
+        details: l.details || '',
+        timestamp: l.timestamp
+      }))
+    };
+  }
 
   let totalPoints = 0;
   let tabSwitches = 0;

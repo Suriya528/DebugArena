@@ -95,7 +95,9 @@ export async function finalizeParticipantRoundScore(
 
   progress.totalScore = totalScore;
   progress.timeTakenSeconds = timeTakenSeconds;
-  progress.status = 'submitted';
+  if (progress.status !== 'eliminated') {
+    progress.status = 'submitted';
+  }
   progress.submittedAt = submittedAt;
   await progress.save();
 

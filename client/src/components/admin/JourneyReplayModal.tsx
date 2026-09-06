@@ -33,56 +33,27 @@ export const JourneyReplayModal: React.FC<JourneyReplayModalProps> = ({
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isPruned, setIsPruned] = useState<boolean>(false);
+  const [finalCode, setFinalCode] = useState<string>('');
+  const [archiveMessage, setArchiveMessage] = useState<string>('');
 
   useEffect(() => {
     async function fetchJourney() {
       setLoading(true);
       try {
         const res = await api.get(`/admin/analytics/journey-replay/${userId}/${questionId}`);
-        if (res.data.success && res.data.milestones.length > 0) {
+        if (res.data.success && res.data.milestones && res.data.milestones.length > 0) {
           setMilestones(res.data.milestones);
           setCurrentIndex(0);
+          setIsPruned(false);
         } else {
-          // Provide synthetic demo milestone if none logged yet
-          setMilestones([
-            {
-              step: 1,
-              id: 'init',
-              eventType: 'run',
-              code: '// Initial attempt\ndef binary_search(arr, target):\n    low, high = 0, len(arr)\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: low = mid\n        else: high = mid\n    return -1',
-              language: 'python',
-              timestamp: new Date(Date.now() - 180000).toISOString(),
-              passedTestsCount: 1,
-              totalTestsCount: 5,
-              charDelta: 160
-            },
-            {
-              step: 2,
-              id: 'fix1',
-              eventType: 'run',
-              code: '// Fixed infinite loop by adjusting high index\ndef binary_search(arr, target):\n    low, high = 0, len(arr) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: low = mid + 1\n        else: high = mid - 1\n    return -1',
-              language: 'python',
-              timestamp: new Date(Date.now() - 90000).toISOString(),
-              passedTestsCount: 4,
-              totalTestsCount: 5,
-              charDelta: 210
-            },
-            {
-              step: 3,
-              id: 'final',
-              eventType: 'submit',
-              code: '// Final submitted solution handling empty array and duplicates\ndef binary_search(arr, target):\n    if not arr: return -1\n    low, high = 0, len(arr) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: low = mid + 1\n        else: high = mid - 1\n    return -1',
-              language: 'python',
-              timestamp: new Date().toISOString(),
-              passedTestsCount: 5,
-              totalTestsCount: 5,
-              charDelta: 245
-            }
-          ]);
-          setCurrentIndex(0);
+          setIsPruned(!!res.data.isPruned);
+          setFinalCode(res.data.finalCode || '');
+          setArchiveMessage(res.data.message || 'No keystroke telemetry recorded.');
+          setMilestones([]);
         }
       } catch {
-        // Fallback for demo
+        setMilestones([]);
       } finally {
         setLoading(false);
       }
@@ -221,9 +192,28 @@ export const JourneyReplayModal: React.FC<JourneyReplayModalProps> = ({
                 {currentMilestone.code}
               </pre>
             </div>
+          ) : finalCode ? (
+            <div className="space-y-4">
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+                {isPruned
+                  ? 'Detailed keystroke timeline has been archived per institutional retention policy (30 days). The candidate official final submitted code is preserved permanently below.'
+                  : archiveMessage}
+              </div>
+              <div className="flex items-center justify-between text-slate-400 border-b border-slate-800/80 pb-2">
+                <div className="flex items-center gap-2">
+                  <Code className="w-4 h-4 text-emerald-400" />
+                  <span>Status: <strong className="text-emerald-300">Official Final Submitted Code</strong></span>
+                  <span className="text-slate-600">&bull;</span>
+                  <span>Length: <strong className="text-slate-200">{finalCode.length} chars</strong></span>
+                </div>
+              </div>
+              <pre className="p-4 rounded-2xl bg-slate-900 border border-slate-800/80 text-emerald-400 overflow-x-auto leading-relaxed whitespace-pre">
+                {finalCode}
+              </pre>
+            </div>
           ) : (
             <div className="h-64 flex items-center justify-center text-slate-500">
-              No code snapshot milestones captured yet.
+              {archiveMessage || 'No code snapshot milestones captured yet.'}
             </div>
           )}
         </div>

@@ -13,7 +13,9 @@ export const ENV = {
     .split(',')
     .map(o => o.trim())
     .filter(Boolean),
-  NODE_ENV: process.env.NODE_ENV || 'development'
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || ''
 };
 
 /**

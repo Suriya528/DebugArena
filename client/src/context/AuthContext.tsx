@@ -8,6 +8,8 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<User>;
+  loginWithGoogle: (payload: { credential?: string; mockEmail?: string; name?: string; collegeName?: string; collegeCode?: string }) => Promise<User>;
+  joinEventByCode: (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }) => Promise<{ user: User; event: any }>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -73,6 +75,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return formattedUser;
   };
 
+  const loginWithGoogle = async (payload: { credential?: string; mockEmail?: string; name?: string; collegeName?: string; collegeCode?: string }): Promise<User> => {
+    const res = await api.post('/auth/google', payload);
+    const { token: receivedToken, user: receivedUser } = res.data;
+
+    localStorage.setItem('debugarena_token', receivedToken);
+    setToken(receivedToken);
+
+    const formattedUser: User = {
+      id: receivedUser.id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      role: receivedUser.role
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return formattedUser;
+  };
+
+  const joinEventByCode = async (payload: { eventCode: string; name: string; regNo: string; department?: string; year?: string; password: string }): Promise<{ user: User; event: any }> => {
+    const res = await api.post('/participant/join-by-code', payload);
+    const { token: receivedToken, user: receivedUser, event: receivedEvent } = res.data;
+
+    localStorage.setItem('debugarena_token', receivedToken);
+    setToken(receivedToken);
+
+    const formattedUser: User = {
+      id: receivedUser.id,
+      username: receivedUser.username,
+      name: receivedUser.name,
+      role: receivedUser.role
+    };
+
+    setUser(formattedUser);
+    connectSocket(receivedToken);
+    return { user: formattedUser, event: receivedEvent };
+  };
+
   const logout = () => {
     localStorage.removeItem('debugarena_token');
     setToken(null);
@@ -81,7 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithGoogle, joinEventByCode, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

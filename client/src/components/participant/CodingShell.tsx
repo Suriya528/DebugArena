@@ -173,7 +173,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       const payload: any = {
         questionId: qId,
         code,
-        language: lang
+        language: lang,
+        roundNumber
       };
 
       if (activeTab === 'custom') {
@@ -261,7 +262,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             return (
               <button
                 key={q._id}
-                onClick={() => setCurrentQIndex(idx)}
+                onClick={() => {
+                  debouncedSaveCode.flush();
+                  setCurrentQIndex(idx);
+                }}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer border ${
                   isCurrent
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow'
@@ -281,7 +285,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           <button
-            onClick={() => setShowSubmitModal(true)}
+            onClick={() => {
+              debouncedSaveCode.flush();
+              setShowSubmitModal(true);
+            }}
             className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
@@ -719,6 +726,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               </button>
               <button
                 onClick={() => {
+                  debouncedSaveCode.flush();
                   setShowSubmitModal(false);
                   onSubmitRound();
                 }}

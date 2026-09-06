@@ -94,12 +94,15 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
 
     socket.on('disconnect', () => {
       if (user.role === 'participant') {
-        onlineUsers.delete(user.userId);
-        const disconnectPayload = { userId: user.userId, username: user.username, collegeId: user.collegeId };
-        if (user.collegeId) {
-          io?.to(`admin-room:${user.collegeId}`).emit('admin:user_disconnected', disconnectPayload);
+        const existing = onlineUsers.get(user.userId);
+        if (existing && existing.socketId === socket.id) {
+          onlineUsers.delete(user.userId);
+          const disconnectPayload = { userId: user.userId, username: user.username, collegeId: user.collegeId };
+          if (user.collegeId) {
+            io?.to(`admin-room:${user.collegeId}`).emit('admin:user_disconnected', disconnectPayload);
+          }
+          io?.to('admin-room').emit('admin:user_disconnected', disconnectPayload);
         }
-        io?.to('admin-room').emit('admin:user_disconnected', disconnectPayload);
       }
     });
   });

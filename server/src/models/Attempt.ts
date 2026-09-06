@@ -31,6 +31,8 @@ export interface IAttempt extends Document {
   submissionCount: number;
   lastSavedAt: Date;
   lastSubmittedAt?: Date;
+  retentionStatus?: 'active' | 'compacted';
+  prunedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,11 +77,19 @@ const AttemptSchema = new Schema<IAttempt>(
     },
     submissionCount: { type: Number, default: 0 },
     lastSavedAt: { type: Date, default: Date.now },
-    lastSubmittedAt: { type: Date }
+    lastSubmittedAt: { type: Date },
+    retentionStatus: {
+      type: String,
+      enum: ['active', 'compacted'],
+      default: 'active',
+      index: true
+    },
+    prunedAt: { type: Date }
   },
   { timestamps: true }
 );
 
 AttemptSchema.index({ userId: 1, roundNumber: 1, questionId: 1 }, { unique: true });
+AttemptSchema.index({ userId: 1, roundNumber: 1, retentionStatus: 1 });
 
 export const Attempt = mongoose.model<IAttempt>('Attempt', AttemptSchema);

@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IViolationLog extends Document {
   userId: Types.ObjectId;
+  eventId?: Types.ObjectId;
   roundNumber: number;
   type: 'fullscreen_exit' | 'tab_switch' | 'devtools_opened' | 'window_blur' | 'large_paste' | 'rapid_solve_anomaly';
   details?: string;
@@ -12,6 +13,7 @@ export interface IViolationLog extends Document {
 const ViolationLogSchema = new Schema<IViolationLog>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     roundNumber: { type: Number, required: true },
     type: {
       type: String,
@@ -24,5 +26,7 @@ const ViolationLogSchema = new Schema<IViolationLog>(
   },
   { timestamps: true }
 );
+
+ViolationLogSchema.index({ eventId: 1, timestamp: 1 });
 
 export const ViolationLog = mongoose.model<IViolationLog>('ViolationLog', ViolationLogSchema);

@@ -12,7 +12,10 @@ export type UserRole =
 export interface IUser extends Document {
   username: string;
   name: string;
-  passwordHash: string;
+  email?: string;
+  passwordHash?: string;
+  authProvider: 'local' | 'google';
+  googleId?: string;
   role: UserRole;
   collegeId?: mongoose.Types.ObjectId;
   eventId?: mongoose.Types.ObjectId;
@@ -30,7 +33,10 @@ const UserSchema = new Schema<IUser>(
   {
     username: { type: String, required: true, unique: true, trim: true, lowercase: true },
     name: { type: String, required: true, trim: true },
-    passwordHash: { type: String, required: true },
+    email: { type: String, trim: true, lowercase: true },
+    passwordHash: { type: String, required: function(this: any) { return this.authProvider !== 'google'; } },
+    authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
+    googleId: { type: String },
     role: {
       type: String,
       enum: [
@@ -55,5 +61,7 @@ const UserSchema = new Schema<IUser>(
   },
   { timestamps: true }
 );
+
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 export const User = mongoose.model<IUser>('User', UserSchema);

@@ -1,10 +1,13 @@
 import { Router, Response } from 'express';
-import { authenticate, requireAnyAdmin, AuthenticatedRequest } from '../middleware/auth.js';
+import { authenticate, requireAnyAdmin, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { College } from '../models/College.js';
 import { Event } from '../models/Event.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { CleanupAudit } from '../models/CleanupAudit.js';
 import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
+import { finalizeEvent, setRetentionHold } from '../services/lifecycleService.js';
+import { executeCleanupJob } from '../services/cleanupEngine.js';
 
 export const adminEventRouter = Router();
 
@@ -300,6 +303,14 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
+    // Status lock: Finalized or cleaned events are strictly immutable
+    if (event.status === 'finalized' || event.status === 'cleaned') {
+      res.status(409).json({
+        error: `Event is ${event.status.toUpperCase()} and locked against configuration changes.`
+      });
+      return;
+    }
+
     if (event.status === 'frozen' && !overrideReason) {
       res.status(403).json({
         error: 'Event is FROZEN. Modifying active configurations requires an emergency override rationale.'
@@ -313,7 +324,27 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     if (scoringConfig) event.scoringConfig = { ...event.scoringConfig, ...scoringConfig };
     if (branding) event.branding = { ...event.branding, ...branding };
     if (certificateConfig) event.certificateConfig = { ...event.certificateConfig, ...certificateConfig };
-    if (status) event.status = status;
+
+    // Enforce legal lifecycle transitions
+    if (status && status !== event.status) {
+      const allowedTransitions: Record<string, string[]> = {
+        draft: ['registration', 'ready'],
+        registration: ['ready', 'draft'],
+        ready: ['live', 'draft'],
+        live: ['frozen', 'completed'],
+        frozen: ['live', 'completed'],
+        completed: ['finalizing', 'finalized']
+      };
+
+      const validTargets = allowedTransitions[event.status] || [];
+      if (!validTargets.includes(status)) {
+        res.status(400).json({
+          error: `Illegal status transition from '${event.status}' to '${status}'.`
+        });
+        return;
+      }
+      event.status = status as any;
+    }
 
     await event.save();
 
@@ -665,3 +696,124 @@ adminEventRouter.get('/:eventId/audit-logs', async (req: AuthenticatedRequest, r
     res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
 });
+
+// -------------------- EVENT DATA LIFECYCLE & RETENTION --------------------
+
+// POST /api/admin/events/:eventId/finalize
+// Finalizes event, computes cryptographic leaderboard fingerprint, and sets retention expiration
+adminEventRouter.post(
+  '/:eventId/finalize',
+  requireRole(['college_admin', 'super_admin']),
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { eventId } = req.params;
+      const { retentionDays } = req.body;
+
+      const result = await finalizeEvent(
+        eventId,
+        req.user?.collegeId,
+        req.user?.userId,
+        req.user?.username,
+        retentionDays
+      );
+
+      res.json({
+        success: true,
+        message: 'Event successfully finalized and sealed.',
+        event: result.event,
+        leaderboardFingerprint: result.leaderboardFingerprint,
+        participantCount: result.participantCount
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to finalize event' });
+    }
+  }
+);
+
+// PATCH /api/admin/events/:eventId/retention-hold
+// Places or lifts an academic integrity retention hold
+adminEventRouter.patch(
+  '/:eventId/retention-hold',
+  requireRole(['college_admin', 'super_admin']),
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { eventId } = req.params;
+      const { hold, reason } = req.body;
+
+      if (typeof hold !== 'boolean') {
+        res.status(400).json({ error: "'hold' boolean is required" });
+        return;
+      }
+
+      const updated = await setRetentionHold(
+        eventId,
+        hold,
+        reason || '',
+        req.user?.collegeId,
+        req.user?.userId,
+        req.user?.username
+      );
+
+      res.json({
+        success: true,
+        message: hold ? 'Retention hold activated.' : 'Retention hold lifted.',
+        event: updated
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update retention hold' });
+    }
+  }
+);
+
+// POST /api/admin/events/cleanup/run
+// Triggers cleanup engine for expired events (dry-run or live)
+adminEventRouter.post(
+  '/cleanup/run',
+  requireRole('super_admin'),
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const { eventId, dryRun, batchSize } = req.body;
+
+      const result = await executeCleanupJob({
+        eventId,
+        dryRun,
+        batchSize,
+        actorId: req.user?.userId,
+        actorUsername: req.user?.username
+      });
+
+      res.json({
+        success: true,
+        result
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to execute cleanup job' });
+    }
+  }
+);
+
+// GET /api/admin/events/cleanup/audits
+// Fetches audit history for retention cleanup jobs
+adminEventRouter.get(
+  '/cleanup/audits',
+  requireRole(['college_admin', 'super_admin']),
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      const filter: any = {};
+      if (req.user?.role === 'college_admin' && req.user?.collegeId) {
+        filter.collegeId = req.user.collegeId;
+      } else if (req.query.collegeId) {
+        filter.collegeId = req.query.collegeId;
+      }
+
+      if (req.query.eventId) {
+        filter.eventId = req.query.eventId;
+      }
+
+      const audits = await CleanupAudit.find(filter).sort({ createdAt: -1 }).limit(50);
+      res.json({ audits });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to retrieve cleanup audits' });
+    }
+  }
+);

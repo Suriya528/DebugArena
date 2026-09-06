@@ -51,42 +51,20 @@ export const SuspicionEvidenceModal: React.FC<SuspicionEvidenceModalProps> = ({
           if (userRep) {
             setReport(userRep);
           } else {
-            // Provide default clean report
+            // Default clean report
             setReport({
               userId,
               username,
               name: username,
-              totalScore: 45,
-              level: 'high',
+              totalScore: 0,
+              level: 'low',
               factors: {
-                tabSwitches: 2,
-                fullscreenExits: 1,
-                largePastes: 1,
+                tabSwitches: 0,
+                fullscreenExits: 0,
+                largePastes: 0,
                 rapidSolves: 0
               },
-              evidenceLogs: [
-                {
-                  id: '1',
-                  type: 'tab_switch',
-                  points: 15,
-                  details: 'Participant switched browser tab during Round 1',
-                  timestamp: new Date(Date.now() - 300000).toISOString()
-                },
-                {
-                  id: '2',
-                  type: 'fullscreen_exit',
-                  points: 20,
-                  details: 'Candidate escaped full-screen mode for 6.2s',
-                  timestamp: new Date(Date.now() - 240000).toISOString()
-                },
-                {
-                  id: '3',
-                  type: 'large_paste',
-                  points: 35,
-                  details: 'Bulk paste of 142 characters detected in editor',
-                  timestamp: new Date(Date.now() - 120000).toISOString()
-                }
-              ]
+              evidenceLogs: []
             });
           }
         }
@@ -179,26 +157,32 @@ export const SuspicionEvidenceModal: React.FC<SuspicionEvidenceModalProps> = ({
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5 text-indigo-400" /> Chronological Evidence Audit
                 </h4>
-                <div className="space-y-2.5">
-                  {report.evidenceLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-bold">
-                          +{log.points}
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-slate-200">{log.details}</div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            Type: {log.type} &bull; {new Date(log.timestamp).toLocaleTimeString()}
+                {report.evidenceLogs.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {report.evidenceLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 text-xs font-bold">
+                            +{log.points}
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-200">{log.details}</div>
+                            <div className="text-[10px] font-mono text-slate-500">
+                              Type: {log.type} &bull; {new Date(log.timestamp).toLocaleTimeString()}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800/60 text-center text-xs text-slate-400">
+                    No active proctoring strikes recorded. If this event was finalized and archived, granular incident traces were safely pruned per institutional retention policy while the candidate&apos;s score and verdict remain permanently recorded.
+                  </div>
+                )}
               </div>
             </>
           ) : (

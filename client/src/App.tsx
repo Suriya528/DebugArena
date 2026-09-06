@@ -20,6 +20,7 @@ import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
+import { LandingPage } from './components/home/LandingPage.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -77,10 +78,10 @@ export const App: React.FC = () => {
       setRoundState(res.data);
       setViolationCount(res.data.progress?.violationCount || 0);
 
-      // If participant is in an active round, ensure session resume
+      // If participant is in an active round, resume ONLY if they previously began this session
       if (res.data.round?.status === 'active' && res.data.progress?.status === 'in_progress') {
         const stored = sessionStorage.getItem('debugarena_active_round_session');
-        if (stored === 'true' || res.data.progress?.startedAt) {
+        if (stored === 'true') {
           setHasStartedActiveRound(true);
         }
       }
@@ -132,9 +133,30 @@ export const App: React.FC = () => {
     onExpire: handleTimerExpire
   });
 
+  // Strict Proctoring Condition (Mathematical Invariant):
+  // Proctoring is armed ONLY when:
+  // 1. User is authenticated with role 'participant'
+  // 2. User is NOT disqualified
+  // 3. User has explicitly started the active round
+  // 4. Round status is 'active'
+  // 5. Round progress status is 'in_progress' (disarmed immediately once submitted/eliminated/advanced)
+  // 6. User is not in the middle of submitting round (submission flight protection)
+  const isProctoringArmed = Boolean(
+    user &&
+    user.role === 'participant' &&
+    !user.isDisqualified &&
+    hasStartedActiveRound &&
+    roundState?.round?.status === 'active' &&
+    roundState?.progress?.status === 'in_progress' &&
+    !isSubmittingRound
+  );
+
   // Handle anti-cheat violation
   const handleViolation = useCallback(
     async (type: 'fullscreen_exit' | 'tab_switch' | 'window_blur' | 'unauthorized_shortcut', details: string) => {
+      // Guard: strictly ignore any violations if proctoring is disarmed (e.g. submitted, eliminated, or submitting)
+      if (!isProctoringArmed) return;
+
       // Always show lockout screen to conceal test content; prioritize intentional tab switch / blur
       setCurrentViolationType(prev => {
         if ((prev === 'tab_switch' || prev === 'window_blur') && type === 'fullscreen_exit') {
@@ -145,36 +167,25 @@ export const App: React.FC = () => {
       setCurrentViolationDetails(details);
       setViolationModalOpen(true);
 
-      // Only increment strikes on server if participant is actively in-progress
-      if (
-        user &&
-        user.role === 'participant' &&
-        hasStartedActiveRound &&
-        roundState?.round?.status === 'active' &&
-        roundState?.progress?.status !== 'submitted'
-      ) {
-        try {
-          const res = await api.post('/participant/log-violation', {
-            roundNumber: roundState.round?.roundNumber || 1,
-            type,
-            details
-          });
-          setViolationCount(res.data.violationCount);
-          if (res.data.autoSubmitted) {
-            await fetchRoundState();
-          }
-        } catch (err) {
-          console.warn('Failed to log violation on server');
+      try {
+        const res = await api.post('/participant/log-violation', {
+          roundNumber: roundState?.round?.roundNumber || 1,
+          type,
+          details
+        });
+        setViolationCount(res.data.violationCount);
+        if (res.data.autoSubmitted) {
+          await fetchRoundState();
         }
+      } catch (err) {
+        console.warn('Failed to log violation on server');
       }
     },
-    [user, hasStartedActiveRound, roundState, fetchRoundState]
+    [isProctoringArmed, roundState, fetchRoundState]
   );
 
-  // Continuous Fullscreen manager: strictly enforced for unauthenticated portal and participant accounts
-  const isParticipantSession = !user || user.role === 'participant';
   const { requestFullscreen, isFullscreen } = useFullscreen({
-    enabled: isParticipantSession,
+    enabled: isProctoringArmed,
     onViolation: handleViolation
   });
 
@@ -228,12 +239,20 @@ export const App: React.FC = () => {
       if (user?.role === 'participant') fetchRoundState();
     });
 
+    socket.on('participant:disqualified', () => {
+      if (user?.role === 'participant') {
+        setHasStartedActiveRound(false);
+        fetchRoundState();
+      }
+    });
+
     return () => {
       socket.off('round:started');
       socket.off('round:locked');
       socket.off('round:auto_submitted');
       socket.off('round:advancement_announced');
       socket.off('tiebreak:started');
+      socket.off('participant:disqualified');
     };
   }, [socket, user, fetchRoundState]);
 
@@ -283,160 +302,9 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Unauthenticated Login Screen with Full-Screen Lockdown Gate
+  // 1. Unauthenticated Public Landing Page
   if (!user) {
-    // If not in fullscreen, present the mandatory entry gate
-    if (!isFullscreen) {
-      return (
-        <div className="min-h-screen bg-[#070b13] flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mr-24 -mt-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 -ml-24 -mb-24 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 max-w-lg w-full rounded-3xl bg-slate-900/95 border-2 border-indigo-500/40 p-8 sm:p-10 shadow-2xl backdrop-blur-xl">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center mx-auto mb-5 text-indigo-400">
-              <Shield className="w-8 h-8" />
-            </div>
-
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-3">
-              <Lock className="w-3.5 h-3.5" />
-              <span>OA Proctoring Environment</span>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2">
-              DebugArena Challenge Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mb-8 leading-relaxed">
-              This online competition operates under continuous full-screen lockdown from start to end. You must enter full-screen mode to proceed to sign in.
-            </p>
-
-            <button
-              onClick={requestFullscreen}
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-600/30 transition-all cursor-pointer active:scale-[0.98]"
-            >
-              <Maximize2 className="w-5 h-5" />
-              <span>Enter Full-Screen to Sign In</span>
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // Inside Fullscreen: Login Form
-    return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
-        <header className="h-16 px-6 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-md">
-              <Terminal className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-extrabold text-base tracking-tight text-white">DebugArena</span>
-          </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <Lock className="w-3 h-3" />
-            <span>Proctoring Locked (Full-Screen)</span>
-          </div>
-        </header>
-
-        <main className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-md">
-            <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-8 shadow-2xl backdrop-blur-md">
-              <div className="text-center mb-8">
-                <h1 className="text-2xl font-extrabold text-white tracking-tight">
-                  Sign In to Assessment
-                </h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Enter your assigned participant or administrator credentials
-                </p>
-              </div>
-
-              {loginError && (
-                <div className="mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
-                  <span>{loginError}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Username / Team ID
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={username}
-                    onChange={e => setUsername(e.target.value)}
-                    placeholder="e.g. team1 or admin"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-600 outline-none transition-all font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Security Password
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-600 outline-none transition-all font-mono"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold tracking-wide uppercase flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-50 mt-2"
-                >
-                  {isLoggingIn ? (
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <LogIn className="w-4 h-4" />
-                  )}
-                  <span>Authenticate & Enter</span>
-                </button>
-              </form>
-
-              {/* Demo Quick-Fill Helpers */}
-              <div className="mt-8 pt-6 border-t border-slate-800/80">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 text-center">
-                  Quick Demo Logins
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fillCredentials('admin', 'admin123')}
-                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-left transition-all cursor-pointer"
-                  >
-                    <div className="text-xs font-bold text-amber-400 flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> Admin
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-mono">admin / admin123</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillCredentials('team1', 'debug123')}
-                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-left transition-all cursor-pointer"
-                  >
-                    <div className="text-xs font-bold text-indigo-400 flex items-center gap-1">
-                      <Terminal className="w-3 h-3" /> Participant
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-mono">team1 / debug123</div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        <footer className="py-4 text-center text-xs text-slate-600 font-mono">
-          DebugArena Timed Code Assessment & Debugging Engine © 2026
-        </footer>
-      </div>
-    );
+    return <LandingPage />;
   }
 
   // 2. Admin Dashboard Application (Available to all admin roles)
@@ -476,14 +344,23 @@ export const App: React.FC = () => {
       {user && <SecurityWatermark username={user.username} />}
       <OfflineSyncBanner />
 
-      {/* When outside fullscreen: conceal all assessment content */}
-      {!isFullscreen ? (
+      {/* When outside fullscreen during active armed proctoring: conceal assessment content and provide re-entry button */}
+      {isProctoringArmed && !isFullscreen ? (
         <div className="flex-1 flex items-center justify-center p-6 text-center z-10">
-          <div className="max-w-md p-8 rounded-3xl bg-slate-900/90 border border-rose-500/40 backdrop-blur-xl text-slate-300 text-sm shadow-2xl">
+          <div className="max-w-md p-8 rounded-3xl bg-slate-900/95 border border-rose-500/50 backdrop-blur-xl text-slate-300 text-sm shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto mb-4 text-rose-400">
+              <Lock className="w-6 h-6" />
+            </div>
             <div className="text-rose-400 font-bold text-base mb-2">🔒 Assessment Content Concealed</div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Assessment questions and test controls are hidden while outside full-screen mode.
+            <p className="text-xs text-slate-400 leading-relaxed mb-6">
+              Assessment questions and code editors are hidden while outside full-screen mode. Click below to return to your assessment.
             </p>
+            <button
+              onClick={requestFullscreen}
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Return to Full-Screen Assessment
+            </button>
           </div>
         </div>
       ) : (
@@ -591,7 +468,7 @@ export const App: React.FC = () => {
 
       {/* Global Security Violation & Fullscreen Lockout Modal with 8s Grace Window */}
       <ViolationModal
-        isOpen={(violationModalOpen || !isFullscreen) && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced'}
+        isOpen={isProctoringArmed && (violationModalOpen || !isFullscreen)}
         violationCount={violationCount}
         violationLimit={violationLimit}
         type={currentViolationType || 'fullscreen_exit'}

@@ -58,47 +58,21 @@ adminAnalyticsRouter.get('/journey-replay/:userId/:questionId', async (req: Auth
     const user = mongoose.Types.ObjectId.isValid(userId) ? await User.findById(userId) : null;
 
     if (milestones.length === 0) {
-      // Provide authentic debugging evolution steps
+      const attempt = await Attempt.findOne({ userId, questionId });
+      const isArchived = attempt?.retentionStatus === 'compacted';
+
       res.json({
         success: true,
-        user: user ? { id: user._id, username: user.username, name: user.name } : { username: 'team1', name: 'Binary Beasts' },
-        question: question ? { id: question._id, title: question.title } : { title: 'Binary Search Boundary Bug' },
-        totalMilestones: 3,
-        milestones: [
-          {
-            step: 1,
-            id: 'm1',
-            eventType: 'run',
-            code: '# Initial candidate implementation with boundary bug\ndef search(nums, target):\n    left, right = 0, len(nums)\n    while left < right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            left = mid\n        else:\n            right = mid\n    return -1',
-            language: 'python',
-            timestamp: new Date(Date.now() - 300000).toISOString(),
-            passedTestsCount: 1,
-            totalTestsCount: 5,
-            charDelta: 270
-          },
-          {
-            step: 2,
-            id: 'm2',
-            eventType: 'run',
-            code: '# Adjusted boundary loop to eliminate Infinite Timeout error\ndef search(nums, target):\n    left, right = 0, len(nums) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1',
-            language: 'python',
-            timestamp: new Date(Date.now() - 150000).toISOString(),
-            passedTestsCount: 4,
-            totalTestsCount: 5,
-            charDelta: 310
-          },
-          {
-            step: 3,
-            id: 'm3',
-            eventType: 'submit',
-            code: '# Handled single-element array & duplicates: 100% tests passed\ndef search(nums, target):\n    if not nums:\n        return -1\n    left, right = 0, len(nums) - 1\n    while left <= right:\n        mid = left + (right - left) // 2\n        if nums[mid] == target:\n            return mid\n        elif nums[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1',
-            language: 'python',
-            timestamp: new Date().toISOString(),
-            passedTestsCount: 5,
-            totalTestsCount: 5,
-            charDelta: 365
-          }
-        ]
+        isPruned: isArchived || false,
+        message: isArchived
+          ? 'Detailed keystroke replay has been safely pruned per institutional retention policy.'
+          : 'No telemetry milestones recorded for this attempt.',
+        user: user ? { id: user._id, username: user.username, name: user.name } : null,
+        question: question ? { id: question._id, title: question.title, starterCode: question.starterCode } : null,
+        totalMilestones: 0,
+        milestones: [],
+        finalCode: attempt?.code || '',
+        finalScore: attempt?.score || 0
       });
       return;
     }

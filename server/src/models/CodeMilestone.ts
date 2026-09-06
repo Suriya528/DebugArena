@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface ICodeMilestone extends Document {
   userId: Types.ObjectId;
+  eventId?: Types.ObjectId;
   questionId: Types.ObjectId;
   roundNumber: number;
   code: string;
@@ -18,6 +19,7 @@ export interface ICodeMilestone extends Document {
 const CodeMilestoneSchema = new Schema<ICodeMilestone>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     questionId: { type: Schema.Types.ObjectId, ref: 'Question', required: true, index: true },
     roundNumber: { type: Number, required: true },
     code: { type: String, required: true },
@@ -37,5 +39,6 @@ const CodeMilestoneSchema = new Schema<ICodeMilestone>(
 );
 
 CodeMilestoneSchema.index({ userId: 1, questionId: 1, timestamp: 1 });
+CodeMilestoneSchema.index({ eventId: 1, timestamp: 1 });
 
 export const CodeMilestone = mongoose.model<ICodeMilestone>('CodeMilestone', CodeMilestoneSchema);

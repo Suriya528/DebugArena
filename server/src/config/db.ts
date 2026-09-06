@@ -39,6 +39,22 @@ export async function connectDB(): Promise<void> {
     console.log('✅ Connected to MongoDB successfully (dbName: debugarena, maxPoolSize: 50).');
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error);
+    if (ENV.NODE_ENV !== 'production' && !mongod) {
+      console.log('⚠️ Remote MongoDB connection failed in development. Falling back to embedded MongoMemoryServer...');
+      try {
+        mongod = await MongoMemoryServer.create({
+          instance: {
+            dbName: 'debugarena'
+          }
+        });
+        const fallbackUri = mongod.getUri();
+        await mongoose.connect(fallbackUri, { dbName: 'debugarena' });
+        console.log(`📦 Embedded MongoDB fallback initialized at: ${fallbackUri}`);
+        return;
+      } catch (fallbackErr) {
+        console.error('❌ Embedded MongoDB fallback also failed:', fallbackErr);
+      }
+    }
     process.exit(1);
   }
 }

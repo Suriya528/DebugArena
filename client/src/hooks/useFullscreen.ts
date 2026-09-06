@@ -196,6 +196,17 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     };
 
+    // Prevent navigating away or opening new tabs via hyperlinks in question prompts
+    const handleClick = (e: MouseEvent) => {
+      if (!isEnabledRef.current) return;
+      const target = e.target as HTMLElement;
+      const anchor = target?.closest('a');
+      if (anchor && anchor.href) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -204,8 +215,14 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     window.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('selectstart', handleSelectStart);
     window.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('click', handleClick, true);
 
     return () => {
+      try {
+        if ('keyboard' in navigator && (navigator as any).keyboard?.unlock) {
+          (navigator as any).keyboard.unlock();
+        }
+      } catch (e) {}
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -214,6 +231,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       window.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('selectstart', handleSelectStart);
       window.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('click', handleClick, true);
     };
   }, [enabled]);
 

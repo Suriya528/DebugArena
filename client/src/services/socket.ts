@@ -11,13 +11,18 @@ export function connectSocket(token: string): Socket {
     socket.disconnect();
   }
 
-  socket = io({
+  const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
+  const socketUrl = import.meta.env.VITE_WS_URL?.trim() || (rawApiUrl ? rawApiUrl.replace(/\/api\/?$/, '') : undefined);
+
+  const socketOptions = {
     auth: { token },
     reconnection: true,
     reconnectionAttempts: 20,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000
-  });
+  };
+
+  socket = socketUrl ? io(socketUrl, socketOptions) : io(socketOptions);
 
   socket.on('connect', () => {
     console.log('⚡ Connected to DebugArena Realtime Gateway:', socket?.id);
