@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Shield,
   Terminal,
@@ -39,13 +39,265 @@ import {
   Hash,
   Send,
   Sun,
-  Moon
+  Moon,
+  Filter,
+  Shuffle,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  ChevronDown
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
 import { JoinEventModal } from '../participant/JoinEventModal.js';
 import { FooterDetailModal, FooterTopicId } from './FooterDetailModal.js';
 import { ThemeToggle } from '../common/ThemeToggle.js';
 import { useTheme } from '../../context/ThemeContext.js';
+
+interface ProblemItem {
+  id: number;
+  title: string;
+  defectCategory: 'Off-By-One' | 'Pointers & Memory' | 'Concurrency' | 'DP & State' | 'Trees & Graphs' | 'MCQ';
+  language: string;
+  acceptance: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  description: string;
+  bugExplanation: string;
+  solutionExplanation: string;
+  sampleInput: string;
+  sampleOutput: string;
+  starterCode: string;
+  solutionCode: string;
+  solved: boolean;
+}
+
+const PROBLEM_BANK: ProblemItem[] = [
+  {
+    id: 42,
+    title: 'Binary Search Pivot Underflow',
+    defectCategory: 'Off-By-One',
+    language: 'Python 3.11',
+    acceptance: '74.8%',
+    difficulty: 'Medium',
+    description:
+      'Given a sorted integer array nums and a target value, return the index if target is found. The starter implementation suffers from an off-by-one mid-point calculation defect causing index skew on boundary values.',
+    bugExplanation: 'return mid + 1  # 🐞 Defect: Off-by-one pivot error returns skewed index',
+    solutionExplanation: 'return mid  # ✅ Verified: Exact pivot index returned',
+    sampleInput: 'nums = [2, 5, 8, 12], target = 8',
+    sampleOutput: '2',
+    starterCode: `def binary_search(nums: list[int], target: int) -> int:
+    low, high = 0, len(nums) - 1
+    while low <= high:
+        mid = (low + high) // 2
+        if nums[mid] == target:
+            return mid + 1  # 🐞 Defect: off-by-one!
+        elif nums[mid] < target:
+            low = mid + 1
+        else:
+            high = mid - 1
+    return -1`,
+    solutionCode: `def binary_search(nums: list[int], target: int) -> int:
+    low, high = 0, len(nums) - 1
+    while low <= high:
+        mid = (low + high) // 2
+        if nums[mid] == target:
+            return mid  # ✅ Corrected pivot return
+        elif nums[mid] < target:
+            low = mid + 1
+        else:
+            high = mid - 1
+    return -1`,
+    solved: true
+  },
+  {
+    id: 1,
+    title: 'Two Sum Buffer Boundary Overflow',
+    defectCategory: 'Off-By-One',
+    language: 'Python 3.11',
+    acceptance: '84.2%',
+    difficulty: 'Easy',
+    description:
+      'Locate indices of the two numbers such that they add up to target. The starter hashmap check evaluates the key after incrementing iterator pointers beyond array bounds.',
+    bugExplanation: 'seen[nums[i]] = i + 1  # 🐞 Skewed 1-based indexing instead of 0-based',
+    solutionExplanation: 'seen[nums[i]] = i  # ✅ Clean 0-indexed lookup table',
+    sampleInput: 'nums = [2, 7, 11, 15], target = 9',
+    sampleOutput: '[0, 1]',
+    starterCode: `def two_sum(nums: list[int], target: int) -> list[int]:
+    seen = {}
+    for i in range(len(nums)):
+        diff = target - nums[i]
+        if diff in seen:
+            return [seen[diff], i + 1] # 🐞 Bug: Skewed indices
+        seen[nums[i]] = i
+    return []`,
+    solutionCode: `def two_sum(nums: list[int], target: int) -> list[int]:
+    seen = {}
+    for i in range(len(nums)):
+        diff = target - nums[i]
+        if diff in seen:
+            return [seen[diff], i] # ✅ Correct pair indices
+        seen[nums[i]] = i
+    return []`,
+    solved: false
+  },
+  {
+    id: 146,
+    title: 'LRU Cache Pointer Disconnection',
+    defectCategory: 'Pointers & Memory',
+    language: 'Python 3.11',
+    acceptance: '52.4%',
+    difficulty: 'Hard',
+    description:
+      'Design a data structure that follows Least Recently Used (LRU) cache constraints. The starter doubly linked list removal fails to update the next pointer of the preceding node, leaking dangling references.',
+    bugExplanation: 'node.prev.next = node  # 🐞 Self-referencing cycle breaks doubly linked list',
+    solutionExplanation: 'node.prev.next = node.next  # ✅ Proper node disconnection',
+    sampleInput: '["LRUCache", "put", "put", "get"]\n[[2], [1, 1], [2, 2], [1]]',
+    sampleOutput: '[null, null, null, 1]',
+    starterCode: `def remove_node(node):
+    # 🐞 Defect: self-referencing cycle
+    node.prev.next = node
+    node.next.prev = node.prev`,
+    solutionCode: `def remove_node(node):
+    # ✅ Clean detachment
+    node.prev.next = node.next
+    node.next.prev = node.prev`,
+    solved: false
+  },
+  {
+    id: 206,
+    title: 'Reverse Linked List Cyclic Leak',
+    defectCategory: 'Pointers & Memory',
+    language: 'Python 3.11',
+    acceptance: '88.6%',
+    difficulty: 'Easy',
+    description:
+      'Given the head of a singly linked list, reverse the list and return the reversed list. Starter code omits clearing the original head next pointer, resulting in an infinite cycle during traversal.',
+    bugExplanation: 'curr.next = curr  # 🐞 Infinite cyclic node assignment',
+    solutionExplanation: 'curr.next = prev  # ✅ Inverted link direction',
+    sampleInput: 'head = [1, 2, 3, 4, 5]',
+    sampleOutput: '[5, 4, 3, 2, 1]',
+    starterCode: `def reverse_list(head):
+    prev, curr = None, head
+    while curr:
+        nxt = curr.next
+        curr.next = curr # 🐞 Bug: circular link
+        prev = curr
+        curr = nxt
+    return prev`,
+    solutionCode: `def reverse_list(head):
+    prev, curr = None, head
+    while curr:
+        nxt = curr.next
+        curr.next = prev # ✅ Directed reversal
+        prev = curr
+        curr = nxt
+    return prev`,
+    solved: true
+  },
+  {
+    id: 300,
+    title: 'Longest Subsequence Memoization Drift',
+    defectCategory: 'DP & State',
+    language: 'Python 3.11',
+    acceptance: '68.1%',
+    difficulty: 'Medium',
+    description:
+      'Find the length of the longest strictly increasing subsequence. Starter memoization table initialises with 0 instead of 1, invalidating singleton element subproblems.',
+    bugExplanation: 'dp = [0] * n  # 🐞 Base case invalid: single elements have length 1',
+    solutionExplanation: 'dp = [1] * n  # ✅ Base case correctly initialized',
+    sampleInput: 'nums = [10, 9, 2, 5, 3, 7, 101, 18]',
+    sampleOutput: '4',
+    starterCode: `def length_of_lis(nums: list[int]) -> int:
+    if not nums: return 0
+    dp = [0] * len(nums) # 🐞 Bug: base length must be 1
+    for i in range(len(nums)):
+        for j in range(i):
+            if nums[i] > nums[j]:
+                dp[i] = max(dp[i], dp[j] + 1)
+    return max(dp)`,
+    solutionCode: `def length_of_lis(nums: list[int]) -> int:
+    if not nums: return 0
+    dp = [1] * len(nums) # ✅ Base length is 1
+    for i in range(len(nums)):
+        for j in range(i):
+            if nums[i] > nums[j]:
+                dp[i] = max(dp[i], dp[j] + 1)
+    return max(dp)`,
+    solved: false
+  },
+  {
+    id: 1114,
+    title: 'Print in Order Mutex Lock Order Deadlock',
+    defectCategory: 'Concurrency',
+    language: 'Python 3.11',
+    acceptance: '47.9%',
+    difficulty: 'Hard',
+    description:
+      'Three threads run concurrently. Ensure second() executes only after first(), and third() executes after second(). Starter lock acquisition order triggers cyclic deadlock.',
+    bugExplanation: 'self.lock2.acquire(); self.lock1.acquire() # 🐞 Inverse lock order deadlock',
+    solutionExplanation: 'self.lock1.acquire(); self.lock2.release() # ✅ Ordered synchronization barrier',
+    sampleInput: 'nums = [1, 3, 2]',
+    sampleOutput: '"firstsecondthird"',
+    starterCode: `def second(self, printSecond):
+    self.lock2.acquire() # 🐞 Deadlock lock inversion
+    printSecond()
+    self.lock1.release()`,
+    solutionCode: `def second(self, printSecond):
+    self.lock1.acquire() # ✅ Sequenced acquisition
+    printSecond()
+    self.lock2.release()`,
+    solved: false
+  },
+  {
+    id: 98,
+    title: 'Validate BST Boundary Equality Trap',
+    defectCategory: 'Trees & Graphs',
+    language: 'Python 3.11',
+    acceptance: '66.2%',
+    difficulty: 'Medium',
+    description:
+      'Determine if a binary tree is a valid Binary Search Tree. Starter validator allows duplicate values on left and right branches using <= instead of strictly <.',
+    bugExplanation: 'if node.val <= low or node.val >= high: # 🐞 Permitted non-strict equivalence',
+    solutionExplanation: 'if not (low < node.val < high): # ✅ Strict inequality enforced',
+    sampleInput: 'root = [2, 1, 3]',
+    sampleOutput: 'true',
+    starterCode: `def is_valid_bst(node, low=-float('inf'), high=float('inf')):
+    if not node: return True
+    if node.val < low or node.val > high: # 🐞 Permitted duplicate values
+        return False
+    return is_valid_bst(node.left, low, node.val) and is_valid_bst(node.right, node.val, high)`,
+    solutionCode: `def is_valid_bst(node, low=-float('inf'), high=float('inf')):
+    if not node: return True
+    if not (low < node.val < high): # ✅ Strict inequality
+        return False
+    return is_valid_bst(node.left, low, node.val) and is_valid_bst(node.right, node.val, high)`,
+    solved: false
+  },
+  {
+    id: 200,
+    title: 'Number of Islands Visited Recurse Stack',
+    defectCategory: 'Trees & Graphs',
+    language: 'Python 3.11',
+    acceptance: '71.5%',
+    difficulty: 'Medium',
+    description:
+      'Count connected components on a 2D grid. The starter DFS fails to mark the root cell before recursion, producing an infinite stack call recursion error.',
+    bugExplanation: 'grid[r][c] = "1"  # 🐞 Overwrote mark with unvisited land value',
+    solutionExplanation: 'grid[r][c] = "0"  # ✅ Sinks island cell to terminate DFS',
+    sampleInput: 'grid = [["1","1","0"],["1","1","0"],["0","0","1"]]',
+    sampleOutput: '2',
+    starterCode: `def dfs(r, c):
+    if r < 0 or r >= rows or c < 0 or c >= cols or grid[r][c] == "0":
+        return
+    grid[r][c] = "1" # 🐞 Infinite recursion: re-marking as 1
+    dfs(r+1, c); dfs(r-1, c); dfs(r, c+1); dfs(r, c-1)`,
+    solutionCode: `def dfs(r, c):
+    if r < 0 or r >= rows or c < 0 or c >= cols or grid[r][c] == "0":
+        return
+    grid[r][c] = "0" # ✅ Marks as visited water
+    dfs(r+1, c); dfs(r-1, c); dfs(r, c+1); dfs(r, c-1)`,
+    solved: false
+  }
+];
 
 export const LandingPage: React.FC = () => {
   const { isDark } = useTheme();
@@ -58,13 +310,37 @@ export const LandingPage: React.FC = () => {
   const [footerTopic, setFooterTopic] = useState<FooterTopicId | null>(null);
   const [isFooterModalOpen, setIsFooterModalOpen] = useState(false);
 
-  // Interactive Live Simulator widget state (LeetCode Playground Style)
-  const [activeConsoleTab, setActiveConsoleTab] = useState<'debugger' | 'proctor' | 'leaderboard'>('debugger');
-  const [isEvaluatingCode, setIsEvaluatingCode] = useState(false);
+  // LeetCode Problem Bank Filter State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
+
+  // Currently Selected Problem for the Live Playground
+  const [selectedProblem, setSelectedProblem] = useState<ProblemItem>(PROBLEM_BANK[0]);
   const [hasInjectedDefect, setHasInjectedDefect] = useState(false);
+  const [isEvaluatingCode, setIsEvaluatingCode] = useState(false);
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'debugger' | 'proctor' | 'leaderboard'>('debugger');
   const [simulatedProctorStrike, setSimulatedProctorStrike] = useState<number>(0);
   const [proctorAlertMessage, setProctorAlertMessage] = useState<string | null>(null);
-  const [activeTestCase, setActiveTestCase] = useState<number>(1);
+
+  const filteredProblems = useMemo(() => {
+    return PROBLEM_BANK.filter((p) => {
+      const matchesSearch =
+        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.defectCategory.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.id.toString().includes(searchQuery);
+      const matchesCat = selectedCategory === 'All' || p.defectCategory === selectedCategory;
+      const matchesDiff = selectedDifficulty === 'All' || p.difficulty === selectedDifficulty;
+      return matchesSearch && matchesCat && matchesDiff;
+    });
+  }, [searchQuery, selectedCategory, selectedDifficulty]);
+
+  const handleSelectRandom = () => {
+    const rand = PROBLEM_BANK[Math.floor(Math.random() * PROBLEM_BANK.length)];
+    setSelectedProblem(rand);
+    setHasInjectedDefect(false);
+    scrollToSection('problem-workspace');
+  };
 
   const handleVerifyCert = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +362,6 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  // Run interactive sandbox simulator
   const handleRunSimulatorJudge = () => {
     setIsEvaluatingCode(true);
     setTimeout(() => {
@@ -94,1478 +369,823 @@ export const LandingPage: React.FC = () => {
     }, 600);
   };
 
-  // Simulate tab switch violation
   const handleSimulateViolation = () => {
     setSimulatedProctorStrike((prev) => Math.min(3, prev + 1));
-    setProctorAlertMessage('TELEMETRY ALERT: window.onblur event captured! Focus-lock violation recorded.');
+    setProctorAlertMessage('TELEMETRY ALERT: window.onblur captured! Focus-lock violation recorded.');
     setTimeout(() => {
       setProctorAlertMessage(null);
     }, 4500);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-amber-500 selection:text-black relative overflow-x-hidden font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-[#0a0e17] dark:bg-[#0a0e17] text-slate-100 flex flex-col selection:bg-amber-500 selection:text-black relative overflow-x-hidden font-sans transition-colors duration-200">
       {/* Background Matrix & Subtle Gradient Mesh */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.04] dark:opacity-[0.035]"
+        className="absolute inset-0 pointer-events-none opacity-[0.035]"
         style={{
           backgroundImage: `radial-gradient(#f59e0b 1px, transparent 1px)`,
           backgroundSize: '24px 24px'
         }}
       />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent pointer-events-none" />
-      <div className="absolute top-28 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent pointer-events-none" />
 
-      {/* Top LeetCode/HackerRank Tournament Alert Ticker */}
-      <div className="w-full bg-slate-100/90 dark:bg-[#070a10] border-b border-slate-200 dark:border-slate-800/80 text-[11px] font-mono text-slate-600 dark:text-slate-400 py-1.5 px-4 z-50 transition-colors">
-        <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none whitespace-nowrap gap-6">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold">
-              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              <span>WEEKLY CONTEST #24: LIVE NOW</span>
-            </span>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-              <span>1,420 Active Collegiate Sandboxes</span>
-            </span>
-            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-            <span className="hidden sm:inline">Engine: Pyodide WASM v314.0 (Zero Server Lag)</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span className="hidden md:inline text-slate-400 dark:text-slate-500">Proctoring: KIOSK_LEVEL_3</span>
-            <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
-            <button
-              onClick={() => openTopic('system-status')}
-              className="text-amber-600 dark:text-amber-400 hover:underline transition-colors flex items-center gap-1 cursor-pointer font-medium"
-            >
-              <span>Cluster Telemetry</span>
-              <Activity className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Primary Navigation Header (LeetCode & HackerRank Style with Dark/Light Toggle) */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800/90 bg-white/95 dark:bg-[#0a0e17]/95 backdrop-blur-xl transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          {/* Brand Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 border border-amber-400/40">
-              <Terminal className="w-5 h-5 text-slate-950 stroke-[2.5]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-xl tracking-tight text-slate-900 dark:text-white">DebugArena</span>
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold border border-amber-500/30">
-                  LEET_v2.4
-                </span>
+      {/* ========================================================= */}
+      {/* LEETCODE / HACKERRANK TOP NAVIGATION BAR                  */}
+      {/* ========================================================= */}
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#0d121f]/95 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Brand Identity & Main LeetCode Tabs */}
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20">
+                <Terminal className="w-4 h-4 text-slate-950 stroke-[2.5]" />
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Competitive Code Debugging & Tournament Platform</p>
+              <span className="font-black text-lg tracking-tight text-white flex items-center gap-1.5">
+                DebugArena
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-mono text-[9px] font-bold border border-amber-500/25">
+                  TOURNAMENT
+                </span>
+              </span>
             </div>
+
+            {/* LeetCode Main Navigation Links */}
+            <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-300">
+              <button
+                onClick={() => scrollToSection('problem-list')}
+                className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5 text-amber-400"
+              >
+                <span>Problems</span>
+              </button>
+              <button
+                onClick={() => scrollToSection('tournament-arena')}
+                className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Contests</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              </button>
+              <button
+                onClick={() => scrollToSection('leaderboard')}
+                className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Leaderboard</span>
+              </button>
+              <button
+                onClick={() => scrollToSection('kiosk-proctor')}
+                className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Anti-Cheat</span>
+              </button>
+              <button
+                onClick={() => scrollToSection('verification')}
+                className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Verify Proofs</span>
+              </button>
+            </nav>
           </div>
 
-          {/* Quick Nav Anchor Links */}
-          <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <button
-              onClick={() => scrollToSection('problem-arena')}
-              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Code2 className="w-3.5 h-3.5 text-amber-500" />
-              <span>Problem Arena</span>
-            </button>
-            <button
-              onClick={() => scrollToSection('explore-tracks')}
-              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Compass className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Explore Tracks</span>
-            </button>
-            <button
-              onClick={() => scrollToSection('weekly-contest')}
-              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Trophy className="w-3.5 h-3.5 text-amber-500" />
-              <span>Weekly Contest</span>
-            </button>
-            <button
-              onClick={() => scrollToSection('integrity-proctor')}
-              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-rose-500" />
-              <span>Anti-Cheat Kiosk</span>
-            </button>
-            <button
-              onClick={() => scrollToSection('verification')}
-              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Award className="w-3.5 h-3.5 text-cyan-500" />
-              <span>Verify Proofs</span>
-            </button>
-          </nav>
+          {/* Right Action Tools (Theme, Streak, Contest Join, Organizer) */}
+          <div className="flex items-center gap-3">
+            {/* Daily Debug Streak Pill (LeetCode Style) */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 font-mono text-[11px] font-bold">
+              <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 animate-pulse" />
+              <span>12-Day Streak</span>
+            </div>
 
-          {/* Action CTAs, Dark/Light Mode Toggle & Mobile Hamburger */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Theme Toggle Button (Light/Dark mode) */}
+            {/* Theme Toggle (Dark/Light Mode) */}
             <ThemeToggle />
 
+            {/* Organizer Sign In */}
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="hidden sm:inline-flex h-10 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-900/90 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-sm"
+              className="hidden lg:inline-flex h-9 px-3.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all items-center justify-center gap-1.5 cursor-pointer active:scale-95"
             >
-              <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>Organizer Portal</span>
+              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Host Tournament</span>
             </button>
 
+            {/* Primary Action: Enter Contest */}
             <button
               onClick={() => setIsJoinModalOpen(true)}
-              className="h-10 px-4 sm:px-5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              className="h-9 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/25 transition-all inline-flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
             >
-              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
-              <span>
-                <span className="inline sm:hidden">Join Contest</span>
-                <span className="hidden sm:inline">Enter Contest Arena</span>
-              </span>
+              <Trophy className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+              <span>Enter Contest</span>
             </button>
 
-            {/* Mobile Hamburger Menu Button */}
+            {/* Mobile Hamburger Menu */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-900/80 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-800 transition-all cursor-pointer"
-              aria-label="Toggle Navigation Menu"
+              className="md:hidden p-2 rounded-xl text-slate-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
+              aria-label="Toggle Menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
 
-        {/* Collapsible Mobile Navigation Drawer */}
+        {/* Collapsible Mobile Drawer */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden border-t border-slate-200 dark:border-slate-800 bg-white/98 dark:bg-[#0d121f]/98 backdrop-blur-2xl px-4 py-5 space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-xl">
-            {/* Mobile Theme Toggle Row */}
-            <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                {isDark ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
-                <span>Appearance Mode</span>
-              </span>
-              <ThemeToggle showLabel={true} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+          <div className="md:hidden border-t border-slate-800 bg-[#0d121f]/98 px-4 py-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-300">
               <button
                 onClick={() => {
-                  scrollToSection('problem-arena');
+                  scrollToSection('problem-list');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
+                className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-left hover:text-amber-400"
               >
-                Problem Arena
+                Problems Table
               </button>
               <button
                 onClick={() => {
-                  scrollToSection('explore-tracks');
+                  scrollToSection('tournament-arena');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
-              >
-                Explore Tracks
-              </button>
-              <button
-                onClick={() => {
-                  scrollToSection('weekly-contest');
-                  setIsMobileMenuOpen(false);
-                }}
-                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
+                className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-left hover:text-amber-400"
               >
                 Weekly Contest
               </button>
               <button
                 onClick={() => {
-                  scrollToSection('integrity-proctor');
+                  scrollToSection('problem-workspace');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
+                className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-left hover:text-amber-400"
               >
-                Anti-Cheat Kiosk
+                Interactive Arena
               </button>
               <button
                 onClick={() => {
-                  scrollToSection('verification');
+                  scrollToSection('leaderboard');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors col-span-2"
+                className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-left hover:text-amber-400"
               >
-                Verify Certificate Proofs
+                Collegiate Ranks
               </button>
             </div>
 
-            <div className="pt-2 flex flex-col gap-2.5">
+            <div className="pt-2 flex flex-col gap-2">
               <button
                 onClick={() => {
                   setIsAdminModalOpen(true);
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-slate-900 border border-slate-700 flex items-center justify-center gap-2"
               >
-                <Shield className="w-4 h-4 text-amber-500" />
-                <span>Organizer Control Room</span>
+                <Shield className="w-4 h-4 text-amber-400" />
+                <span>Host Tournament / Organizer Portal</span>
               </button>
-
               <button
                 onClick={() => {
                   setIsJoinModalOpen(true);
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition-all cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 flex items-center justify-center gap-2"
               >
                 <Trophy className="w-4 h-4 text-slate-950" />
-                <span>Enter Contest Lobby</span>
-              </button>
-            </div>
-
-            <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                ARENA_CLUSTER: ONLINE
-              </span>
-              <button
-                onClick={() => {
-                  openTopic('system-status');
-                  setIsMobileMenuOpen(false);
-                }}
-                className="text-amber-600 dark:text-amber-400 hover:underline"
-              >
-                System Telemetry &rarr;
+                <span>Join Live Contest Lobby</span>
               </button>
             </div>
           </div>
         )}
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1">
+      {/* Main Competitive Platform Hub */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {/* ========================================================= */}
-        {/* HERO SECTION: LEETCODE / HACKERRANK SPLIT PLAYGROUND      */}
+        {/* SECTION 1: LEETCODE WEEKLY CONTEST LIVE HERO BANNER       */}
         {/* ========================================================= */}
-        <section id="problem-arena" className="relative pt-10 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-            {/* Left Column: Hero Headline & Action Matrix */}
-            <div className="lg:col-span-6 space-y-6 text-left">
-              {/* LeetCode Season Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 font-mono shadow-sm">
-                <Flame className="w-3.5 h-3.5 text-amber-500 animate-bounce" />
-                <span className="text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">Collegiate Debugging Arena</span>
-                <span className="text-slate-400 dark:text-slate-600">|</span>
-                <span className="text-slate-600 dark:text-slate-400">2026 Season</span>
+        <section
+          id="tournament-arena"
+          className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-[#12192c] via-[#0d1322] to-[#0a0e17] border border-amber-500/30 shadow-xl relative overflow-hidden"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-2.5 max-w-2xl">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-[11px] font-mono font-bold text-rose-400">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                  <span>WEEKLY CONTEST #24: ROUND 2 ACTIVE</span>
+                </span>
+                <span className="text-slate-500 text-xs hidden sm:inline">•</span>
+                <span className="text-xs font-mono text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>1,420 Contestants Sandboxed</span>
+                </span>
               </div>
 
-              {/* Commanding Headline */}
-              <div className="space-y-3">
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.1]">
-                  A New Way to{' '}
-                  <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 dark:from-amber-400 dark:via-orange-400 dark:to-amber-200 bg-clip-text text-transparent">
-                    Learn, Compete & Debug Code.
-                  </span>
-                </h1>
-                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl pt-1 font-normal">
-                  DebugArena is the premier competitive platform built for developers to master real-world debugging. 
-                  Diagnose tricky production edge-cases, solve algorithmic bugs, and race on live collegiate scoreboards under hardware-enforced kiosk anti-cheat lockdown.
-                </p>
-              </div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
+                Collegiate Algorithmic Debugging Championship
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
+                Race against synchronized timers to diagnose production runtime bugs, resolve race hazards, and patch boundary underflows under browser kiosk lockdown.
+              </p>
 
-              {/* Primary Launch Action Buttons */}
-              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 max-w-lg">
-                <button
-                  onClick={() => setIsJoinModalOpen(true)}
-                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-xl shadow-amber-500/20 border border-transparent transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap"
-                >
-                  <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
-                  <span>Start Debugging / Enter Contest</span>
-                  <ArrowRight className="w-4 h-4 text-slate-950 shrink-0" />
-                </button>
-
-                <button
-                  onClick={() => setIsAdminModalOpen(true)}
-                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 dark:text-white bg-white hover:bg-slate-100 dark:bg-slate-900/90 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group shadow-sm"
-                >
-                  <Key className="w-4 h-4 text-amber-500 shrink-0" />
-                  <span>Organizer Portal (Passkey)</span>
-                </button>
-              </div>
-
-              {/* LeetCode & HackerRank Telemetry Counter Stats */}
-              <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-lg font-mono text-[11px]">
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
-                  <div className="text-amber-600 dark:text-amber-400 font-bold text-base">50,000+</div>
-                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Submissions Judged</p>
-                </div>
-
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
-                  <div className="text-emerald-600 dark:text-emerald-400 font-bold text-base">100%</div>
-                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Client WASM Speed</p>
-                </div>
-
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
-                  <div className="text-rose-600 dark:text-rose-400 font-bold text-base">0.0ms</div>
-                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Cold Start Latency</p>
-                </div>
-
-                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
-                  <div className="text-cyan-600 dark:text-cyan-400 font-bold text-base">SHA-256</div>
-                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Verified Proofs</p>
-                </div>
+              {/* Tournament Stages Pipeline Indicator */}
+              <div className="pt-2 flex flex-wrap items-center gap-3 font-mono text-[11px]">
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  R1: MCQ Screening (20 Qs)
+                </span>
+                <span className="text-slate-600">&rarr;</span>
+                <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                  R2: Live WASM Debugging (3 Sets)
+                </span>
+                <span className="text-slate-600">&rarr;</span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  R3: Sudden Death (10m)
+                </span>
               </div>
             </div>
 
-            {/* Right Column: LeetCode-Style Interactive Problem & Code Playground */}
-            <div className="lg:col-span-6">
-              <div className="relative rounded-3xl border border-slate-700/80 bg-[#0d121f] shadow-2xl overflow-hidden backdrop-blur-md">
-                {/* LeetCode Playground Header Bar */}
-                <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
-                  {/* Window Traffic Dots */}
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-                    <span className="ml-2 font-mono text-slate-400 text-[11px] font-semibold hidden sm:inline">
-                      DEBUGARENA://ARENA_PLAYGROUND
-                    </span>
-                  </div>
-
-                  {/* Mode Navigation Tabs */}
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono overflow-x-auto scrollbar-none shrink-0">
-                    <button
-                      onClick={() => setActiveConsoleTab('debugger')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                        activeConsoleTab === 'debugger'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <span>Code Arena</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveConsoleTab('proctor')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                        activeConsoleTab === 'proctor'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <span>Proctor Radar</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveConsoleTab('leaderboard')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                        activeConsoleTab === 'leaderboard'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <span>Standings</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* TAB 1: LEETCODE STYLE PROBLEM & CODE EDITOR */}
-                {activeConsoleTab === 'debugger' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3.5 text-slate-200">
-                    {/* LeetCode Problem Info Strip */}
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-bold text-xs">#42. Binary Search Pivot Underflow</span>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold text-[10px] border border-amber-500/30">
-                          Medium
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setHasInjectedDefect(!hasInjectedDefect)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
-                            hasInjectedDefect
-                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                              : 'bg-rose-500/15 text-rose-300 border-rose-500/30 hover:bg-rose-500/25'
-                          }`}
-                        >
-                          {hasInjectedDefect ? '✅ Apply Bug Fix' : '🐞 Inject Starter Defect'}
-                        </button>
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700 hidden sm:inline">
-                          Python 3.11 (WASM)
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Problem Statement Snippet */}
-                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400">
-                      <p className="leading-relaxed">
-                        <span className="text-amber-300 font-semibold">Problem: </span>
-                        Given a sorted array of integers <code className="text-amber-200">nums</code> and an integer <code className="text-amber-200">target</code>, find the index of <code className="text-amber-200">target</code>. If target is missing, return <code className="text-amber-200">-1</code>.
-                        You must diagnose and fix any boundary off-by-one errors in <span className="text-emerald-400 font-semibold">O(log n)</span> runtime.
-                      </p>
-                    </div>
-
-                    {/* Code Editor Window with Line Numbers */}
-                    <div className="rounded-2xl bg-[#070a10] border border-slate-800 text-slate-300 text-[11px] leading-relaxed overflow-hidden">
-                      <div className="px-3 py-1.5 bg-slate-900/60 border-b border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
-                        <div className="flex items-center gap-2">
-                          <span className="text-amber-400 font-bold">solution.py</span>
-                          <span className="text-slate-600">|</span>
-                          <span>Pyodide Sandbox</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-emerald-400">Acceptance: 74.8%</span>
-                        </div>
-                      </div>
-
-                      <div className="p-3 overflow-x-auto">
-                        <table className="w-full text-left font-mono">
-                          <tbody>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right w-6">1</td>
-                              <td>
-                                <span className="text-indigo-400 font-bold">def</span>{' '}
-                                <span className="text-amber-300 font-bold">binary_search</span>(nums: list[int], target: int) -&gt; int:
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">2</td>
-                              <td className="pl-4">
-                                low, high = <span className="text-orange-400">0</span>, <span className="text-indigo-400">len</span>(nums) - <span className="text-orange-400">1</span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">3</td>
-                              <td className="pl-4">
-                                <span className="text-indigo-400 font-bold">while</span> low &lt;= high:
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">4</td>
-                              <td className="pl-8">
-                                mid = (low + high) // <span className="text-orange-400">2</span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">5</td>
-                              <td className="pl-8">
-                                <span className="text-indigo-400 font-bold">if</span> nums[mid] == target:
-                              </td>
-                            </tr>
-                            <tr className={hasInjectedDefect ? 'bg-rose-500/10' : 'bg-emerald-500/10'}>
-                              <td className="text-slate-600 select-none pr-3 text-right">6</td>
-                              <td className="pl-12">
-                                {hasInjectedDefect ? (
-                                  <span className="text-rose-400 font-semibold">
-                                    <span className="text-indigo-400 font-bold">return</span> mid + <span className="text-orange-400">1</span>{' '}
-                                    <span className="text-rose-300 font-normal"># 🐞 BUG: Off-by-one pivot error!</span>
-                                  </span>
-                                ) : (
-                                  <span className="text-emerald-400 font-semibold">
-                                    <span className="text-indigo-400 font-bold">return</span> mid{' '}
-                                    <span className="text-emerald-300 font-normal"># ✅ FIXED: Correct pivot index</span>
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">7</td>
-                              <td className="pl-8">
-                                <span className="text-indigo-400 font-bold">elif</span> nums[mid] &lt; target:
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">8</td>
-                              <td className="pl-12">
-                                low = mid + <span className="text-orange-400">1</span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">9</td>
-                              <td className="pl-8">
-                                <span className="text-indigo-400 font-bold">else</span>:
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">10</td>
-                              <td className="pl-12">
-                                high = mid - <span className="text-orange-400">1</span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="text-slate-600 select-none pr-3 text-right">11</td>
-                              <td className="pl-4">
-                                <span className="text-indigo-400 font-bold">return</span> -<span className="text-orange-400">1</span>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* LeetCode Action Bar: Run / Submit */}
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setActiveTestCase(1)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                            activeTestCase === 1
-                              ? 'bg-slate-800 text-white border border-slate-700'
-                              : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          Case 1
-                        </button>
-                        <button
-                          onClick={() => setActiveTestCase(2)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                            activeTestCase === 2
-                              ? 'bg-slate-800 text-white border border-slate-700'
-                              : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          Case 2
-                        </button>
-                        <button
-                          onClick={() => setActiveTestCase(3)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                            activeTestCase === 3
-                              ? 'bg-slate-800 text-white border border-slate-700'
-                              : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          Case 3 (Hidden)
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          disabled={isEvaluatingCode}
-                          onClick={handleRunSimulatorJudge}
-                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer active:scale-95 disabled:opacity-50"
-                        >
-                          <Play className="w-3 h-3 text-slate-300" />
-                          <span>Run Code</span>
-                        </button>
-
-                        <button
-                          disabled={isEvaluatingCode}
-                          onClick={handleRunSimulatorJudge}
-                          className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 active:scale-95 disabled:opacity-50 cursor-pointer"
-                        >
-                          <Zap className={`w-3.5 h-3.5 ${isEvaluatingCode ? 'animate-spin' : ''}`} />
-                          <span>{isEvaluatingCode ? 'Judging...' : 'Submit'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* LeetCode Result Card Display */}
-                    <div className="pt-1">
-                      {hasInjectedDefect ? (
-                        <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-rose-400 font-bold text-xs flex items-center gap-1.5">
-                              <AlertCircle className="w-4 h-4" />
-                              <span>Wrong Answer</span>
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-semibold">12 / 48 testcases passed</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                            <div>
-                              <span className="text-slate-500 block">Input:</span>
-                              <code>nums = [2, 5, 8, 12], target = 8</code>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 block">Output vs Expected:</span>
-                              <span className="text-rose-400 font-bold">Output: 3</span>{' '}
-                              <span className="text-slate-500">| Expected: </span>
-                              <span className="text-emerald-400 font-bold">2</span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-emerald-400 font-bold text-xs flex items-center gap-1.5">
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Accepted</span>
-                            </span>
-                            <span className="text-[10px] text-emerald-400 font-semibold">All 48 testcases passed</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                            <div>
-                              <span className="text-slate-500 block">Runtime:</span>
-                              <span className="text-white font-bold">24 ms</span>{' '}
-                              <span className="text-emerald-400">(Beats 97.4%)</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 block">Memory:</span>
-                              <span className="text-white font-bold">14.1 MB</span>{' '}
-                              <span className="text-emerald-400">(Beats 92.3%)</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 2: PROCTORING RADAR */}
-                {activeConsoleTab === 'proctor' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-4 text-slate-200">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
-                      <div>
-                        <span className="text-slate-500 uppercase">Proctor Status: </span>
-                        <span className="text-emerald-400 font-bold">ARMED & ACTIVE</span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[10px] font-bold border border-rose-500/30">
-                        KIOSK LOCK LEVEL 3
-                      </span>
-                    </div>
-
-                    {/* Proctor Alert Box */}
-                    {proctorAlertMessage && (
-                      <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in duration-200">
-                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 animate-bounce" />
-                        <span>{proctorAlertMessage}</span>
-                      </div>
-                    )}
-
-                    {/* 4 Proctor Shields Grid */}
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 01: Fullscreen</span>
-                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Enforced Kiosk
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 02: Tab Switch</span>
-                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Blur Traps Active
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 03: Clipboard</span>
-                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> External Paste Blocked
-                        </span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 04: DevTools</span>
-                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Inspect Suppressed
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Violation Strike Counter */}
-                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Recorded Strike Telemetry</span>
-                        <span className="text-white text-xs font-bold">Current Strike: {simulatedProctorStrike} / 3</span>
-                      </div>
-                      <button
-                        onClick={handleSimulateViolation}
-                        className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold transition-all cursor-pointer active:scale-95"
-                      >
-                        Simulate Tab-Switch Blur
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 3: LIVE STANDINGS */}
-                {activeConsoleTab === 'leaderboard' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3 text-slate-200">
-                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-[11px]">
-                      <div>
-                        <span className="text-slate-500 uppercase">Live Contest: </span>
-                        <span className="text-amber-400 font-bold">Weekly DebugArena Contest #24</span>
-                      </div>
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                        ROUND 2 ACTIVE
-                      </span>
-                    </div>
-
-                    {/* Top Ranks */}
-                    <div className="space-y-1.5">
-                      {[
-                        { rank: 1, name: 'Ananya Sharma', college: 'Stanford Engineering', score: '380 pts', time: '18m 12s', badge: 'Qualified R3' },
-                        { rank: 2, name: 'Karthik Raja', college: 'CEG Anna University', score: '365 pts', time: '21m 04s', badge: 'Qualified R3' },
-                        { rank: 3, name: 'David Chen', college: 'MIT EECS', score: '350 pts', time: '22m 30s', badge: 'Qualified R3' },
-                        { rank: 4, name: 'Elena Rostova', college: 'Cambridge Computer Lab', score: '340 pts', time: '24m 15s', badge: 'In Contention' }
-                      ].map((item) => (
-                        <div
-                          key={item.rank}
-                          className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-[11px]"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                                item.rank === 1
-                                  ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
-                                  : item.rank === 2
-                                  ? 'bg-slate-300/20 text-slate-200 border border-slate-400/40'
-                                  : 'bg-slate-800 text-slate-400'
-                              }`}
-                            >
-                              {item.rank}
-                            </span>
-                            <div>
-                              <span className="text-white font-bold">{item.name}</span>
-                              <span className="text-slate-500 block text-[10px]">{item.college}</span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-amber-400 font-bold block">{item.score}</span>
-                            <span className="text-[10px] text-slate-500">{item.time}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================= */}
-        {/* SECTION 2: EXPLORE DEBUGGING TRACKS (LEETCODE / HACKERRANK) */}
-        {/* ========================================================= */}
-        <section id="explore-tracks" className="py-20 border-t border-slate-200 dark:border-slate-800/90 bg-slate-100/70 dark:bg-[#070a12] transition-colors">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
-              <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-amber-600 dark:text-amber-400 font-mono mb-3 shadow-sm">
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>SKILL_TRACKS_&_BADGES</span>
-                </div>
-                <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                  Explore Debugging Tracks & Skill Categories
-                </h2>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-xl">
-                  Curated problem sets designed to train developers on real-world defect diagnosis across key computer science domains.
-                </p>
-              </div>
-
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
               <button
                 onClick={() => setIsJoinModalOpen(true)}
-                className="h-10 px-5 rounded-xl text-xs font-bold text-slate-800 dark:text-amber-400 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all inline-flex items-center gap-2 self-start md:self-auto cursor-pointer shadow-sm"
+                className="h-11 px-6 rounded-2xl text-xs sm:text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/20 transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer whitespace-nowrap"
               >
-                <span>View All 500+ Problems</span>
-                <ChevronRight className="w-4 h-4" />
+                <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
+                <span>Enter Contest Lobby</span>
+                <ArrowRight className="w-4 h-4 text-slate-950 shrink-0" />
+              </button>
+
+              <button
+                onClick={handleSelectRandom}
+                className="h-11 px-5 rounded-2xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Pick Random Challenge</span>
               </button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Track 1: Pointers & Memory Bounds */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
-                      Hard
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">14 Challenges</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Pointers & Memory Bounds
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    Hunt down buffer overflows, null pointer dereferences, off-by-one heap allocations, and memory leaks in low-level systems.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">C / C++</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Memory Safety</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Segmentation</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">68.4%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-
-              {/* Track 2: Binary Search & Array Invariants */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
-                      Medium
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">22 Challenges</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Binary Search & Invariants
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    Debug subtle mid-point calculation overflows, termination conditions, rotated array splits, and boundary predicates.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Divide & Conquer</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Monotonicity</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">76.2%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-
-              {/* Track 3: Concurrency & Thread Contention */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
-                      Hard
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">10 Challenges</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Concurrency & Deadlocks
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    Resolve asynchronous race hazards, mutex deadlocks, thread starvations, and non-atomic state updates in distributed logic.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Go / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Multithreading</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Lock Ordering</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">62.1%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-
-              {/* Track 4: Tree Traversal & Recursion Depth */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
-                      Medium
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">16 Challenges</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Tree Traversal & Cycles
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    Fix infinite recursion loops, unvisited cyclic graph nodes, inverted binary search trees, and stack overflow pitfalls.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / C++</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">DFS / BFS</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Graph Theory</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">81.5%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-
-              {/* Track 5: Dynamic Programming & Memoization */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
-                      Medium
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">18 Challenges</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Dynamic Programming & States
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    Correct corrupted memoization caches, overlapping subproblem transitions, base case initialization bugs, and index shifts.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Memoization</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Knapsack</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">70.9%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-
-              {/* Track 6: Rapid MCQ Algorithmic Screening */}
-              <div
-                onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
-                      Easy
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500">30 Questions</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Rapid MCQ Algorithmic Filter
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
-                    High-speed conceptual screening questions testing asymptotic complexity, bit manipulation, operator precedence, and memory layout.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Multi-Lang</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Time Complexity</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Bitwise Math</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">93.8%</strong></span>
-                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
-                    <span>Start Practice</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 
         {/* ========================================================= */}
-        {/* SECTION 3: WEEKLY TOURNAMENT ARENA (LEETCODE CONTEST)     */}
+        {/* SECTION 2: LEETCODE / HACKERRANK PROBLEM SET TABLE         */}
         {/* ========================================================= */}
-        <section id="weekly-contest" className="py-20 border-t border-slate-200 dark:border-slate-800/90 relative overflow-hidden transition-colors">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            {/* Tournament Headline Card */}
-            <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-white dark:from-[#0e1628] dark:via-[#0b101d] dark:to-[#070a12] border border-amber-300/80 dark:border-amber-500/30 shadow-2xl relative overflow-hidden transition-colors">
-              <div className="absolute -right-20 -top-20 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
-                <div className="space-y-4 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 font-mono">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                    <span>TOURNAMENT_MODE : WEEKLY CONTEST #24</span>
-                  </div>
-                  <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                    Compete in Synchronized Live Rounds
-                  </h2>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Every Saturday, thousands of collegiate developers enter the synchronized arena. Contestants progress through 3 rigorous tournament stages scored in real-time.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setIsJoinModalOpen(true)}
-                  className="h-12 px-7 rounded-2xl text-xs sm:text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-xl shadow-amber-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer shrink-0"
-                >
-                  <Trophy className="w-4 h-4 text-slate-950" />
-                  <span>Enter Contest Lobby</span>
-                  <ArrowRight className="w-4 h-4 text-slate-950" />
-                </button>
-              </div>
-
-              {/* 3-Round Progression Visual Pipeline */}
-              <div className="mt-10 pt-8 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
-                  <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">STAGE 01</span>
-                    <span className="text-[10px] text-slate-500">15 Mins</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">MCQ Screening Round</h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Rapid 20-question algorithmic filter testing Big-O time complexity, bit operations, and output tracing.
-                  </p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
-                  <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">STAGE 02</span>
-                    <span className="text-[10px] text-slate-500">45 Mins</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Timed Debugging Sprint</h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    3 In-depth broken codebases executed in client Pyodide WASM. Contestants diagnose and patch boundary bugs.
-                  </p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
-                  <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400">STAGE 03</span>
-                    <span className="text-[10px] text-slate-500">10 Mins</span>
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Sudden-Death Tie-Breaker</h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Head-to-head sprint where milliseconds decide the victor. The fastest verified patch secures the championship.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================= */}
-        {/* SECTION 4: ENTERPRISE PROCTORING & TRUST (HACKERRANK WORK) */}
-        {/* ========================================================= */}
-        <section id="integrity-proctor" className="py-20 border-t border-slate-200 dark:border-slate-800/90 bg-slate-50 dark:bg-[#070a12] transition-colors">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-rose-600 dark:text-rose-400 font-mono mb-3 shadow-sm">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>INTEGRITY_ENGINE</span>
-              </div>
-              <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                Enterprise Anti-Cheat Proctoring for Universities
+        <section id="problem-list" className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Debugging Problem Repository</span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-xs">
+                  {filteredProblems.length} Problems Available
+                </span>
               </h2>
-              <p className="mt-3 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                Engineered to enforce fair, tamper-proof competitions in university computer labs, campus placements, and remote hackathons.
+              <p className="text-xs text-slate-400 mt-0.5">
+                Select any challenge to load its defect into the in-browser WASM debugger below.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Feature Card 1 */}
-              <div
-                onClick={() => openTopic('kiosk-proctoring')}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-rose-400 dark:hover:border-rose-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 dark:text-rose-400 mb-5 group-hover:scale-105 transition-transform">
-                    <ShieldCheck className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-rose-600 dark:group-hover:text-rose-300 transition-colors">
-                    Hardware Focus-Lock Kiosk
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Browser-enforced fullscreen lock. Flags window blur, tab switching, and paste events with multi-strike penalty rules.
-                  </p>
-                </div>
-                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold font-mono">
-                  <span>SPEC_DOCS</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-
-              {/* Feature Card 2 */}
-              <div
-                onClick={() => openTopic('code-sandbox')}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 mb-5 group-hover:scale-105 transition-transform">
-                    <Cpu className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
-                    Pyodide WASM Sandbox
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    In-browser Python 3.11 worker execution with strict 2,000ms execution caps, 128MB memory bounds, and zero server cold-start delays.
-                  </p>
-                </div>
-                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 font-semibold font-mono">
-                  <span>SPEC_DOCS</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-
-              {/* Feature Card 3 */}
-              <div
-                onClick={() => openTopic('multi-stage-rounds')}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-5 group-hover:scale-105 transition-transform">
-                    <Layers className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
-                    Multi-Round Pipeline
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Sequential tournament progression: MCQ screening rounds, algorithmic debugging sprints, and sudden-death tie-breakers.
-                  </p>
-                </div>
-                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-indigo-600 dark:text-indigo-400 font-semibold font-mono">
-                  <span>SPEC_DOCS</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-
-              {/* Feature Card 4 */}
-              <div
-                onClick={() => openTopic('cryptographic-credentials')}
-                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-emerald-400 dark:hover:border-emerald-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
-              >
-                <div>
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 mb-5 group-hover:scale-105 transition-transform">
-                    <Award className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
-                    SHA-256 Verifiable Proofs
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Automated cryptographically signed certificates with public URLs for recruiters and LinkedIn profiles. Zero login needed to verify.
-                  </p>
-                </div>
-                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
-                  <span>SPEC_DOCS</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
+            {/* Category Filter Pills (LeetCode Tags) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
+              {['All', 'Off-By-One', 'Pointers & Memory', 'Concurrency', 'DP & State', 'Trees & Graphs'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer whitespace-nowrap ${
+                    selectedCategory === cat
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                      : 'bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
           </div>
-        </section>
 
-        {/* ========================================================= */}
-        {/* SECTION 5: TOURNAMENT WORKFLOW TIMELINE                   */}
-        {/* ========================================================= */}
-        <section className="py-20 border-t border-slate-200 dark:border-slate-800/90 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Collegiate Tournament Lifecycle
-            </h2>
-            <p className="mt-3 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-              How universities run smooth coding events from preliminary registration to certified rankings.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
-                01
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Event Setup</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Organizers specify round durations, select questions from the repository, and generate a 6-digit event code.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
-                02
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Kiosk Roll Call</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Students enter the lobby with their event code and registration number. The system initializes hardware focus locks.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
-                03
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Synchronized Battle</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Contestants debug under kiosk lockdown while server-synchronized timers and automated test runners score submissions.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
-              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
-                04
-              </div>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Verified Badges</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Final standings are published instantly. Achievers receive cryptographically signed SHA-256 digital certificates.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================= */}
-        {/* SECTION 6: INTEGRATED PUBLIC CERTIFICATE VERIFICATION     */}
-        {/* ========================================================= */}
-        <section id="verification" className="py-20 border-t border-slate-200 dark:border-slate-800/90 max-w-4xl mx-auto px-4 text-center transition-colors">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto mb-4">
-            <Search className="w-6 h-6" />
-          </div>
-          <h3 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Authenticate Official Tournament Credentials
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-md mx-auto">
-            Recruiters, university faculty, and candidates can verify the authenticity, rank, score, and cryptographic signature of any issued certificate.
-          </p>
-
-          {/* Quick Sample IDs */}
-          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-mono text-slate-500">
-            <span>Sample IDs:</span>
-            {['CERT-DEBUG-2026-A1', 'CERT-ACM-STANFORD-04'].map((sample) => (
-              <button
-                key={sample}
-                type="button"
-                onClick={() => setCertLookupId(sample)}
-                className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-500/50 text-amber-600 dark:text-amber-300 transition-colors cursor-pointer shadow-sm"
-              >
-                {sample}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleVerifyCert} className="mt-5 flex flex-col sm:flex-row items-center gap-2.5 max-w-md mx-auto">
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#0d121f] p-3 rounded-2xl border border-slate-800">
             <div className="relative flex-1 w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by title, defect type, or problem ID..."
+                className="w-full pl-9 pr-4 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
+            {/* Difficulty Filter */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={selectedDifficulty}
+                onChange={(e) => setSelectedDifficulty(e.target.value)}
+                className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono cursor-pointer"
+              >
+                <option value="All">All Difficulties</option>
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+
+              <button
+                onClick={handleSelectRandom}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700 flex items-center gap-1.5 cursor-pointer shrink-0"
+                title="Shuffle Random Problem"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Pick One</span>
+              </button>
+            </div>
+          </div>
+
+          {/* High-Density LeetCode Table */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0d121f] overflow-hidden shadow-lg">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 select-none">
+                  <tr>
+                    <th className="py-3 px-4 w-12 text-center">Status</th>
+                    <th className="py-3 px-4 w-16">#</th>
+                    <th className="py-3 px-4">Title & Defect Specification</th>
+                    <th className="py-3 px-4 hidden md:table-cell">Defect Category</th>
+                    <th className="py-3 px-4 hidden lg:table-cell">Language</th>
+                    <th className="py-3 px-4 text-center">Acceptance</th>
+                    <th className="py-3 px-4 text-center">Difficulty</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredProblems.map((prob) => {
+                    const isSelected = selectedProblem.id === prob.id;
+                    return (
+                      <tr
+                        key={prob.id}
+                        onClick={() => {
+                          setSelectedProblem(prob);
+                          setHasInjectedDefect(false);
+                          scrollToSection('problem-workspace');
+                        }}
+                        className={`transition-colors cursor-pointer group ${
+                          isSelected ? 'bg-amber-500/10' : 'hover:bg-slate-900/70'
+                        }`}
+                      >
+                        {/* Status Icon */}
+                        <td className="py-3 px-4 text-center">
+                          {prob.solved ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" />
+                          ) : (
+                            <span className="text-slate-600 block text-center">-</span>
+                          )}
+                        </td>
+
+                        {/* ID */}
+                        <td className="py-3 px-4 text-slate-500 font-bold">{prob.id}</td>
+
+                        {/* Title */}
+                        <td className="py-3 px-4">
+                          <div className="font-sans font-bold text-white group-hover:text-amber-400 transition-colors text-sm">
+                            {prob.title}
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-mono truncate max-w-xs sm:max-w-md">
+                            {prob.description}
+                          </div>
+                        </td>
+
+                        {/* Defect Category */}
+                        <td className="py-3 px-4 hidden md:table-cell">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">
+                            {prob.defectCategory}
+                          </span>
+                        </td>
+
+                        {/* Language */}
+                        <td className="py-3 px-4 hidden lg:table-cell text-slate-400">{prob.language}</td>
+
+                        {/* Acceptance */}
+                        <td className="py-3 px-4 text-center text-slate-300 font-semibold">{prob.acceptance}</td>
+
+                        {/* Difficulty */}
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              prob.difficulty === 'Easy'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : prob.difficulty === 'Medium'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                            }`}
+                          >
+                            {prob.difficulty}
+                          </span>
+                        </td>
+
+                        {/* Action Button */}
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProblem(prob);
+                              setHasInjectedDefect(false);
+                              scrollToSection('problem-workspace');
+                            }}
+                            className="px-3 py-1 rounded-lg text-xs font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition-all cursor-pointer whitespace-nowrap"
+                          >
+                            Debug Now
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* SECTION 3: AUTHENTIC SPLIT PROBLEM & IN-BROWSER DEBUGGER  */}
+        {/* ========================================================= */}
+        <section id="problem-workspace" className="space-y-3 pt-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono uppercase text-slate-500 font-bold">Interactive Sandbox:</span>
+              <span className="text-sm font-bold text-white">#{selectedProblem.id}. {selectedProblem.title}</span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-mono border border-emerald-500/30">
+              PYODIDE WASM WORKER READY
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 rounded-3xl border border-slate-700/80 bg-[#0d121f] overflow-hidden shadow-2xl">
+            {/* Left Pane: Problem Description (LeetCode Style) */}
+            <div className="lg:col-span-5 p-5 border-b lg:border-b-0 lg:border-r border-slate-800 space-y-4 overflow-y-auto max-h-[560px]">
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-black text-white">
+                  #{selectedProblem.id}. {selectedProblem.title}
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                    selectedProblem.difficulty === 'Easy'
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : selectedProblem.difficulty === 'Medium'
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                  }`}
+                >
+                  {selectedProblem.difficulty}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  Defect: {selectedProblem.defectCategory}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  Acceptance: {selectedProblem.acceptance}
+                </span>
+              </div>
+
+              {/* Description Body */}
+              <div className="text-xs text-slate-300 leading-relaxed space-y-3 font-sans">
+                <p>{selectedProblem.description}</p>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] space-y-1.5">
+                  <div className="text-slate-400 font-bold uppercase text-[10px]">Sample Assertion Case:</div>
+                  <div><span className="text-slate-500">Input: </span><code>{selectedProblem.sampleInput}</code></div>
+                  <div><span className="text-slate-500">Expected Output: </span><span className="text-emerald-400 font-bold">{selectedProblem.sampleOutput}</span></div>
+                </div>
+
+                <div className="text-[11px] text-slate-400 space-y-1 font-mono">
+                  <div className="font-bold uppercase text-slate-500 text-[10px]">Tournament Constraints:</div>
+                  <div>• Time Limit: 2,000ms per test execution</div>
+                  <div>• Memory Boundary: 128MB isolated WebAssembly heap</div>
+                  <div>• Proctor: Kiosk window.blur focus-lock active</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Pane: Code Editor & Judge Console */}
+            <div className="lg:col-span-7 flex flex-col justify-between p-5 space-y-4">
+              {/* Workspace Header Toolbar */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 font-bold">solution.py</span>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-slate-400">{selectedProblem.language}</span>
+                </div>
+
+                {/* Defect Inject/Fix Button */}
+                <button
+                  onClick={() => setHasInjectedDefect(!hasInjectedDefect)}
+                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all border cursor-pointer ${
+                    hasInjectedDefect
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                  }`}
+                >
+                  {hasInjectedDefect ? '✅ Apply Solution Patch' : '🐞 View Faulty Starter Code'}
+                </button>
+              </div>
+
+              {/* Code Snippet Box */}
+              <div className="p-4 rounded-2xl bg-[#070a10] border border-slate-800 text-slate-300 font-mono text-[11px] leading-relaxed overflow-x-auto">
+                <pre className="whitespace-pre">
+                  {hasInjectedDefect ? selectedProblem.starterCode : selectedProblem.solutionCode}
+                </pre>
+              </div>
+
+              {/* Highlight Bar */}
+              <div
+                className={`p-2.5 rounded-xl border text-[11px] font-mono flex items-center gap-2 ${
+                  hasInjectedDefect
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                }`}
+              >
+                {hasInjectedDefect ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                )}
+                <span>
+                  {hasInjectedDefect ? selectedProblem.bugExplanation : selectedProblem.solutionExplanation}
+                </span>
+              </div>
+
+              {/* Execution Actions & Judge Console */}
+              <div className="pt-2 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-slate-500">Judge Status:</span>
+                  <span
+                    className={`font-mono text-xs font-bold ${
+                      hasInjectedDefect ? 'text-rose-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {hasInjectedDefect ? 'Wrong Answer (Assertion Failed)' : 'Accepted (24 ms, Beats 97.4%)'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={isEvaluatingCode}
+                    onClick={handleRunSimulatorJudge}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold font-mono transition-all border border-slate-700 cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Play className="w-3.5 h-3.5 inline mr-1 text-slate-300" />
+                    <span>Run Sample</span>
+                  </button>
+
+                  <button
+                    disabled={isEvaluatingCode}
+                    onClick={() => setIsJoinModalOpen(true)}
+                    className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-bold font-mono transition-all shadow-md shadow-emerald-500/20 cursor-pointer active:scale-95"
+                  >
+                    <Zap className="w-3.5 h-3.5 inline mr-1 text-slate-950" />
+                    <span>Submit in Live Contest</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* SECTION 4: LIVE COLLEGIATE LEADERBOARD (HACKERRANK STYLE) */}
+        {/* ========================================================= */}
+        <section id="leaderboard" className="space-y-4 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <span>Inter-Collegiate Contest Standings</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Real-time tournament scoreboard updated across live participant submissions.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsJoinModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/40 text-amber-400 text-xs font-bold transition-all cursor-pointer font-mono"
+            >
+              Enter Contest Lobby &rarr;
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-[#0d121f] overflow-hidden shadow-lg">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-900 text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4 w-16 text-center">Rank</th>
+                    <th className="py-3 px-4">Contestant</th>
+                    <th className="py-3 px-4">University / Department</th>
+                    <th className="py-3 px-4 text-center">Score</th>
+                    <th className="py-3 px-4 text-center">Time Taken</th>
+                    <th className="py-3 px-4 text-center">Rounds Cleared</th>
+                    <th className="py-3 px-4 text-right">Verifiable Credential</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {[
+                    { rank: 1, name: 'Ananya Sharma', college: 'Stanford University', score: '380 pts', time: '18m 12s', rounds: '3 of 3', cert: 'CERT-DEBUG-2026-A1' },
+                    { rank: 2, name: 'Karthik Raja', college: 'CEG Anna University', score: '365 pts', time: '21m 04s', rounds: '3 of 3', cert: 'CERT-ACM-STANFORD-04' },
+                    { rank: 3, name: 'David Chen', college: 'MIT EECS', score: '350 pts', time: '22m 30s', rounds: '3 of 3', cert: 'CERT-MIT-2026-X8' },
+                    { rank: 4, name: 'Elena Rostova', college: 'Cambridge Computer Lab', score: '340 pts', time: '24m 15s', rounds: '2 of 3', cert: 'CERT-CAMB-2026-Q2' },
+                    { rank: 5, name: 'Rohan Gupta', college: 'IIT Madras', score: '325 pts', time: '25m 48s', rounds: '2 of 3', cert: 'CERT-IITM-2026-P9' }
+                  ].map((entry) => (
+                    <tr key={entry.rank} className="hover:bg-slate-900/50 transition-colors">
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`w-6 h-6 rounded-full inline-flex items-center justify-center font-bold text-xs ${
+                            entry.rank === 1
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : entry.rank === 2
+                              ? 'bg-slate-300/20 text-slate-200 border border-slate-400/40'
+                              : entry.rank === 3
+                              ? 'bg-amber-700/20 text-amber-400 border border-amber-700/40'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {entry.rank}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-bold text-white font-sans">{entry.name}</td>
+                      <td className="py-3 px-4 text-slate-400">{entry.college}</td>
+                      <td className="py-3 px-4 text-center text-amber-400 font-bold">{entry.score}</td>
+                      <td className="py-3 px-4 text-center text-slate-400">{entry.time}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-400 text-[10px]">
+                          {entry.rounds}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.location.href = `/verify-cert/${encodeURIComponent(entry.cert)}`;
+                          }}
+                          className="text-cyan-400 hover:text-cyan-300 hover:underline text-[11px] cursor-pointer"
+                        >
+                          {entry.cert} &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* SECTION 5: KIOSK INTEGRITY TELEMETRY & VERIFICATION       */}
+        {/* ========================================================= */}
+        <section id="kiosk-proctor" className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+          {/* Proctoring Defense Card */}
+          <div className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-rose-400" />
+                <h3 className="text-base font-bold text-white">Hardware Kiosk Anti-Cheat</h3>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[10px] font-mono border border-rose-500/30">
+                LEVEL 3 ENFORCED
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Browser-enforced full-screen lock and telemetry monitoring traps focus-blur events, tab switching, and clipboard pasting with automatic multi-strike disqualification.
+            </p>
+
+            {proctorAlertMessage && (
+              <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{proctorAlertMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs font-mono">
+              <span className="text-slate-400">Recorded Strikes: <strong className="text-white">{simulatedProctorStrike} / 3</strong></span>
+              <button
+                onClick={handleSimulateViolation}
+                className="px-3 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold cursor-pointer active:scale-95"
+              >
+                Simulate Tab-Switch Blur
+              </button>
+            </div>
+          </div>
+
+          {/* Certificate Authenticator Card */}
+          <div id="verification" className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">Authenticate Credentials</h3>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-mono border border-cyan-500/30">
+                SHA-256 PROOFS
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Recruiters and universities can verify cryptographic certificate signatures, official ranks, and tournament timestamps without requiring an account.
+            </p>
+
+            <form onSubmit={handleVerifyCert} className="flex gap-2">
               <input
                 type="text"
                 value={certLookupId}
                 onChange={(e) => setCertLookupId(e.target.value)}
                 placeholder="Enter Certificate ID (e.g. CERT-DEBUG-2026-A1)"
-                className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors shadow-sm"
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
               />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs cursor-pointer whitespace-nowrap"
+              >
+                Verify
+              </button>
+            </form>
+
+            <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
+              <span>Sample:</span>
+              <button
+                type="button"
+                onClick={() => setCertLookupId('CERT-DEBUG-2026-A1')}
+                className="text-cyan-400 hover:underline cursor-pointer"
+              >
+                CERT-DEBUG-2026-A1
+              </button>
             </div>
-            <button
-              type="submit"
-              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors whitespace-nowrap shadow-lg shadow-amber-500/20 cursor-pointer"
-            >
-              Verify Credential
-            </button>
-          </form>
+          </div>
         </section>
       </main>
 
       {/* ========================================================= */}
-      {/* SECTION 7: REAL PRODUCTION-GRADE SAAS FOOTER              */}
+      {/* SECTION 6: LEETCODE CLEAN DEVELOPER FOOTER                */}
       {/* ========================================================= */}
-      <footer className="border-t border-slate-200 dark:border-slate-800/90 bg-slate-100 dark:bg-[#06080e] pt-16 pb-12 text-slate-600 dark:text-slate-400 text-xs transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
-            {/* Column 1: Brand & Live Status */}
-            <div className="col-span-2 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20">
-                  <Terminal className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+      <footer className="border-t border-slate-800 bg-[#06080e] pt-12 pb-10 text-slate-400 text-xs mt-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {/* Col 1 */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black">
+                  <Terminal className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
                 </div>
-                <span className="font-bold text-slate-900 dark:text-white text-base tracking-tight">DebugArena</span>
+                <span className="font-bold text-white text-sm">DebugArena</span>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-sm font-normal">
-                The enterprise competitive programming and code assessment platform built for university hackathons, campus recruitment, and departmental tournaments.
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                The collegiate debugging tournament platform. Dedicated to testing real software defect diagnosis and algorithmic optimization.
               </p>
-
-              {/* Clickable System Status Badge */}
               <button
                 type="button"
                 onClick={() => openTopic('system-status')}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer active:scale-95 group shadow-sm"
+                className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:underline cursor-pointer"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-mono font-medium">All Tournament Systems Operational</span>
-                <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>All Tournament Clusters Operational</span>
               </button>
             </div>
 
-            {/* Column 2: Architecture & Platform */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
-                Platform Spec
-              </h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <button
-                    onClick={() => openTopic('code-sandbox')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    WASM Sandbox Engine
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('kiosk-proctoring')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Focus-Lock Kiosk Specs
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('multi-stage-rounds')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    3-Round Tournament Engine
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('cryptographic-credentials')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    SHA-256 Verifiable Proofs
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('question-bank')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Question Bank & Test Suites
-                  </button>
-                </li>
+            {/* Col 2 */}
+            <div className="space-y-2">
+              <div className="font-bold text-white uppercase text-[11px] font-mono">Platform Specs</div>
+              <ul className="space-y-1.5 text-[11px]">
+                <li><button onClick={() => openTopic('code-sandbox')} className="hover:text-amber-400 cursor-pointer">Pyodide WASM Engine</button></li>
+                <li><button onClick={() => openTopic('kiosk-proctoring')} className="hover:text-amber-400 cursor-pointer">Focus-Lock Kiosk Specs</button></li>
+                <li><button onClick={() => openTopic('multi-stage-rounds')} className="hover:text-amber-400 cursor-pointer">3-Round Tournament Rules</button></li>
+                <li><button onClick={() => openTopic('cryptographic-credentials')} className="hover:text-amber-400 cursor-pointer">SHA-256 Proof Validation</button></li>
+                <li><button onClick={() => openTopic('question-bank')} className="hover:text-amber-400 cursor-pointer">Defect Repository Matrix</button></li>
               </ul>
             </div>
 
-            {/* Column 3: Access Portals */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
-                Tournament Portals
-              </h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <button
-                    onClick={() => setIsJoinModalOpen(true)}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left font-semibold text-amber-600 dark:text-slate-300"
-                  >
-                    Enter Active Contest &rarr;
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setIsAdminModalOpen(true)}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Organizer Control Room
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setIsAdminModalOpen(true)}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Create College Workspace
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => scrollToSection('verification')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Public Certificate Lookup
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('organizer-dispatch')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Host Operations Checklist
-                  </button>
-                </li>
+            {/* Col 3 */}
+            <div className="space-y-2">
+              <div className="font-bold text-white uppercase text-[11px] font-mono">Tournament Portals</div>
+              <ul className="space-y-1.5 text-[11px]">
+                <li><button onClick={() => setIsJoinModalOpen(true)} className="hover:text-amber-400 cursor-pointer text-amber-400 font-semibold">Enter Contest Lobby &rarr;</button></li>
+                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-amber-400 cursor-pointer">Organizer Control Room</button></li>
+                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-amber-400 cursor-pointer">Create College Workspace</button></li>
+                <li><button onClick={() => openTopic('organizer-dispatch')} className="hover:text-amber-400 cursor-pointer">Campus Host Checklist</button></li>
+                <li><button onClick={() => scrollToSection('verification')} className="hover:text-amber-400 cursor-pointer">Public Certificate Lookup</button></li>
               </ul>
             </div>
 
-            {/* Column 4: Integrity & Compliance */}
-            <div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
-                Integrity & Trust
-              </h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <button
-                    onClick={() => openTopic('anti-cheat-guidelines')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Anti-Cheat Rulebook
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('academic-honor-code')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Collegiate Honor Code
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('security-standards')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Passkey & Auth Security
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('data-privacy')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Student Data Privacy
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => openTopic('system-status')}
-                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
-                  >
-                    Cluster Telemetry & Logs
-                  </button>
-                </li>
+            {/* Col 4 */}
+            <div className="space-y-2">
+              <div className="font-bold text-white uppercase text-[11px] font-mono">Integrity & Legal</div>
+              <ul className="space-y-1.5 text-[11px]">
+                <li><button onClick={() => openTopic('anti-cheat-guidelines')} className="hover:text-amber-400 cursor-pointer">Anti-Cheat Rulebook</button></li>
+                <li><button onClick={() => openTopic('academic-honor-code')} className="hover:text-amber-400 cursor-pointer">Collegiate Honor Code</button></li>
+                <li><button onClick={() => openTopic('security-standards')} className="hover:text-amber-400 cursor-pointer">Passkey Authentication</button></li>
+                <li><button onClick={() => openTopic('privacy-policy')} className="hover:text-amber-400 cursor-pointer">Privacy Policy</button></li>
+                <li><button onClick={() => openTopic('terms-of-service')} className="hover:text-amber-400 cursor-pointer">Terms of Competition</button></li>
               </ul>
             </div>
           </div>
 
-          {/* Bottom Legal & Copyright Bar */}
-          <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
-            <div>
-              &copy; {new Date().getFullYear()} DebugArena Technologies. High-stakes competition infrastructure for universities.
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <button
-                onClick={() => openTopic('privacy-policy')}
-                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
-              >
-                Privacy Policy
-              </button>
+          <div className="pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500 font-mono">
+            <div>&copy; {new Date().getFullYear()} DebugArena Tournament System. Built for competitive debugging.</div>
+            <div className="flex items-center gap-4">
+              <button onClick={() => openTopic('academic-license')} className="hover:text-slate-400">Academic License</button>
               <span>•</span>
-              <button
-                onClick={() => openTopic('terms-of-service')}
-                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
-              >
-                Terms of Service
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => openTopic('academic-license')}
-                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
-              >
-                Academic Free License
-              </button>
-              <span>•</span>
-              <button
-                onClick={() => openTopic('system-status')}
-                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
-              >
-                Status
-              </button>
+              <button onClick={() => openTopic('system-status')} className="hover:text-slate-400">Cluster Telemetry</button>
             </div>
           </div>
         </div>
