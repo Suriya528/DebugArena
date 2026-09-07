@@ -14,7 +14,7 @@ export interface IUser extends Document {
   name: string;
   email?: string;
   passwordHash?: string;
-  authProvider: 'local' | 'google';
+  authProvider: 'local' | 'google' | 'passkey';
   googleId?: string;
   role: UserRole;
   collegeId?: mongoose.Types.ObjectId;
@@ -39,8 +39,8 @@ const UserSchema = new Schema<IUser>(
     username: { type: String, required: true, unique: true, trim: true, lowercase: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
-    passwordHash: { type: String, required: function(this: any) { return this.authProvider !== 'google'; } },
-    authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
+    passwordHash: { type: String, required: function(this: any) { return this.authProvider === 'local'; } },
+    authProvider: { type: String, enum: ['local', 'google', 'passkey'], default: 'local' },
     googleId: { type: String },
     passkeyHash: { type: String },
     passkeyLookupHash: { type: String, index: true, sparse: true },

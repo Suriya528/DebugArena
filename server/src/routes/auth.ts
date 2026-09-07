@@ -11,6 +11,14 @@ import { sendPasskeyNotificationEmail, sendPasskeyMagicSignInEmail } from '../se
 
 export const authRouter = Router();
 
+// GET /api/auth/config
+// Exposes public client auth configuration (Google OAuth Client ID, etc.)
+authRouter.get('/config', (_req: Request, res: Response): void => {
+  res.json({
+    googleClientId: ENV.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || ''
+  });
+});
+
 // POST /api/auth/login
 authRouter.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -214,27 +222,28 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
     } else {
       // Multiple accounts share this passkey!
       if (!cleanId) {
-        // Disambiguation required: Return masked account previews and ask for email confirmation
+        // Disambiguation required: Return masked account previews with username and ask for confirmation
         res.status(200).json({
           requiresEmail: true,
-          message: 'Multiple organizer accounts match this passkey keyword. Please confirm your registered email address to verify your account.',
+          message: 'Multiple organizer accounts match this passkey keyword. Please select or confirm your registered email or username.',
           matchedCount: verifiedCandidates.length,
           maskedAccounts: verifiedCandidates.map(u => ({
             name: u.name,
-            maskedEmail: maskEmailAddress(u.email || u.username)
+            username: u.username,
+            maskedEmail: maskEmailAddress(u.email || `${u.username}@debugarena.internal`)
           }))
         });
         return;
       }
 
-      // Email was provided: match against verified candidates
+      // Identifier was provided: match against verified candidates by email OR username
       targetUser = verifiedCandidates.find(
         u => u.email?.toLowerCase() === cleanId || u.username?.toLowerCase() === cleanId
       );
 
       if (!targetUser) {
         res.status(401).json({
-          error: 'The provided email address does not match any organizer account registered with this passkey keyword.'
+          error: 'The provided email or username does not match any organizer account registered with this passkey keyword.'
         });
         return;
       }
@@ -250,7 +259,39 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
 
     const needsOnboarding = !targetUser.collegeId;
 
-    // Security Feature: Dispatch One-Click Magic Sign-In Email to Organizer
+    // Direct 1-Step Passkey Sign-In: If organizer account was created without an external email,
+    // authenticate immediately with JWT token without waiting for email link!
+    const isInternalOrMissingEmail = !targetUser.email || targetUser.email.endsWith('@debugarena.internal');
+    if (isInternalOrMissingEmail) {
+      const payload: AuthPayload = {
+        userId: targetUser._id.toString(),
+        username: targetUser.username,
+        role: targetUser.role,
+        name: targetUser.name,
+        collegeId: targetUser.collegeId ? targetUser.collegeId.toString() : undefined,
+        eventId: targetUser.eventId ? targetUser.eventId.toString() : undefined
+      };
+      const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+
+      res.json({
+        token,
+        needsOnboarding,
+        user: {
+          id: targetUser._id,
+          username: targetUser.username,
+          name: targetUser.name,
+          email: targetUser.email,
+          role: targetUser.role,
+          collegeId: targetUser.collegeId,
+          eventId: targetUser.eventId,
+          hasPasskey: true,
+          needsOnboarding
+        }
+      });
+      return;
+    }
+
+    // Two-Factor Email Authorization Flow for accounts with registered email address
     const sessionId = crypto.randomBytes(32).toString('hex');
     const magicToken = crypto.randomBytes(32).toString('hex');
 
@@ -258,7 +299,7 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
       sessionId,
       token: magicToken,
       userId: targetUser._id,
-      email: targetUser.email || `${targetUser.username}@debugarena.internal`,
+      email: targetUser.email,
       username: targetUser.username,
       name: targetUser.name || targetUser.username,
       status: 'pending',
@@ -271,23 +312,21 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
       : (req.get('origin') || process.env.CLIENT_ORIGIN || 'http://localhost:5173');
     const signInUrl = `${clientOrigin}/verify-signin?token=${magicToken}&session=${sessionId}`;
 
-    if (targetUser.email) {
-      sendPasskeyMagicSignInEmail({
-        to: targetUser.email,
-        name: targetUser.name || targetUser.username,
-        username: targetUser.username,
-        signInUrl,
-        expiresInMinutes: 15
-      }).catch(err => console.warn('Background magic sign-in email dispatch error:', err));
-    }
+    sendPasskeyMagicSignInEmail({
+      to: targetUser.email,
+      name: targetUser.name || targetUser.username,
+      username: targetUser.username,
+      signInUrl,
+      expiresInMinutes: 15
+    }).catch(err => console.warn('Background magic sign-in email dispatch error:', err));
 
     res.json({
       requiresEmailVerification: true,
       sessionId,
-      maskedEmail: maskEmailAddress(targetUser.email || targetUser.username),
+      maskedEmail: maskEmailAddress(targetUser.email),
       username: targetUser.username,
       devSignInUrl: process.env.NODE_ENV !== 'production' ? signInUrl : undefined,
-      message: `A secure sign-in authorization link has been sent to ${maskEmailAddress(targetUser.email || targetUser.username)}.`
+      message: `A secure sign-in authorization link has been sent to ${maskEmailAddress(targetUser.email)}.`
     });
   } catch (err: any) {
     console.error('Passkey login error:', err);
@@ -574,79 +613,100 @@ async function generateUniqueCollegeCode(name: string): Promise<string> {
 }
 
 // POST /api/auth/register-admin
-// Direct email/password registration for event organizers
+// Flexible registration for event organizers: supports Password-First or Passkey-First (email-optional) signup
 authRouter.post('/register-admin', async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, passkey, collegeName, university } = req.body;
-    if (!name || !email || !password) {
-      res.status(400).json({ error: 'Name, email, and password are required' });
+    if (!name || String(name).trim().length === 0) {
+      res.status(400).json({ error: 'Full name is required' });
       return;
     }
 
-    const cleanEmail = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      res.status(400).json({ error: 'Please enter a valid email address' });
+    const cleanPasskey = passkey ? String(passkey).trim() : '';
+    const isPasskeySignup = cleanPasskey.length >= 3;
+
+    let cleanEmail: string | undefined = undefined;
+    if (email && String(email).trim().length > 0) {
+      cleanEmail = String(email).trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        res.status(400).json({ error: 'Please enter a valid email address' });
+        return;
+      }
+      const existingEmailUser = await User.findOne({ email: cleanEmail });
+      if (existingEmailUser) {
+        res.status(400).json({ error: 'An account with this email already exists. Please sign in.' });
+        return;
+      }
+    } else if (!isPasskeySignup) {
+      res.status(400).json({ error: 'Work email is required for standard account registration.' });
       return;
     }
 
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Password must be at least 6 characters long' });
-      return;
+    if (!isPasskeySignup) {
+      if (!password || password.length < 6) {
+        res.status(400).json({ error: 'Password must be at least 6 characters long' });
+        return;
+      }
     }
 
-    const existingUser = await User.findOne({
-      $or: [{ email: cleanEmail }, { username: cleanEmail.split('@')[0] }]
-    });
-    if (existingUser) {
-      res.status(400).json({ error: 'An account with this email already exists. Please sign in.' });
-      return;
+    // Determine unique username from email or name
+    let baseUsername = '';
+    if (cleanEmail) {
+      baseUsername = cleanEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
+    } else {
+      baseUsername = name.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
     }
-
-    let baseUsername = cleanEmail.split('@')[0].replace(/[^a-z0-9_]/g, '');
-    if (baseUsername.length < 3) baseUsername = 'organizer_' + baseUsername;
+    if (baseUsername.length < 3) baseUsername = 'organizer_' + (baseUsername || 'admin');
     let uniqueUsername = baseUsername;
     let counter = 1;
     while (await User.exists({ username: uniqueUsername })) {
       uniqueUsername = `${baseUsername}_${counter++}`;
     }
 
-    // If collegeName is provided during general registration, link college immediately
+    // If collegeName is provided during registration, link or create college immediately
     let collegeId = undefined;
+    let createdNewCollege = false;
+    let collegeDoc: any = null;
     if (collegeName && collegeName.trim().length >= 2) {
       const trimmedName = collegeName.trim();
       const cleanUniversity = university?.trim() || '';
-      let college = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
-      if (!college) {
+      collegeDoc = await College.findOne({ name: { $regex: new RegExp(`^${trimmedName}$`, 'i') } });
+      if (!collegeDoc) {
         const generatedCode = await generateUniqueCollegeCode(trimmedName);
-        college = await College.create({
+        collegeDoc = await College.create({
           name: trimmedName,
           code: generatedCode,
           university: cleanUniversity
         });
-      } else if (cleanUniversity && !college.university) {
-        college.university = cleanUniversity;
-        await college.save();
+        createdNewCollege = true;
+      } else if (cleanUniversity && !collegeDoc.university) {
+        collegeDoc.university = cleanUniversity;
+        await collegeDoc.save();
       }
-      collegeId = college._id;
+      collegeId = collegeDoc._id;
     }
 
     let passkeyHash: string | undefined = undefined;
     let passkeyLookupHash: string | undefined = undefined;
     let hasPasskey = false;
 
-    if (passkey && String(passkey).trim().length >= 3) {
-      const cleanPasskey = String(passkey).trim();
+    if (isPasskeySignup) {
       passkeyLookupHash = crypto.createHmac('sha256', ENV.JWT_SECRET).update(cleanPasskey).digest('hex');
       passkeyHash = await bcrypt.hash(cleanPasskey, 10);
       hasPasskey = true;
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    // Passwords: Use provided password or generate secure random fallback for passkey-only users
+    const effectivePassword = (password && password.length >= 6)
+      ? password
+      : crypto.randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(effectivePassword, 10);
+
     const user = await User.create({
       username: uniqueUsername,
       name: name.trim(),
-      email: cleanEmail,
+      email: cleanEmail || undefined, // undefined avoids MongoDB unique sparse index empty-string collision!
       passwordHash,
       passkeyHash,
       passkeyLookupHash,
@@ -654,15 +714,20 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
       passkeyCreatedAt: hasPasskey ? new Date() : undefined,
       passkeyUpdatedAt: hasPasskey ? new Date() : undefined,
       role: 'college_admin',
-      authProvider: 'local',
+      authProvider: isPasskeySignup ? 'passkey' : 'local',
       collegeId
     });
+
+    if (createdNewCollege && collegeDoc) {
+      collegeDoc.createdBy = user._id;
+      await collegeDoc.save();
+    }
 
     if (hasPasskey && user.email) {
       sendPasskeyNotificationEmail({
         to: user.email,
         name: user.name,
-        passkeyKeyword: String(passkey).trim(),
+        passkeyKeyword: cleanPasskey,
         isUpdate: false
       }).catch(err => console.warn('Background email dispatch notice on register:', err));
     }
@@ -686,12 +751,13 @@ authRouter.post('/register-admin', async (req: Request, res: Response): Promise<
         email: user.email,
         role: user.role,
         hasPasskey,
-        collegeId: user.collegeId
+        collegeId: user.collegeId,
+        needsOnboarding: !collegeId
       }
     });
   } catch (err: any) {
     console.error('Register admin error:', err);
-    res.status(500).json({ error: 'Failed to create organizer account' });
+    res.status(500).json({ error: err.message || 'Failed to create organizer account' });
   }
 });
 
@@ -748,6 +814,7 @@ authRouter.post('/onboarding', authenticate, async (req: AuthenticatedRequest, r
         name: user.name,
         email: user.email,
         role: user.role,
+        hasPasskey: Boolean(user.hasPasskey),
         collegeId: user.collegeId
       }
     });
@@ -873,6 +940,7 @@ authRouter.post('/google', async (req: Request, res: Response): Promise<void> =>
         role: user.role,
         collegeId: user.collegeId,
         eventId: user.eventId,
+        hasPasskey: Boolean(user.hasPasskey),
         needsOnboarding
       }
     });

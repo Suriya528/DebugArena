@@ -57,7 +57,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // Rate Limiting Guards
 app.use('/api', apiGlobalLimiter);
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/register-admin', authLimiter);
+app.use('/api/auth/passkey/login', authLimiter);
 app.use('/api/participant/run-code', codeRunLimiter);
 
 // Mount Routes

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ShieldCheck, CheckCircle2, AlertCircle, Loader2, ArrowRight, Lock, Key } from 'lucide-react';
 import { useAuth, AuthResult } from '../../context/AuthContext.js';
 
@@ -21,6 +21,15 @@ export const VerifySignInView: React.FC<VerifySignInViewProps> = ({
   const [redirectCountdown, setRedirectCountdown] = useState<number>(3);
   const verificationAttempted = useRef<boolean>(false);
 
+
+  const [isMobileDevice, setIsMobileDevice] = useState<boolean>(false);
+  const [tabClosedNotice, setTabClosedNotice] = useState<boolean>(false);
+  const [hasSessionParam, setHasSessionParam] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsMobileDevice(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+  }, []);
+
   useEffect(() => {
     if (verificationAttempted.current) return;
     verificationAttempted.current = true;
@@ -28,6 +37,9 @@ export const VerifySignInView: React.FC<VerifySignInViewProps> = ({
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     const session = urlParams.get('session') || urlParams.get('sessionId');
+    if (session) {
+      setHasSessionParam(true);
+    }
 
     if (!token) {
       setStatus('error');
@@ -62,8 +74,10 @@ export const VerifySignInView: React.FC<VerifySignInViewProps> = ({
     performVerification();
   }, [verifyPasskeyMagicToken, onSuccess]);
 
+  // Only auto-redirect when on desktop without cross-device session
   useEffect(() => {
     if (status !== 'success') return;
+    if (isMobileDevice) return; // Never kick mobile users off the confirmation screen
 
     const interval = setInterval(() => {
       setRedirectCountdown(prev => {
@@ -77,10 +91,14 @@ export const VerifySignInView: React.FC<VerifySignInViewProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [status]);
+  }, [status, isMobileDevice]);
 
   const handleManualProceed = () => {
     window.location.href = '/';
+  };
+
+  const handleReturnToLaptop = () => {
+    setTabClosedNotice(true);
   };
 
   return (
@@ -133,26 +151,59 @@ export const VerifySignInView: React.FC<VerifySignInViewProps> = ({
             <div className="space-y-2">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Logged In Successfully</span>
+                <span>{hasSessionParam ? 'Laptop Session Unlocked' : 'Logged In Successfully'}</span>
               </div>
               <h2 className="text-2xl font-black text-white tracking-tight">
                 Welcome, {verifiedUser?.name || verifiedUser?.username || 'Organizer'}!
               </h2>
               <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
-                Your passkey identity has been securely confirmed. Welcome to the DebugArena tournament dashboard.
+                {isMobileDevice || hasSessionParam
+                  ? 'Your passkey identity has been verified. Your laptop browser is now automatically logged in and ready!'
+                  : 'Your passkey identity has been securely confirmed. Welcome to the DebugArena tournament dashboard.'}
               </p>
             </div>
 
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleManualProceed}
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.99] transition-all cursor-pointer"
-              >
-                <span>Enter Dashboard ({redirectCountdown}s)</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+            {/* Mobile / Cross-device specific view */}
+            {isMobileDevice ? (
+              <div className="space-y-3 pt-2">
+                {tabClosedNotice ? (
+                  <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs animate-in fade-in">
+                    <p className="font-semibold">All set! You can close this browser tab.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Check your laptop screen — your tournament dashboard is now open.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleReturnToLaptop}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.99] transition-all cursor-pointer"
+                  >
+                    <span>Done — Return to Laptop</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleManualProceed}
+                  className="w-full py-2.5 text-center text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Or continue on this mobile device &rarr;
+                </button>
+              </div>
+            ) : (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleManualProceed}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.99] transition-all cursor-pointer"
+                >
+                  <span>Enter Dashboard ({redirectCountdown}s)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 

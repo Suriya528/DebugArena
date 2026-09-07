@@ -399,6 +399,197 @@ async function runTests() {
   }
   console.log('  ✔ Direct question creation correctly populated collegeId from parent event/user session.\n');
 
+  // -------------------------------------------------------------
+  // TEST 7: GET /api/auth/config returns googleClientId
+  // -------------------------------------------------------------
+  console.log('--- TEST 7: GET /api/auth/config returns googleClientId ---');
+  const authConfigRes = await fetch(`${baseUrl}/api/auth/config`);
+  if (!authConfigRes.ok) {
+    throw new Error(`GET /api/auth/config failed: ${await authConfigRes.text()}`);
+  }
+  const authConfigJson = await authConfigRes.json();
+  if (typeof authConfigJson.googleClientId !== 'string') {
+    throw new Error('Expected googleClientId string in /api/auth/config');
+  }
+  console.log('  ✔ GET /api/auth/config returned googleClientId correctly.\n');
+
+  // -------------------------------------------------------------
+  // TEST 8: Passkey-first registration without email or password
+  // -------------------------------------------------------------
+  console.log('--- TEST 8: Passkey-first registration without email or password ---');
+  const passkeySignup1Res = await fetch(`${baseUrl}/api/auth/register-admin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Organizer Alpha',
+      passkey: 'ALPHA-KEY-2026',
+      collegeName: 'Stanford Engineering',
+      university: 'Stanford University'
+    })
+  });
+  if (!passkeySignup1Res.ok) {
+    throw new Error(`Passkey signup 1 failed: ${await passkeySignup1Res.text()}`);
+  }
+  const passkeySignup1Json = await passkeySignup1Res.json();
+  if (!passkeySignup1Json.token || !passkeySignup1Json.user.hasPasskey) {
+    throw new Error('Expected token and hasPasskey: true for passkey organizer');
+  }
+  const user1 = await User.findById(passkeySignup1Json.user.id);
+  if (user1?.authProvider !== 'passkey') {
+    throw new Error(`Expected authProvider 'passkey', got: ${user1?.authProvider}`);
+  }
+  if (user1?.email !== undefined) {
+    throw new Error(`Expected email undefined to avoid sparse unique collisions, got: ${user1?.email}`);
+  }
+
+  // Second passkey user without email to verify sparse index collision is impossible
+  const passkeySignup2Res = await fetch(`${baseUrl}/api/auth/register-admin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Organizer Beta',
+      passkey: 'BETA-KEY-2026',
+      collegeName: 'MIT EECS',
+      university: 'MIT'
+    })
+  });
+  if (!passkeySignup2Res.ok) {
+    throw new Error(`Passkey signup 2 failed: ${await passkeySignup2Res.text()}`);
+  }
+  console.log('  ✔ Passkey-first registration successfully created accounts without email or password.\n');
+
+  // -------------------------------------------------------------
+  // TEST 9: Instant 1-step passkey login for accounts without email
+  // -------------------------------------------------------------
+  console.log('--- TEST 9: Instant 1-step passkey login for accounts without email ---');
+  const instantLoginRes = await fetch(`${baseUrl}/api/auth/passkey/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passkey: 'ALPHA-KEY-2026' })
+  });
+  if (!instantLoginRes.ok) {
+    throw new Error(`Instant passkey login failed: ${await instantLoginRes.text()}`);
+  }
+  const instantLoginJson = await instantLoginRes.json();
+  if (!instantLoginJson.token || instantLoginJson.user.name !== 'Organizer Alpha') {
+    throw new Error(`Expected direct 1-step token for email-less passkey user, got: ${JSON.stringify(instantLoginJson)}`);
+  }
+  console.log('  ✔ Instant 1-step passkey login returned JWT directly without dead-end email requirement.\n');
+
+  // -------------------------------------------------------------
+  // TEST 10: Passkey login with email (Laptop-to-Mobile Verification Flow)
+  // -------------------------------------------------------------
+  console.log('--- TEST 10: Passkey login with email (Laptop-to-Mobile Verification Flow) ---');
+  // Create organizer with passkey AND email
+  const emailAdmin = await User.create({
+    username: 'prof_gamma',
+    name: 'Prof. Gamma',
+    email: 'gamma@university.edu',
+    role: 'admin',
+    authProvider: 'passkey',
+    hasPasskey: true,
+    passkeyHash: await (await import('bcryptjs')).default.hash('GAMMA-SECURE-KEY', 10),
+    collegeId: college._id
+  });
+
+  // Organizer enters passkey on laptop
+  const emailPasskeyLoginRes = await fetch(`${baseUrl}/api/auth/passkey/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passkey: 'GAMMA-SECURE-KEY' })
+  });
+  if (!emailPasskeyLoginRes.ok) {
+    throw new Error(`Email passkey login failed: ${await emailPasskeyLoginRes.text()}`);
+  }
+  const emailPasskeyLoginJson = await emailPasskeyLoginRes.json();
+  if (!emailPasskeyLoginJson.requiresEmailVerification || !emailPasskeyLoginJson.sessionId) {
+    throw new Error('Expected requiresEmailVerification and sessionId');
+  }
+
+  // Laptop starts polling session-status (initially not verified)
+  const poll1Res = await fetch(`${baseUrl}/api/auth/passkey/session-status?sessionId=${emailPasskeyLoginJson.sessionId}`);
+  const poll1Json = await poll1Res.json();
+  if (poll1Json.verified) {
+    throw new Error('Session should not be verified before link is clicked');
+  }
+
+  // Organizer opens email on mobile phone and clicks magic link
+  // Extract magic token from devSignInUrl or DB session
+  const magicToken = new URL(emailPasskeyLoginJson.devSignInUrl).searchParams.get('token');
+  if (!magicToken) {
+    throw new Error('Missing token in devSignInUrl');
+  }
+
+  // Mobile phone calls verify-magic-token with session ID
+  const mobileVerifyRes = await fetch(`${baseUrl}/api/auth/passkey/verify-magic-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: magicToken,
+      sessionId: emailPasskeyLoginJson.sessionId
+    })
+  });
+  if (!mobileVerifyRes.ok) {
+    throw new Error(`Mobile verification failed: ${await mobileVerifyRes.text()}`);
+  }
+  const mobileVerifyJson = await mobileVerifyRes.json();
+  if (!mobileVerifyJson.token || mobileVerifyJson.user.username !== 'prof_gamma') {
+    throw new Error('Mobile verification did not return valid token');
+  }
+
+  // Laptop polling checks again -> MUST NOW BE VERIFIED!
+  const poll2Res = await fetch(`${baseUrl}/api/auth/passkey/session-status?sessionId=${emailPasskeyLoginJson.sessionId}`);
+  const poll2Json = await poll2Res.json();
+  if (!poll2Json.verified || !poll2Json.token) {
+    throw new Error('Laptop polling should report verified: true with token');
+  }
+  console.log('  ✔ Laptop-to-mobile passkey verification flow seamlessly verified session and unlocked laptop.\n');
+
+  // -------------------------------------------------------------
+  // TEST 11: Passkey Disambiguation when multiple accounts share passkey
+  // -------------------------------------------------------------
+  console.log('--- TEST 11: Passkey Disambiguation when multiple accounts share passkey ---');
+  // Create another account with the SAME passkey as user1
+  const sharedKeyUser = await User.create({
+    username: 'shared_alpha_2',
+    name: 'Shared Alpha Two',
+    email: 'shared2@university.edu',
+    role: 'admin',
+    authProvider: 'passkey',
+    hasPasskey: true,
+    passkeyHash: await (await import('bcryptjs')).default.hash('ALPHA-KEY-2026', 10),
+    passkeyLookupHash: (await import('crypto')).createHmac('sha256', ENV.JWT_SECRET).update('ALPHA-KEY-2026').digest('hex'),
+    collegeId: college._id
+  });
+
+  const disambigRes = await fetch(`${baseUrl}/api/auth/passkey/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passkey: 'ALPHA-KEY-2026' })
+  });
+  const disambigJson = await disambigRes.json();
+  if (!disambigJson.requiresEmail || disambigJson.matchedCount !== 2) {
+    throw new Error(`Expected requiresEmail: true with matchedCount 2, got: ${JSON.stringify(disambigJson)}`);
+  }
+  if (!disambigJson.maskedAccounts.some((a: any) => a.username === 'shared_alpha_2')) {
+    throw new Error('Expected username in maskedAccounts for disambiguation chip');
+  }
+
+  // Disambiguate using username
+  const resolvedLoginRes = await fetch(`${baseUrl}/api/auth/passkey/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ passkey: 'ALPHA-KEY-2026', email: 'shared_alpha_2' })
+  });
+  if (!resolvedLoginRes.ok) {
+    throw new Error(`Disambiguated login failed: ${await resolvedLoginRes.text()}`);
+  }
+  const resolvedJson = await resolvedLoginRes.json();
+  if (!resolvedJson.requiresEmailVerification && !resolvedJson.token) {
+    throw new Error('Expected successful login or email verification after disambiguation');
+  }
+  console.log('  ✔ Disambiguation returned accounts with usernames and accepted username disambiguation.\n');
+
   console.log('================================================================');
   console.log('🎉 ALL ARCHITECTURAL AUDIT VERIFICATION TESTS PASSED!');
   console.log('================================================================\n');

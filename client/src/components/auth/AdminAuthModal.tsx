@@ -34,10 +34,11 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   initialStep = 'auth',
   forcedOnboarding = false
 }) => {
-  const { user, login, registerAdmin, loginWithGoogle, completeOnboarding, loginWithPasskey, refreshUser } = useAuth();
+  const { user, login, registerAdmin, loginWithGoogle, completeOnboarding, loginWithPasskey, setSession, refreshUser } = useAuth();
   const [step, setStep] = useState<'auth' | 'onboarding'>(initialStep);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [signinMethod, setSigninMethod] = useState<'password' | 'passkey'>('password');
+  const [signupMethod, setSignupMethod] = useState<'passkey' | 'password'>('passkey');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,9 +74,22 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   const [authenticatedUserName, setAuthenticatedUserName] = useState('');
   const [authenticatedUserEmail, setAuthenticatedUserEmail] = useState('');
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const [googleClientId, setGoogleClientId] = useState<string>(import.meta.env.VITE_GOOGLE_CLIENT_ID || '');
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const [isGsiReady, setIsGsiReady] = useState(false);
+
+  // Fetch Google Client ID from backend config if not set in client build
+  useEffect(() => {
+    if (!googleClientId) {
+      api.get('/auth/config')
+        .then(res => {
+          if (res.data?.googleClientId) {
+            setGoogleClientId(res.data.googleClientId);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [googleClientId]);
 
   // Reset state on modal open/close
   useEffect(() => {
@@ -84,6 +98,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       setError(null);
       setLoading(false);
       setSigninMethod('password');
+      setSignupMethod('passkey');
       setNeedsDisambiguation(false);
       setDisambiguationEmail('');
       setDisambiguationAccounts([]);
@@ -104,7 +119,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
     }
   }, [isOpen, initialStep, user]);
 
-  // Initialize and render Google Identity Services button
+  // Initialize and render Google Identity Services button safely
   useEffect(() => {
     if (!isOpen || step !== 'auth') return;
 
@@ -113,9 +128,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
         try {
           (window as any).google.accounts.id.initialize({
             client_id: googleClientId,
-            auto_select: true,
+            auto_select: false,
             itp_support: true,
-            use_fedcm_for_prompt: true,
+            use_fedcm_for_prompt: false,
             context: mode === 'signup' ? 'signup' : 'signin',
             callback: async (response: any) => {
               try {
@@ -139,10 +154,12 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
 
           if (googleButtonRef.current) {
             googleButtonRef.current.innerHTML = '';
+            const containerWidth = googleButtonRef.current.offsetWidth || 340;
+            const btnWidth = Math.min(382, Math.max(240, containerWidth));
             (window as any).google.accounts.id.renderButton(googleButtonRef.current, {
               theme: 'outline',
               size: 'large',
-              width: 382,
+              width: btnWidth,
               text: mode === 'signup' ? 'signup_with' : 'signin_with',
               shape: 'pill'
             });
@@ -171,21 +188,24 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
         const res = await api.get(`/auth/passkey/session-status?sessionId=${emailVerificationPending.sessionId}`);
         if (!isMounted) return;
 
+        if (res.data.expired) {
+          clearInterval(interval);
+          setError('Authorization session expired. Please request a new passkey sign-in link.');
+          return;
+        }
+
         if (res.data.verified && res.data.token) {
           clearInterval(interval);
           const { token: receivedToken, user: receivedUser, needsOnboarding } = res.data;
 
-          localStorage.setItem('debugarena_token', receivedToken);
-          if (receivedUser?.collegeId) {
-            localStorage.setItem('debugarena_active_college_id', receivedUser.collegeId);
-          }
+          // Synchronously establish user session in AuthContext
+          setSession(receivedToken, receivedUser, needsOnboarding);
 
           // Show celebration toast / message
           setVerificationSuccessMessage(`Logged in successfully! Welcome, ${receivedUser.name || receivedUser.username}! 🎉`);
 
           setTimeout(() => {
             if (!isMounted) return;
-            refreshUser();
             if (needsOnboarding) {
               setAuthenticatedUserName(receivedUser.name || receivedUser.username);
               setAuthenticatedUserEmail(receivedUser.email || '');
@@ -195,7 +215,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               setEmailVerificationPending(null);
               onClose();
             }
-          }, 1200);
+          }, 1000);
         }
       } catch (e) {
         // Silently continue polling
@@ -206,7 +226,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [emailVerificationPending, isOpen, refreshUser, onClose]);
+  }, [emailVerificationPending, isOpen, setSession, onClose]);
 
   // Resend cooldown countdown timer
   useEffect(() => {
@@ -311,9 +331,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           }
         }
       } else {
-        // Sign up with general registration: requires Name, Email, College, University, and Password
-        if (!fullName.trim() || !emailOrUsername.trim() || !password) {
-          setError('Please fill in your name, work email, and password.');
+        // Sign up: Handle "Instant Passkey" vs "Email & Password"
+        if (!fullName.trim() || fullName.trim().length < 2) {
+          setError('Please enter your full name.');
           setLoading(false);
           return;
         }
@@ -327,27 +347,58 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
           setLoading(false);
           return;
         }
-        if (password.length < 6) {
-          setError('Password must be at least 6 characters long.');
-          setLoading(false);
-          return;
-        }
 
-        const authRes = await registerAdmin({
-          name: fullName.trim(),
-          email: emailOrUsername.trim(),
-          password,
-          passkey: passkey.trim() || undefined,
-          collegeName: collegeName.trim(),
-          university: university.trim()
-        });
+        if (signupMethod === 'passkey') {
+          if (!passkey.trim() || passkey.trim().length < 3) {
+            setError('Passkey keyword must be at least 3 characters long (numbers, letters, or symbols).');
+            setLoading(false);
+            return;
+          }
 
-        if (authRes.needsOnboarding) {
-          setAuthenticatedUserName(authRes.name || authRes.username);
-          setAuthenticatedUserEmail(authRes.email || '');
-          setStep('onboarding');
+          const authRes = await registerAdmin({
+            name: fullName.trim(),
+            email: emailOrUsername.trim() || undefined,
+            passkey: passkey.trim(),
+            collegeName: collegeName.trim(),
+            university: university.trim()
+          });
+
+          if (authRes.needsOnboarding) {
+            setAuthenticatedUserName(authRes.name || authRes.username);
+            setAuthenticatedUserEmail(authRes.email || '');
+            setStep('onboarding');
+          } else {
+            onClose();
+          }
         } else {
-          onClose();
+          // Standard password registration
+          if (!emailOrUsername.trim()) {
+            setError('Please enter your academic or work email.');
+            setLoading(false);
+            return;
+          }
+          if (password.length < 6) {
+            setError('Password must be at least 6 characters long.');
+            setLoading(false);
+            return;
+          }
+
+          const authRes = await registerAdmin({
+            name: fullName.trim(),
+            email: emailOrUsername.trim(),
+            password,
+            passkey: passkey.trim() || undefined,
+            collegeName: collegeName.trim(),
+            university: university.trim()
+          });
+
+          if (authRes.needsOnboarding) {
+            setAuthenticatedUserName(authRes.name || authRes.username);
+            setAuthenticatedUserEmail(authRes.email || '');
+            setStep('onboarding');
+          } else {
+            onClose();
+          }
         }
       }
     } catch (err: any) {
@@ -637,8 +688,38 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
               </div>
             )}
 
-            {/* Google OAuth & Divider: Rendered ONLY when using email/password signin or creating an account */}
-            {(mode === 'signup' || (mode === 'signin' && signinMethod === 'password')) && (
+            {/* Sign Up Method Selector: Instant Passkey (Recommended) vs Email & Password */}
+            {mode === 'signup' && (
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                <button
+                  type="button"
+                  onClick={() => { setSignupMethod('passkey'); setError(null); }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    signupMethod === 'passkey'
+                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-sm shadow-amber-500/10'
+                      : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 border-slate-800 bg-slate-900/60'
+                  }`}
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Instant Passkey</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSignupMethod('password'); setError(null); }}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                    signupMethod === 'password'
+                      ? 'bg-indigo-600/25 border-indigo-500/60 text-white shadow-sm'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Email & Password</span>
+                </button>
+              </div>
+            )}
+
+            {/* Google OAuth & Divider: Rendered ONLY when using email/password */}
+            {((mode === 'signin' && signinMethod === 'password') || (mode === 'signup' && signupMethod === 'password')) && (
               <>
                 <div className="w-full flex justify-center mb-1">
                   <div
@@ -696,6 +777,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-3.5">
 
+              {/* Mode: Sign Up Fields */}
               {mode === 'signup' && (
                 <>
                   <div>
@@ -706,7 +788,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                         type="text"
                         required
                         value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
+                        onChange={(e) => { setFullName(e.target.value); setError(null); }}
                         placeholder="Prof. Alex Morgan or Sarah Chen"
                         className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
@@ -723,7 +805,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                         type="text"
                         required
                         value={collegeName}
-                        onChange={(e) => setCollegeName(e.target.value)}
+                        onChange={(e) => { setCollegeName(e.target.value); setError(null); }}
                         placeholder="e.g. College of Engineering Guindy"
                         className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
@@ -740,150 +822,162 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                         type="text"
                         required
                         value={university}
-                        onChange={(e) => setUniversity(e.target.value)}
+                        onChange={(e) => { setUniversity(e.target.value); setError(null); }}
                         placeholder="e.g. Anna University or Cambridge University"
                         className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                       />
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Your college workspace and unique codes will be automatically generated.
-                    </p>
                   </div>
+
+                  {signupMethod === 'passkey' ? (
+                    /* Instant Passkey Signup Fields */
+                    <>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-slate-300">
+                            Security Passkey Keyword <span className="text-amber-400">*</span>
+                          </label>
+                          <span className="text-[10px] text-amber-400/80 font-mono">Numbers, letters & symbols</span>
+                        </div>
+                        <div className="relative">
+                          <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type={showPasskey ? 'text' : 'password'}
+                            required
+                            value={passkey}
+                            onChange={(e) => { setPasskey(e.target.value); setError(null); }}
+                            placeholder="Create a keyword (e.g. 202688 or Admin#Key2026!)"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/50 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasskey(!showPasskey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                            aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
+                          >
+                            {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          This is all you need to sign in! No password required.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-slate-300 mb-1 block">
+                          Academic / Work Email <span className="text-slate-500 font-normal">(Optional)</span>
+                        </label>
+                        <div className="relative">
+                          <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="email"
+                            value={emailOrUsername}
+                            onChange={(e) => { setEmailOrUsername(e.target.value); setError(null); }}
+                            placeholder="organizer@university.edu (optional - for reports & recovery)"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* Email & Password Signup Fields */
+                    <>
+                      <div>
+                        <label className="text-xs font-medium text-slate-300 mb-1 block">
+                          Work / Academic Email <span className="text-indigo-400">*</span>
+                        </label>
+                        <div className="relative">
+                          <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="email"
+                            required
+                            value={emailOrUsername}
+                            onChange={(e) => { setEmailOrUsername(e.target.value); setError(null); }}
+                            placeholder="organizer@university.edu"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-slate-300 mb-1 block">
+                          Password <span className="text-indigo-400">*</span>
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            value={password}
+                            onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                            placeholder="Minimum 6 characters"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-slate-300">
+                            Security Passkey Keyword <span className="text-slate-500 font-normal">(Optional)</span>
+                          </label>
+                          <span className="text-[10px] text-amber-400/80 font-mono">1-step passkey sign-in</span>
+                        </div>
+                        <div className="relative">
+                          <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type={showPasskey ? 'text' : 'password'}
+                            value={passkey}
+                            onChange={(e) => { setPasskey(e.target.value); setError(null); }}
+                            placeholder="Create a keyword (e.g. 202688 or Admin#Key2026!)"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasskey(!showPasskey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                            aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
+                          >
+                            {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
-              {/* Passkey-Only Sign-In View */}
-              {mode === 'signin' && signinMethod === 'passkey' ? (
-                <div className="space-y-3.5">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-medium text-slate-300">Security Passkey Keyword</label>
-                      <span className="text-[10px] text-amber-400/80 font-mono">Numbers, letters & symbols</span>
-                    </div>
-                    <div className="relative">
-                      <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type={showPasskey ? 'text' : 'password'}
-                        required
-                        autoFocus
-                        value={passkey}
-                        onChange={(e) => {
-                          setPasskey(e.target.value);
-                          setNeedsDisambiguation(false);
-                        }}
-                        placeholder="Enter your security passkey (e.g. 202688 or Admin#Key2026!)"
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPasskey(!showPasskey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
-                        aria-label={showPasskey ? "Hide passkey" : "Show passkey"}
-                      >
-                        {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Instant 1-step sign-in: Just enter your passkey. No email ID required.
-                    </p>
-                  </div>
-
-                  {/* Disambiguation Section: Appears ONLY when multiple accounts share this exact passkey */}
-                  {needsDisambiguation && (
-                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs space-y-2 animate-in fade-in">
-                      <div className="font-bold flex items-center gap-1.5 text-amber-400">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>Confirm Account Email</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300">
-                        Multiple accounts share this passkey. Please confirm your registered email address:
-                      </p>
-                      {disambiguationAccounts.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-0.5">
-                          {disambiguationAccounts.map((acc, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded-lg bg-slate-950 border border-amber-500/30 text-[11px] font-mono text-amber-300"
-                            >
-                              {acc.name} ({acc.maskedEmail})
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="relative pt-1">
-                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        <input
-                          type="email"
-                          required
-                          value={disambiguationEmail}
-                          onChange={(e) => setDisambiguationEmail(e.target.value)}
-                          placeholder="Your registered email (e.g. you@university.edu)"
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Standard Email & Password / Registration Fields */
-                <>
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 mb-1 block">
-                      {mode === 'signup' ? 'Work / Academic Email' : 'Email or Username'}
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type={mode === 'signup' ? 'email' : 'text'}
-                        required
-                        value={emailOrUsername}
-                        onChange={(e) => setEmailOrUsername(e.target.value)}
-                        placeholder={mode === 'signup' ? 'organizer@university.edu' : 'you@university.edu or username'}
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-slate-300 mb-1 block">Password</label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder={mode === 'signup' ? 'Minimum 6 characters' : '••••••••'}
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Optional Passkey on Signup */}
-                  {mode === 'signup' && (
+              {/* Mode: Sign In Fields */}
+              {mode === 'signin' && (
+                signinMethod === 'passkey' ? (
+                  <div className="space-y-3.5">
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-medium text-slate-300">
-                          Security Passkey Keyword <span className="text-slate-500 font-normal">(Optional)</span>
-                        </label>
-                        <span className="text-[10px] text-amber-400/80 font-mono">1-step passkey sign-in</span>
+                        <label className="text-xs font-medium text-slate-300">Security Passkey Keyword</label>
+                        <span className="text-[10px] text-amber-400/80 font-mono">Numbers, letters & symbols</span>
                       </div>
                       <div className="relative">
                         <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type={showPasskey ? 'text' : 'password'}
+                          required
+                          autoFocus
                           value={passkey}
-                          onChange={(e) => setPasskey(e.target.value)}
-                          placeholder="Create a keyword (e.g. 202688 or Admin#Key2026!)"
-                          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
+                          onChange={(e) => {
+                            setPasskey(e.target.value);
+                            setNeedsDisambiguation(false);
+                            setError(null);
+                          }}
+                          placeholder="Enter your security passkey (e.g. 202688 or Admin#Key2026!)"
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors font-mono"
                         />
                         <button
                           type="button"
@@ -895,18 +989,104 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Set a keyword to sign in instantly in 1 step without typing your email.
+                        Instant 1-step sign-in: Just enter your passkey. No password required.
                       </p>
                     </div>
-                  )}
-                </>
+
+                    {/* Disambiguation Section: Appears ONLY when multiple accounts share this exact passkey */}
+                    {needsDisambiguation && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs space-y-2 animate-in fade-in">
+                        <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>Confirm Account</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300">
+                          Multiple accounts share this passkey. Click your account below or enter your email/username:
+                        </p>
+                        {disambiguationAccounts.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {disambiguationAccounts.map((acc, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setDisambiguationEmail(acc.username || acc.maskedEmail);
+                                  setError(null);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/25 border border-amber-500/40 hover:border-amber-300 text-[11px] font-mono text-amber-300 transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                                title="Click to select this account"
+                              >
+                                <span>{acc.name}</span>
+                                <span className="text-amber-400/80">({acc.username ? `@${acc.username}` : acc.maskedEmail})</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="relative pt-1">
+                          <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            required
+                            value={disambiguationEmail}
+                            onChange={(e) => { setDisambiguationEmail(e.target.value); setError(null); }}
+                            placeholder="Your registered email or username"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Standard Email/Username & Password Sign In */
+                  <>
+                    <div>
+                      <label className="text-xs font-medium text-slate-300 mb-1 block">
+                        Email or Username
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          required
+                          value={emailOrUsername}
+                          onChange={(e) => { setEmailOrUsername(e.target.value); setError(null); }}
+                          placeholder="you@university.edu or username"
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium text-slate-300 mb-1 block">Password</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          value={password}
+                          onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                          placeholder="••••••••"
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )
               )}
 
               <button
                 type="submit"
                 disabled={loading}
                 className={`w-full mt-1 py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.99] disabled:opacity-50 cursor-pointer ${
-                  mode === 'signin' && signinMethod === 'passkey'
+                  (mode === 'signin' && signinMethod === 'passkey') || (mode === 'signup' && signupMethod === 'passkey')
                     ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold shadow-amber-500/20'
                     : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
                 }`}
@@ -915,9 +1095,9 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                   {loading
                     ? 'Authenticating...'
                     : mode === 'signup'
-                    ? 'Create Organizer Workspace'
+                    ? (signupMethod === 'passkey' ? 'Create Passkey Workspace' : 'Create Organizer Workspace')
                     : signinMethod === 'passkey'
-                    ? (needsDisambiguation ? 'Confirm Email & Sign In' : 'Sign In with Security Passkey')
+                    ? (needsDisambiguation ? 'Confirm Account & Sign In' : 'Sign In with Security Passkey')
                     : 'Sign In to Dashboard'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
