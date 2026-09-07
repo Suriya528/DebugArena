@@ -59,6 +59,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   } | null>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
+  const [mobileView, setMobileView] = useState<'problem' | 'code' | 'results'>('problem');
 
   // Initialize from attempts or default starter code
   useEffect(() => {
@@ -201,6 +202,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
       const res = await api.post('/participant/run-code', payload);
       if (res.data.success) {
+        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+          setMobileView('results');
+        }
         if (res.data.isCustom) {
           setCustomOutputs(prev => ({ ...prev, [qId]: res.data.customResult }));
         } else {
@@ -223,6 +227,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
     setIsSubmittingCode(true);
     setActiveTab('tests');
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setMobileView('results');
+    }
 
     try {
       const res = await api.post('/participant/submit-code', {
@@ -273,8 +280,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       {/* Top Question Switcher & Round Score Bar */}
-      <div className="h-12 border-b border-slate-800 bg-slate-950/80 px-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
+      <div className="h-12 border-b border-slate-800 bg-slate-950/80 px-3 sm:px-4 flex items-center justify-between shrink-0 gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none py-1 max-w-[65vw] sm:max-w-none">
           {questions.map((q, idx) => {
             const isCurrent = idx === currentQIndex;
             return (
@@ -284,20 +291,21 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   debouncedSaveCode.flush();
                   setCurrentQIndex(idx);
                 }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer border ${
+                className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-all cursor-pointer border ${
                   isCurrent
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow'
                     : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <span>Problem {idx + 1}</span>
+                <span>P{idx + 1}</span>
+                <span className="hidden sm:inline">Problem</span>
               </button>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-xs text-slate-400 font-mono flex items-center gap-1.5">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="hidden sm:flex text-xs text-slate-400 font-mono items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>Problem {currentQIndex + 1} of {questions.length}</span>
           </div>
@@ -307,19 +315,62 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               debouncedSaveCode.flush();
               setShowSubmitModal(true);
             }}
-            className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer"
+            className="px-3 sm:px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer whitespace-nowrap"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Finish Round</span>
+            <span className="hidden sm:inline">Finish Round</span>
+            <span className="sm:hidden">Finish</span>
           </button>
         </div>
+      </div>
+
+      {/* Mobile Segmented View Switcher (< lg only) */}
+      <div className="lg:hidden flex items-center bg-slate-900/95 border-b border-slate-800 p-1 shrink-0 gap-1">
+        <button
+          type="button"
+          onClick={() => setMobileView('problem')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+            mobileView === 'problem'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Problem
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView('code')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center ${
+            mobileView === 'code'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Code
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileView('results')}
+          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+            mobileView === 'results'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <span>Results</span>
+          {currentScore > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-400 font-mono font-normal">
+              {currentScore}p
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Main Split-Pane Workspace */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
         {/* Left Pane: Problem Statement & Test Cases */}
-        <div className="lg:col-span-5 border-r border-slate-800/80 bg-slate-900/50 flex flex-col overflow-y-auto">
-          <div className="p-6 space-y-6">
+        <div className={`lg:col-span-5 border-r border-slate-800/80 bg-slate-900/50 flex-col overflow-y-auto ${mobileView === 'problem' ? 'flex flex-1' : 'hidden lg:flex'}`}>
+          <div className="p-4 sm:p-6 space-y-6">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
@@ -329,7 +380,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   {currentQ.timeLimitMs}ms limit
                 </span>
               </div>
-              <h1 className="text-xl font-extrabold text-white tracking-tight">
+              <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
                 {currentQ.title}
               </h1>
             </div>
@@ -377,16 +428,16 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         </div>
 
         {/* Right Pane: Monaco Editor & Output Terminal */}
-        <div className="lg:col-span-7 flex flex-col overflow-hidden bg-[#1e1e1e]">
+        <div className={`lg:col-span-7 flex flex-col overflow-hidden bg-[#1e1e1e] ${mobileView !== 'problem' ? 'flex flex-1' : 'hidden lg:flex'}`}>
           {/* Editor Header Toolbar */}
-          <div className="h-12 border-b border-slate-800 bg-slate-950 px-4 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <Code2 className="w-4 h-4 text-indigo-400" />
+          <div className="h-11 sm:h-12 border-b border-slate-800 bg-slate-950 px-3 sm:px-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Code2 className="w-4 h-4 text-indigo-400 shrink-0" />
               {/* Language Switcher */}
               <select
                 value={currentLang}
                 onChange={e => handleLanguageChange(e.target.value)}
-                className="bg-slate-900 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 border border-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                className="bg-slate-900 text-white text-xs font-semibold rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 border border-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
               >
                 {(currentQ.allowedLanguages || ['python', 'cpp', 'java', 'c', 'javascript']).map(
                   l => (
@@ -408,10 +459,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             </div>
 
             {/* Autosave & Action Buttons */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="text-[11px] font-mono text-slate-400">
                 {saveStatus[currentQ._id] === 'saving' && (
-                  <span className="text-amber-400 animate-pulse">Saving code...</span>
+                  <span className="text-amber-400 animate-pulse">Saving...</span>
                 )}
                 {saveStatus[currentQ._id] === 'saved' && (
                   <span className="text-emerald-400 flex items-center gap-1">
@@ -424,7 +475,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               <button
                 onClick={handleRunCode}
                 disabled={isRunning || isSubmittingCode}
-                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                className="hidden sm:flex px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isRunning ? (
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -438,7 +489,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               <button
                 onClick={handleSubmitCode}
                 disabled={isRunning || isSubmittingCode}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-50"
+                className="hidden sm:flex px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCode ? (
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -451,7 +502,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Monaco Editor Component */}
-          <div className="flex-1 min-h-[300px]">
+          <div className={`${mobileView === 'code' ? 'flex-1' : 'hidden lg:block lg:flex-1'} min-h-[300px]`}>
             <Editor
               height="100%"
               language={getMonacoLang(currentLang)}
@@ -471,7 +522,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Bottom Execution & Results Terminal */}
-          <div className="h-64 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0">
+          <div className={`${mobileView === 'results' ? 'flex-1' : 'hidden lg:flex'} lg:h-64 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden`}>
             {/* Terminal Header */}
             <div className="h-9 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/60">
               <div className="flex items-center gap-4">
@@ -713,6 +764,74 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Mobile Sticky Quick Navigation & Action Dock */}
+      <div className="lg:hidden border-t border-slate-800 bg-slate-950 px-3 py-2 flex items-center justify-between gap-2 shrink-0 z-20">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              if (currentQIndex > 0) {
+                debouncedSaveCode.flush();
+                setCurrentQIndex(currentQIndex - 1);
+              }
+            }}
+            disabled={currentQIndex === 0}
+            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:bg-slate-800 active:scale-95 transition-all"
+            title="Previous Question"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-[11px] font-mono text-slate-400 px-1">
+            {currentQIndex + 1}/{questions.length}
+          </span>
+          <button
+            onClick={() => {
+              if (currentQIndex < questions.length - 1) {
+                debouncedSaveCode.flush();
+                setCurrentQIndex(currentQIndex + 1);
+              }
+            }}
+            disabled={currentQIndex === questions.length - 1}
+            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none hover:bg-slate-800 active:scale-95 transition-all"
+            title="Next Question"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              handleRunCode();
+              setMobileView('results');
+            }}
+            disabled={isRunning || isSubmittingCode}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isRunning ? (
+              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Play className="w-3.5 h-3.5 fill-slate-300" />
+            )}
+            <span>Run</span>
+          </button>
+          <button
+            onClick={() => {
+              handleSubmitCode();
+              setMobileView('results');
+            }}
+            disabled={isRunning || isSubmittingCode}
+            className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isSubmittingCode ? (
+              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
+            )}
+            <span>Submit</span>
+          </button>
         </div>
       </div>
 

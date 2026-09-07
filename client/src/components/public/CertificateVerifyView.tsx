@@ -156,7 +156,7 @@ export const CertificateVerifyView: React.FC<CertificateVerifyViewProps> = ({ ce
                   >
                     {/* Inner Canvas Area */}
                     <div
-                      className="relative p-6 sm:p-10 border border-slate-300/80 rounded-sm"
+                      className="relative p-3.5 sm:p-10 border border-slate-300/80 rounded-sm"
                       style={{
                         backgroundColor: '#fffdfa',
                         backgroundImage: `radial-gradient(${primaryColor}12 0.75px, transparent 0.75px), radial-gradient(${secondaryColor}08 0.75px, #fffdfa 0.75px)`,
@@ -219,23 +219,23 @@ export const CertificateVerifyView: React.FC<CertificateVerifyViewProps> = ({ ce
                             >
                               <Sparkles className="w-2.5 h-2.5" />
                             </div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-800">
-                              Skill & Technical Assessment
+                            <span className="font-serif font-black text-[10px] uppercase tracking-wider text-slate-800">
+                              National Technical Council
                             </span>
                           </div>
-                          <div className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">
-                            National Educational Standard
-                          </div>
+                          <span className="text-[8px] text-slate-500 font-mono">
+                            Accreditation ID: <strong className="text-slate-700">NTC-IND-2026-A1</strong>
+                          </span>
                         </div>
 
-                        {/* Right: Championship Badge */}
-                        <div className="flex items-center gap-2 text-right">
-                          <div>
+                        {/* Right: Certified Merit Badge */}
+                        <div className="flex items-center gap-2.5 text-right">
+                          <div className="hidden xs:block">
                             <div
-                              className="text-[11px] font-black uppercase tracking-wider font-serif"
+                              className="text-[10px] font-black uppercase tracking-wider font-serif"
                               style={{ color: primaryColor }}
                             >
-                              DebugArena 2026
+                              Grade A Honors
                             </div>
                             <div className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
                               Certified Merit Credential
@@ -251,22 +251,21 @@ export const CertificateVerifyView: React.FC<CertificateVerifyViewProps> = ({ ce
                       </div>
 
                       {/* MAIN TITLE: CERTIFICATE */}
-                      <div className="text-center my-5">
+                      <div className="text-center my-4 sm:my-5">
                         <h1
-                          className="font-serif text-3xl sm:text-4xl font-black uppercase tracking-[0.22em] text-slate-900"
-                          style={{ letterSpacing: '0.22em' }}
+                          className="font-serif text-2xl sm:text-4xl font-black uppercase tracking-[0.14em] sm:tracking-[0.22em] text-slate-900"
                         >
                           Certificate
                         </h1>
                         <div className="flex items-center justify-center gap-2 my-1.5">
-                          <div className="w-12 h-[1.5px]" style={{ backgroundColor: secondaryColor }} />
+                          <div className="w-10 sm:w-12 h-[1.5px]" style={{ backgroundColor: secondaryColor }} />
                           <div
-                            className="text-[9px] font-black uppercase tracking-[0.25em]"
+                            className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.18em] sm:tracking-[0.25em]"
                             style={{ color: primaryColor }}
                           >
                             Of Merit & Technical Excellence
                           </div>
-                          <div className="w-12 h-[1.5px]" style={{ backgroundColor: secondaryColor }} />
+                          <div className="w-10 sm:w-12 h-[1.5px]" style={{ backgroundColor: secondaryColor }} />
                         </div>
                       </div>
 
@@ -306,9 +305,9 @@ export const CertificateVerifyView: React.FC<CertificateVerifyViewProps> = ({ ce
                       </div>
 
                       {/* BOTTOM ROW: QR Code, Rosette Seal, and Digital Signature */}
-                      <div className="mt-8 pt-4 border-t border-slate-300/90 grid grid-cols-3 items-center">
+                      <div className="mt-6 sm:mt-8 pt-4 border-t border-slate-300/90 flex flex-col sm:grid sm:grid-cols-3 items-center gap-6 sm:gap-2">
                         {/* Left: QR Code */}
-                        <div className="flex items-center gap-2.5 text-left">
+                        <div className="flex items-center gap-2.5 text-left w-full sm:w-auto justify-center sm:justify-start">
                           <div className="p-1.5 rounded-lg bg-white border border-slate-300 shadow-sm flex-shrink-0">
                             <svg className="w-14 h-14" viewBox="0 0 100 100" fill="#0f172a">
                               <rect x="5" y="5" width="28" height="28" fill="none" stroke="#0f172a" strokeWidth="6" />
@@ -381,7 +380,7 @@ export const CertificateVerifyView: React.FC<CertificateVerifyViewProps> = ({ ce
                         </div>
 
                         {/* Right: Signature */}
-                        <div className="flex flex-col items-end text-right">
+                        <div className="flex flex-col items-center sm:items-end text-center sm:text-right w-full sm:w-auto">
                           <div className="h-9 w-32 flex items-center justify-end pr-2">
                             <svg className="w-28 h-8 text-blue-900" viewBox="0 0 160 50" fill="none">
                               <path

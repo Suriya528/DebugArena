@@ -6,7 +6,6 @@ interface UseFullscreenProps {
 }
 
 export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(Boolean(document.fullscreenElement));
   const onViolationRef = useRef(onViolation);
   onViolationRef.current = onViolation;
   const isEnabledRef = useRef(enabled);
@@ -43,7 +42,28 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     []
   );
 
+  // Detect if DOM Fullscreen API is supported (e.g. unsupported on iPhones/iOS Safari)
+  const isNativeFullscreenSupported = typeof document !== 'undefined' && Boolean(
+    document.documentElement && (
+      'requestFullscreen' in document.documentElement ||
+      'webkitRequestFullscreen' in document.documentElement ||
+      'msRequestFullscreen' in document.documentElement
+    )
+  );
+
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    if (typeof document === 'undefined') return false;
+    if (!isNativeFullscreenSupported) return true; // Graceful pseudo-fullscreen for unsupported mobile
+    return Boolean(document.fullscreenElement);
+  });
+
   const requestFullscreen = useCallback(async () => {
+    if (!isNativeFullscreenSupported) {
+      // Mobile device without Fullscreen API: grant pseudo-fullscreen safely
+      setIsFullscreen(true);
+      return;
+    }
+
     try {
       if (!document.fullscreenElement) {
         const elem = document.documentElement as any;
@@ -70,9 +90,10 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     } catch (err) {
       console.warn('Fullscreen request failed or was rejected:', err);
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      // If rejected on mobile/touch, fallback to granting pseudo-fullscreen
+      setIsFullscreen(true);
     }
-  }, []);
+  }, [isNativeFullscreenSupported]);
 
   const exitFullscreen = useCallback(async () => {
     try {
@@ -96,10 +117,10 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     if (!enabled) return;
 
     // Check initial state
-    setIsFullscreen(Boolean(document.fullscreenElement));
+    setIsFullscreen(isNativeFullscreenSupported ? Boolean(document.fullscreenElement) : true);
 
     const handleFullscreenChange = async () => {
-      const active = Boolean(document.fullscreenElement);
+      const active = isNativeFullscreenSupported ? Boolean(document.fullscreenElement) : true;
       setIsFullscreen(active);
 
       if (active) {
@@ -109,7 +130,7 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
             await (navigator as any).keyboard.lock(['Escape']);
           } catch (e) {}
         }
-      } else if (isEnabledRef.current) {
+      } else if (isEnabledRef.current && isNativeFullscreenSupported) {
         triggerViolation('fullscreen_exit', 'Participant pressed Escape or exited full-screen mode');
       }
     };

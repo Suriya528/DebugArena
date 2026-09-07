@@ -81,7 +81,7 @@ export const KioskRecoveryPortal: React.FC<KioskRecoveryPortalProps> = ({
       <div className="absolute top-0 right-0 -mr-24 -mt-24 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-0 -ml-24 -mb-24 w-96 h-96 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative w-full max-w-lg bg-slate-900/90 border border-amber-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-left">
+      <div className="relative w-full max-w-lg bg-slate-900/90 border border-amber-500/40 rounded-3xl p-5 sm:p-8 shadow-2xl backdrop-blur-xl text-left max-h-[92vh] flex flex-col overflow-y-auto">
         {/* Header Alert */}
         <div className="flex items-center gap-3.5 pb-5 border-b border-slate-800 mb-6">
           <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
@@ -143,7 +143,7 @@ export const KioskRecoveryPortal: React.FC<KioskRecoveryPortalProps> = ({
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-base sm:text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
                 />
                 <button
                   type="button"

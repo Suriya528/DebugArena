@@ -195,25 +195,25 @@ export const LiveMonitor: React.FC = () => {
   const criticalAnomaliesCount = fairnessMetrics.filter(m => m.health === 'critical').length;
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 text-left">
+    <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6 text-left">
       {/* 1. Top Control Room Master Status Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl backdrop-blur-xl">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-600/30">
-            <Activity className="w-7 h-7 text-white animate-pulse" />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl backdrop-blur-xl">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-600/30 shrink-0">
+            <Activity className="w-6 h-6 sm:w-7 sm:h-7 text-white animate-pulse" />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" /> Live Control Room
               </span>
               {criticalAnomaliesCount > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1 animate-pulse">
-                  <AlertOctagon className="w-2.5 h-2.5" /> {criticalAnomaliesCount} Anomaly Detected
+                  <AlertOctagon className="w-2.5 h-2.5" /> {criticalAnomaliesCount} Anomaly
                 </span>
               )}
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               Telemetry & Live Competition Control Room
             </h1>
             <p className="text-xs text-slate-400">
@@ -222,11 +222,11 @@ export const LiveMonitor: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
           {/* Pre-Event Readiness Inspector Button */}
           <button
             onClick={() => setIsPreCheckOpen(true)}
-            className="py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+            className="flex-1 sm:flex-none py-2.5 px-3 sm:px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer whitespace-nowrap"
           >
             <Stethoscope className="w-4 h-4" />
             <span>Pre-Event Health Check</span>
@@ -235,7 +235,7 @@ export const LiveMonitor: React.FC = () => {
           {/* Refresh Button */}
           <button
             onClick={fetchPulseAndFairness}
-            className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
+            className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer shrink-0"
             title="Refresh Metrics"
           >
             <RefreshCw className="w-4 h-4" />
@@ -244,48 +244,48 @@ export const LiveMonitor: React.FC = () => {
       </div>
 
       {/* 2. System Pulse Hardware & Participation Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold">
-            <Users className="w-6 h-6" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-3 sm:gap-4">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shrink-0">
+            <Users className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Active Taking Test</div>
-            <div className="text-2xl font-black text-white font-mono">{pulse?.counts?.activeParticipants ?? onlineParticipants.length}</div>
-            <div className="text-[10px] text-slate-500 font-mono">Of {pulse?.counts?.totalParticipants ?? 6} registered</div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Finalized / Submitted</div>
-            <div className="text-2xl font-black text-emerald-400 font-mono">{pulse?.counts?.submittedParticipants ?? 0}</div>
-            <div className="text-[10px] text-slate-500 font-mono">Submissions locked</div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">Active Taking Test</div>
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">{pulse?.counts?.activeParticipants ?? onlineParticipants.length}</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate">Of {pulse?.counts?.totalParticipants ?? 6} registered</div>
           </div>
         </div>
 
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold">
-            <ShieldAlert className="w-6 h-6" />
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-3 sm:gap-4">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold shrink-0">
+            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Suspicious Strikes</div>
-            <div className="text-2xl font-black text-rose-400 font-mono">{pulse?.counts?.suspiciousEvents ?? 0}</div>
-            <div className="text-[10px] text-slate-500 font-mono">Proctoring alerts</div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">Finalized / Submitted</div>
+            <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">{pulse?.counts?.submittedParticipants ?? 0}</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate">Submissions locked</div>
           </div>
         </div>
 
-        <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold">
-            <Server className="w-6 h-6" />
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-3 sm:gap-4">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold shrink-0">
+            <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Judge & DB Pulse</div>
-            <div className="text-2xl font-black text-cyan-400 font-mono">{pulse?.system?.dbLatencyMs ?? 4}ms</div>
-            <div className="text-[10px] text-slate-500 font-mono">Sandbox: {pulse?.system?.judgeStatus ?? 'ready'}</div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">Suspicious Strikes</div>
+            <div className="text-xl sm:text-2xl font-black text-rose-400 font-mono">{pulse?.counts?.suspiciousEvents ?? 0}</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate">Proctoring alerts</div>
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 flex items-center gap-3 sm:gap-4">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold shrink-0">
+            <Server className="w-5 h-5 sm:w-6 sm:h-6" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">Judge & DB Pulse</div>
+            <div className="text-xl sm:text-2xl font-black text-cyan-400 font-mono">{pulse?.system?.dbLatencyMs ?? 4}ms</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate">Sandbox: {pulse?.system?.judgeStatus ?? 'ready'}</div>
           </div>
         </div>
       </div>

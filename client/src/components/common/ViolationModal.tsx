@@ -76,7 +76,7 @@ export const ViolationModal: React.FC<ViolationModalProps> = ({
       {/* Red ambient security perimeter pulse */}
       <div className="absolute inset-0 border-8 border-rose-600/50 pointer-events-none animate-pulse" />
 
-      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border-2 border-rose-500/80 p-8 shadow-2xl shadow-rose-950/90 text-center">
+      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border-2 border-rose-500/80 p-5 sm:p-8 shadow-2xl shadow-rose-950/90 text-center max-h-[92vh] flex flex-col overflow-y-auto">
         {/* Top Warning Icon */}
         <div className="w-20 h-20 mx-auto mb-5 rounded-3xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center shadow-lg shadow-rose-950/50">
           {isExceeded ? (

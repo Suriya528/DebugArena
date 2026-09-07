@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bookmark, ChevronLeft, ChevronRight, Check, RotateCcw, Send, AlertCircle, HelpCircle } from 'lucide-react';
+import { Bookmark, ChevronLeft, ChevronRight, Check, RotateCcw, Send, AlertCircle, HelpCircle, X } from 'lucide-react';
 import { Question, Attempt } from '../../types/index.js';
 import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
@@ -27,6 +27,14 @@ export const McqShell: React.FC<McqShellProps> = ({
   const [markedForReview, setMarkedForReview] = useState<Set<string>>(new Set(initialMarkedForReview));
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
+
+  // Auto-scroll to top when question changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [currentIndex]);
 
   // Initialize from attempts on mount or refresh
   useEffect(() => {
@@ -159,23 +167,34 @@ export const McqShell: React.FC<McqShellProps> = ({
   const isCurrentMarked = markedForReview.has(currentQ._id);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left / Main Question Area */}
         <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-6 sm:p-8 shadow-xl backdrop-blur-md">
+          <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-4 sm:p-8 shadow-xl backdrop-blur-md">
             {/* Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 mb-6">
-              <div className="flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  Question {currentIndex + 1} of {totalCount}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 mb-6 gap-2">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
+                  Q{currentIndex + 1} of {totalCount}
                 </span>
-                <span className="text-[11px] text-emerald-400/80 font-mono">
-                  (0 negative marks)
+                <span className="hidden xs:inline text-[11px] text-emerald-400/80 font-mono">
+                  (0 neg)
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPaletteOpen(true)}
+                  className="lg:hidden px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Palette</span>
+                  <span className="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded-full font-mono">
+                    {answeredCount}/{totalCount}
+                  </span>
+                </button>
+
                 {saveStatus[currentQ._id] === 'saving' && (
                   <span className="text-xs text-amber-400 animate-pulse font-mono">Saving...</span>
                 )}
@@ -381,10 +400,104 @@ export const McqShell: React.FC<McqShellProps> = ({
         </div>
       </div>
 
+      {/* Mobile Question Palette Drawer */}
+      {isPaletteOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0 mb-4">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Question Palette</h3>
+                <span className="text-xs text-slate-400 font-mono">({currentIndex + 1}/{totalCount})</span>
+              </div>
+              <button
+                onClick={() => setIsPaletteOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Status Legend */}
+            <div className="grid grid-cols-2 gap-2 text-xs mb-4 p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-md bg-emerald-500 flex items-center justify-center text-[9px] text-white font-bold">✓</div>
+                <span className="text-slate-300">Answered ({answeredCount})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-md bg-slate-700 border border-slate-600" />
+                <span className="text-slate-300">Unanswered ({notAnsweredCount})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-md bg-purple-500/20 border border-purple-500 flex items-center justify-center">
+                  <Bookmark className="w-2.5 h-2.5 text-purple-400 fill-purple-400" />
+                </div>
+                <span className="text-slate-300">Marked ({markedCount})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-md border-2 border-indigo-400 bg-indigo-500/30" />
+                <span className="text-slate-300">Current</span>
+              </div>
+            </div>
+
+            {/* Grid of question buttons */}
+            <div className="grid grid-cols-5 gap-2.5 overflow-y-auto flex-1 pr-1 pb-4">
+              {questions.map((q, idx) => {
+                const isAns = selectedAnswers[q._id] !== null && selectedAnswers[q._id] !== undefined;
+                const isMarked = markedForReview.has(q._id);
+                const isCurrent = idx === currentIndex;
+                const isVisited = visitedQuestions.has(q._id);
+
+                let btnStyle = 'bg-slate-800/80 text-slate-400 border-slate-700';
+                if (isAns) {
+                  btnStyle = 'bg-emerald-600 text-white border-emerald-500 font-bold shadow-sm shadow-emerald-900/40';
+                } else if (isVisited) {
+                  btnStyle = 'bg-amber-600/20 text-amber-300 border-amber-500/40';
+                }
+
+                return (
+                  <button
+                    key={q._id}
+                    onClick={() => {
+                      debouncedSave.flush();
+                      setCurrentIndex(idx);
+                      setIsPaletteOpen(false);
+                    }}
+                    className={`relative h-11 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer border ${btnStyle} ${
+                      isCurrent ? 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-900 scale-105' : 'hover:scale-102'
+                    }`}
+                  >
+                    <span>{idx + 1}</span>
+                    {isMarked && (
+                      <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center shadow">
+                        <Bookmark className="w-2 h-2 text-white fill-white" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 shrink-0">
+              <button
+                onClick={() => {
+                  debouncedSave.flush();
+                  setIsPaletteOpen(false);
+                  setShowSubmitModal(true);
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                <span>Submit Assessment</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirmation Modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl max-h-[92vh] flex flex-col overflow-y-auto">
             <div className="flex items-center gap-3 text-indigo-400 mb-4">
               <div className="p-3 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
                 <HelpCircle className="w-7 h-7 text-indigo-400" />

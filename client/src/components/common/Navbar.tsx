@@ -59,46 +59,62 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Center Timer & Proctoring Status (if active) */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         {proctoringMode && (
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold font-mono">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-            <span>OA PROCTORING LOCKED</span>
-            <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[10px]">
-              STRIKES: {violationCount}/{violationLimit}
-            </span>
-          </div>
+          <>
+            {/* Desktop Proctoring Badge */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold font-mono">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span>OA PROCTORING LOCKED</span>
+              <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[10px]">
+                STRIKES: {violationCount}/{violationLimit}
+              </span>
+            </div>
+
+            {/* Mobile Adaptive Strike Indicator */}
+            <div
+              className={`flex lg:hidden items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold border ${
+                violationCount > 0
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                  : 'bg-slate-900/90 text-slate-300 border-slate-700'
+              }`}
+              title={`Proctoring Armed - Strike ${violationCount} of ${violationLimit}`}
+            >
+              <Shield className={`w-3.5 h-3.5 ${violationCount > 0 ? 'text-rose-400' : 'text-slate-400'}`} />
+              <span>{violationCount}/{violationLimit}</span>
+            </div>
+          </>
         )}
 
         {timerFormatted && (
           <div
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono text-base font-bold shadow-inner ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl font-mono text-xs sm:text-base font-bold shadow-inner shrink-0 ${
               isTimerUrgent
                 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse'
                 : 'bg-slate-900/90 text-indigo-300 border border-indigo-500/30'
             }`}
           >
-            <Clock className="w-4 h-4 text-indigo-400" />
+            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400 shrink-0" />
             <span>{timerFormatted}</span>
           </div>
         )}
       </div>
 
       {/* Right User & Status */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         <ConnectionBadge />
 
         {user && (
-          <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1.5 sm:pl-2 border-l border-slate-800">
             {/* Organizer Profile & Security Passkey Access */}
             {user.role !== 'participant' ? (
               <button
                 type="button"
                 onClick={() => setIsPasskeyModalOpen(true)}
-                className="group flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-500/50 transition-all cursor-pointer shadow-sm text-left"
+                className="group flex items-center gap-2 sm:gap-2.5 p-1 sm:px-3 sm:py-1.5 rounded-xl sm:rounded-2xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 hover:border-amber-500/50 transition-all cursor-pointer shadow-sm text-left"
                 title="Organizer Profile & Passkey Settings"
               >
-                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black shadow-inner">
+                <div className="w-7 h-7 rounded-lg sm:rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black shadow-inner shrink-0">
                   {user.name ? user.name[0].toUpperCase() : 'A'}
                 </div>
                 <div className="hidden sm:block">
@@ -133,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={logout}
               title="Sign Out"
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>

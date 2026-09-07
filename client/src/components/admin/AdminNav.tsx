@@ -30,8 +30,8 @@ export const AdminNav: React.FC<AdminNavProps> = ({ activeTab, onTabChange, hasT
   ];
 
   return (
-    <div className="border-b border-slate-800 bg-slate-950/90 sticky top-16 z-30 px-4 sm:px-6">
-      <div className="flex space-x-2 overflow-x-auto py-2.5">
+    <div className="border-b border-slate-800 bg-slate-950/90 sticky top-16 z-30 px-3 sm:px-6 backdrop-blur-md">
+      <div className="flex space-x-2 overflow-x-auto scrollbar-none py-2.5">
         {tabs.map(t => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;

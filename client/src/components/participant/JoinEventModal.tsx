@@ -135,8 +135,8 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-lg bg-[#0c1220] border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-lg bg-[#0c1220] border border-cyan-500/30 rounded-3xl p-5 sm:p-8 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         {/* Glow accents */}
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -198,7 +198,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
 
         {/* Tab 1: Join with Event Code */}
         {activeTab === 'code' && (
-          <form onSubmit={handleJoinByCode} className="space-y-3.5">
+          <form onSubmit={handleJoinByCode} className="space-y-3.5 overflow-y-auto pr-1 flex-1">
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1 block">Event Access Code</label>
               <div className="relative">
@@ -210,7 +210,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                   onChange={(e) => setEventCode(e.target.value.toUpperCase())}
                   placeholder="e.g., TECH26"
                   maxLength={12}
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-sm font-mono font-bold text-cyan-300 tracking-wider placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors uppercase"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-sm font-mono font-bold text-cyan-300 tracking-wider placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors uppercase"
                 />
               </div>
             </div>
@@ -226,7 +226,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g., Alex Rivera"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                   />
                 </div>
               </div>
@@ -238,7 +238,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                   value={regNo}
                   onChange={(e) => setRegNo(e.target.value.toUpperCase())}
                   placeholder="e.g., 22CS101"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 uppercase transition-colors"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 uppercase transition-colors"
                 />
               </div>
             </div>
@@ -253,7 +253,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     placeholder="e.g., Computer Science"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                   />
                 </div>
               </div>
@@ -266,7 +266,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
                     placeholder="e.g., 3rd Year"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                   />
                 </div>
               </div>
@@ -284,7 +284,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a personal session password"
-                  className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full pl-9 pr-10 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                 />
                 <button
                   type="button"
@@ -303,7 +303,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+              className="w-full mt-2 py-3 rounded-2xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer shrink-0"
             >
               <span>{loading ? 'Validating Event Code...' : 'Enter Competition Lobby'}</span>
               <ArrowRight className="w-4 h-4" />
@@ -313,7 +313,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
 
         {/* Tab 2: Direct Username/Password */}
         {activeTab === 'login' && (
-          <form onSubmit={handleDirectLogin} className="space-y-4">
+          <form onSubmit={handleDirectLogin} className="space-y-4 overflow-y-auto pr-1 flex-1">
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1.5 block">Roll Number or Participant Username</label>
               <div className="relative">
@@ -324,7 +324,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   placeholder="e.g., 22CS101 or contestant handle"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                 />
               </div>
             </div>
@@ -339,7 +339,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="Enter your session password"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                 />
                 <button
                   type="button"
@@ -355,7 +355,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+              className="w-full py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer shrink-0"
             >
               <span>{loading ? 'Authenticating...' : 'Sign In & Resume Competition'}</span>
               <ArrowRight className="w-4 h-4" />

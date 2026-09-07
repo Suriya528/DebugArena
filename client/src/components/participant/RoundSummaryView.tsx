@@ -32,8 +32,8 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
       .catch(() => {});
   }, []);
   return (
-    <div className="max-w-2xl mx-auto py-16 px-4">
-      <div className="rounded-3xl bg-slate-900/95 border border-slate-800 p-8 sm:p-12 shadow-2xl backdrop-blur-xl text-center relative overflow-hidden">
+    <div className="max-w-2xl mx-auto py-8 sm:py-16 px-3 sm:px-4">
+      <div className="rounded-3xl bg-slate-900/95 border border-slate-800 p-5 sm:p-12 shadow-2xl backdrop-blur-xl text-center relative overflow-hidden">
         {/* Glow ambient accent */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -75,15 +75,15 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 <span>Assessment Received & Verified</span>
               </div>
 
-              <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">
+              <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
                 Submitted Successfully
               </h1>
-              <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
+              <p className="text-sm text-slate-400 mb-6 sm:mb-8 max-w-md mx-auto leading-relaxed">
                 Your responses have been transmitted to the server and locked against further modifications.
               </p>
 
               {/* Status info grid — STRICTLY NO SCORES OR MARKS DISPLAYED */}
-              <div className="grid sm:grid-cols-2 gap-4 mb-8 text-left max-w-lg mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8 text-left max-w-lg mx-auto">
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-emerald-400" /> Submission Status
@@ -108,13 +108,13 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
               </div>
 
               {/* Confidentiality Notice */}
-              <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 mb-8 text-left text-xs text-indigo-300 leading-relaxed max-w-lg mx-auto">
+              <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 mb-6 sm:mb-8 text-left text-xs text-indigo-300 leading-relaxed max-w-lg mx-auto">
                 <strong className="text-white block mb-1">Confidential Scoring Protocol:</strong>
                 In compliance with competition rules, participant scores and rankings remain confidential until officially declared by tournament coordinators.
               </div>
 
               {progress?.status === 'advanced' && (
-                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 mb-8 text-emerald-300 text-sm font-bold max-w-lg mx-auto">
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 mb-6 sm:mb-8 text-emerald-300 text-sm font-bold max-w-lg mx-auto">
                   🎉 Congratulations! You have been advanced to the next round by the administrator.
                 </div>
               )}
@@ -123,7 +123,7 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
 
           {/* Official Verifiable Certificate Download Banner */}
           {certData && (
-            <div className="mb-8 p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-500/30 text-left relative overflow-hidden shadow-xl shadow-amber-950/20 max-w-lg mx-auto">
+            <div className="mb-6 sm:mb-8 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-amber-500/30 text-left relative overflow-hidden shadow-xl shadow-amber-950/20 max-w-lg mx-auto">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
                 <div className="flex items-center gap-3.5">
                   <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-md">
@@ -155,7 +155,7 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
 
           <button
             onClick={onRefresh}
-            className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 mx-auto transition-all cursor-pointer shadow-lg shadow-indigo-600/25 active:scale-[0.98]"
+            className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 mx-auto transition-all cursor-pointer shadow-lg shadow-indigo-600/25 active:scale-[0.98]"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Check Advancement Status</span>

@@ -27,7 +27,9 @@ import {
   Check,
   Info,
   Server,
-  Key
+  Key,
+  Menu,
+  X
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
 import { JoinEventModal } from '../participant/JoinEventModal.js';
@@ -36,6 +38,7 @@ import { FooterDetailModal, FooterTopicId } from './FooterDetailModal.js';
 export const LandingPage: React.FC = () => {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [certLookupId, setCertLookupId] = useState('');
 
   // Footer Details Modal state
@@ -178,11 +181,11 @@ export const LandingPage: React.FC = () => {
             </button>
           </nav>
 
-          {/* Action CTAs */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Action CTAs & Mobile Hamburger */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="h-10 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="hidden sm:inline-flex h-10 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
               <Shield className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span>Organizer Portal</span>
@@ -190,13 +193,106 @@ export const LandingPage: React.FC = () => {
 
             <button
               onClick={() => setIsJoinModalOpen(true)}
-              className="h-10 px-5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              className="h-9 sm:h-10 px-3.5 sm:px-5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 cursor-pointer"
             >
               <Trophy className="w-3.5 h-3.5 text-slate-950 shrink-0" />
-              <span>Join with Code</span>
+              <span><span className="inline sm:hidden">Join</span><span className="hidden sm:inline">Join with Code</span></span>
+            </button>
+
+            {/* Mobile Hamburger Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
+              aria-label="Toggle Navigation Menu"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
+
+        {/* Collapsible Mobile Navigation Drawer */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-slate-800 bg-[#070b14]/98 backdrop-blur-2xl px-4 py-5 space-y-4 animate-in slide-in-from-top-2 duration-200">
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-300">
+              <button
+                onClick={() => {
+                  scrollToSection('tournament-os');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-cyan-400 hover:border-cyan-500/40 transition-colors"
+              >
+                Platform OS
+              </button>
+              <button
+                onClick={() => {
+                  scrollToSection('architecture');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-cyan-400 hover:border-cyan-500/40 transition-colors"
+              >
+                Engine Matrix
+              </button>
+              <button
+                onClick={() => {
+                  scrollToSection('how-it-works');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-cyan-400 hover:border-cyan-500/40 transition-colors"
+              >
+                Tournament Workflow
+              </button>
+              <button
+                onClick={() => {
+                  scrollToSection('verification');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-cyan-400 hover:border-cyan-500/40 transition-colors"
+              >
+                Verify Certificate
+              </button>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  setIsAdminModalOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Shield className="w-4 h-4 text-indigo-400" />
+                <span>Organizer Control Portal</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsJoinModalOpen(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer"
+              >
+                <Trophy className="w-4 h-4 text-slate-950" />
+                <span>Enter Contest Lobby</span>
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                CLUSTER: ONLINE
+              </span>
+              <button
+                onClick={() => {
+                  openTopic('system-status');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="text-cyan-400 hover:underline"
+              >
+                System Telemetry Logs &rarr;
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}
@@ -303,36 +399,39 @@ export const LandingPage: React.FC = () => {
                   </div>
 
                   {/* Mode Tabs */}
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono">
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono overflow-x-auto scrollbar-none shrink-0">
                     <button
                       onClick={() => setActiveConsoleTab('debugger')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                         activeConsoleTab === 'debugger'
                           ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Judge Sandbox
+                      <span className="hidden sm:inline">Judge Sandbox</span>
+                      <span className="sm:hidden">Judge</span>
                     </button>
                     <button
                       onClick={() => setActiveConsoleTab('proctor')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                         activeConsoleTab === 'proctor'
                           ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Proctor Radar
+                      <span className="hidden sm:inline">Proctor Radar</span>
+                      <span className="sm:hidden">Radar</span>
                     </button>
                     <button
                       onClick={() => setActiveConsoleTab('leaderboard')}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                         activeConsoleTab === 'leaderboard'
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Scoreboard
+                      <span className="hidden sm:inline">Scoreboard</span>
+                      <span className="sm:hidden">Scores</span>
                     </button>
                   </div>
                 </div>

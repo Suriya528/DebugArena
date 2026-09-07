@@ -326,7 +326,7 @@ export const EventManager: React.FC = () => {
               </h2>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Certificate Lifecycle Quick Toggle */}
               <button
                 onClick={handleToggleCertificates}
@@ -518,7 +518,7 @@ export const EventManager: React.FC = () => {
       {/* Unfreeze Emergency Override Modal */}
       {showUnfreezeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-rose-500/50 rounded-3xl p-6 shadow-2xl text-left">
+          <div className="w-full max-w-md bg-slate-900 border border-rose-500/50 rounded-3xl p-6 shadow-2xl text-left max-h-[92vh] flex flex-col overflow-y-auto">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-4">
               <ShieldAlert className="w-6 h-6" />
             </div>
@@ -531,7 +531,7 @@ export const EventManager: React.FC = () => {
               placeholder="Provide explicit operational rationale for unfreezing..."
               value={unfreezeReason}
               onChange={e => setUnfreezeReason(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-white focus:outline-none focus:border-rose-500 mb-4 resize-none"
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-base sm:text-xs text-white focus:outline-none focus:border-rose-500 mb-4 resize-none"
             />
             <div className="flex justify-end gap-2">
               <button
