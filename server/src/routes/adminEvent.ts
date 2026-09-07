@@ -7,10 +7,17 @@ import { DynamicRound } from '../models/DynamicRound.js';
 import { Competition } from '../models/Competition.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { CleanupAudit } from '../models/CleanupAudit.js';
-import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
+import { broadcastToAdmins, broadcastToAll, emitToUser } from '../services/socketService.js';
 import { finalizeEvent, setRetentionHold } from '../services/lifecycleService.js';
-import { executeCleanupJob } from '../services/cleanupEngine.js';
+import { Question } from '../models/Question.js';
+import { ViolationLog } from '../models/ViolationLog.js';
+import { CodeMilestone } from '../models/CodeMilestone.js';
+import { Certificate } from '../models/Certificate.js';
+import { Attempt } from '../models/Attempt.js';
+import { RoundProgress } from '../models/RoundProgress.js';
+import { TieBreak } from '../models/TieBreak.js';
 import { seedEventRoundQuestions } from '../services/defaultQuestions.js';
+import { executeCleanupJob } from '../services/cleanupEngine.js';
 
 export const adminEventRouter = Router();
 
@@ -436,6 +443,77 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     res.json({ event });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update event' });
+  }
+});
+
+// DELETE /api/admin/events/:eventId
+// Deletes an event and cascade-purges its associated dynamic rounds, questions, violations, and participant sessions
+adminEventRouter.delete('/:eventId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Authorization: Super Admin or Admin of the Event's College
+    const isSuperAdmin = req.user?.role === 'super_admin';
+    const isCollegeAdmin = Boolean(
+      req.user?.collegeId && event.collegeId && event.collegeId.toString() === req.user.collegeId.toString()
+    );
+
+    if (!isSuperAdmin && !isCollegeAdmin) {
+      res.status(403).json({ error: 'You do not have permission to delete this event.' });
+      return;
+    }
+
+    // Cascade Cleanup: Resolve participants and questions first to cleanly purge attempts and progress
+    const participants = await User.find({ eventId, role: 'participant' }).select('_id');
+    const participantIds = participants.map(u => u._id);
+    const questions = await Question.find({ eventId }).select('_id');
+    const questionIds = questions.map(q => q._id);
+
+    await Promise.all([
+      DynamicRound.deleteMany({ eventId }),
+      Question.deleteMany({ eventId }),
+      ViolationLog.deleteMany({ $or: [{ eventId }, { userId: { $in: participantIds } }] }),
+      CodeMilestone.deleteMany({ $or: [{ eventId }, { userId: { $in: participantIds } }, { questionId: { $in: questionIds } }] }),
+      Certificate.deleteMany({ eventId }),
+      Competition.deleteMany({ eventId }),
+      Attempt.deleteMany({ $or: [{ userId: { $in: participantIds } }, { questionId: { $in: questionIds } }] }),
+      RoundProgress.deleteMany({ userId: { $in: participantIds } }),
+      TieBreak.deleteMany({ $or: [{ userId: { $in: participantIds } }, { tiedUserIds: { $in: participantIds } }, { questionId: { $in: questionIds } }] }),
+      User.deleteMany({ _id: { $in: participantIds } }),
+      User.updateMany({ eventId }, { $unset: { eventId: 1 } })
+    ]);
+
+    await Event.findByIdAndDelete(eventId);
+
+    await recordAudit(
+      req,
+      'EVENT_DELETED',
+      'Event',
+      eventId,
+      { name: event.name, code: event.code, collegeId: event.collegeId },
+      'Event deleted by administrator with cascade cleanup',
+      event.collegeId,
+      undefined
+    );
+
+    // Broadcast to connected admin sessions and participants
+    broadcastToAdmins('event:deleted', { eventId });
+    participantIds.forEach(pId => {
+      emitToUser(pId.toString(), 'event:deleted', { eventId });
+    });
+
+    res.json({
+      success: true,
+      message: `Event "${event.name}" (${event.code}) and all associated rounds/questions have been deleted successfully.`
+    });
+  } catch (err: any) {
+    console.error('Error deleting event:', err);
+    res.status(500).json({ error: 'Failed to delete event' });
   }
 });
 

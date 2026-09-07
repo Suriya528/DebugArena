@@ -795,7 +795,15 @@ adminRouter.post('/questions/seed-round', async (req: AuthenticatedRequest, res:
 // POST /api/admin/questions
 adminRouter.post('/questions', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const question = await Question.create(req.body);
+    const data = { ...req.body };
+    if (!data.collegeId && req.user?.collegeId) {
+      data.collegeId = req.user.collegeId;
+    }
+    if (!data.collegeId && data.eventId) {
+      const evt = await Event.findById(data.eventId);
+      if (evt?.collegeId) data.collegeId = evt.collegeId;
+    }
+    const question = await Question.create(data);
     res.json({ success: true, question });
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Failed to create question' });

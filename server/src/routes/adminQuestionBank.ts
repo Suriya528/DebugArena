@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireAnyAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { Question } from '../models/Question.js';
+import { Event } from '../models/Event.js';
 import { previewVariants } from '../services/dnaService.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { seedDefaultQuestionTemplates } from '../services/defaultQuestions.js';
@@ -184,7 +185,13 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
     }
 
     const targetEventId = eventId || req.user?.eventId;
-    const targetCollegeId = req.user?.collegeId;
+    let targetCollegeId: any = req.user?.collegeId;
+    if (!targetCollegeId && targetEventId) {
+      const parentEvent = await Event.findById(targetEventId).select('collegeId');
+      if (parentEvent && parentEvent.collegeId) {
+        targetCollegeId = parentEvent.collegeId;
+      }
+    }
 
     // Determine next order index for round
     const orderFilter: Record<string, any> = { roundNumber };
@@ -192,12 +199,13 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
     const maxOrder = await Question.findOne(orderFilter).sort({ orderIndex: -1 });
     const nextOrder = maxOrder ? maxOrder.orderIndex + 1 : 1;
 
+    const isMcqType = template.type === 'mcq' || (template.type === 'aptitude' && template.options && template.options.length > 0);
     const deployedQuestion = await Question.create({
       roundNumber,
       orderIndex: nextOrder,
       eventId: targetEventId,
       collegeId: targetCollegeId,
-      type: template.type === 'mcq' ? 'mcq' : 'coding',
+      type: isMcqType ? 'mcq' : 'coding',
       title: template.title,
       prompt: template.prompt,
       marks: template.marks,
@@ -226,5 +234,102 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
     res.json({ message: `Successfully deployed question to Round ${roundNumber}`, question: deployedQuestion });
   } catch (err) {
     res.status(500).json({ error: 'Failed to deploy question to round' });
+  }
+});
+
+// PUT /api/admin/questions/bank/:templateId
+// Allows editing/updating an existing question template in the question bank
+adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const template = await QuestionTemplate.findById(req.params.templateId);
+    if (!template) {
+      res.status(404).json({ error: 'Question template not found' });
+      return;
+    }
+
+    const {
+      title,
+      topic,
+      language,
+      type,
+      difficulty,
+      expectedSolveTimeMinutes,
+      marks,
+      skillTags,
+      prompt,
+      explanation,
+      options,
+      allowedLanguages,
+      starterCode,
+      testCases,
+      hasDnaMutation,
+      dnaConfig
+    } = req.body;
+
+    if (!title || !topic || !prompt) {
+      res.status(400).json({ error: 'Title, topic, and prompt are required' });
+      return;
+    }
+
+    template.title = title.trim();
+    template.topic = topic.trim();
+    if (language) template.language = language;
+    if (type) template.type = type;
+    if (difficulty) template.difficulty = difficulty;
+    if (expectedSolveTimeMinutes !== undefined) template.expectedSolveTimeMinutes = Number(expectedSolveTimeMinutes);
+    if (marks !== undefined) template.marks = Number(marks);
+    if (skillTags) template.skillTags = skillTags;
+    template.prompt = prompt.trim();
+    if (explanation !== undefined) template.explanation = explanation;
+    if (options) template.options = options;
+    if (allowedLanguages) template.allowedLanguages = allowedLanguages;
+    if (starterCode) template.starterCode = starterCode;
+    if (testCases) template.testCases = testCases;
+    if (hasDnaMutation !== undefined) template.hasDnaMutation = Boolean(hasDnaMutation);
+    if (dnaConfig) template.dnaConfig = dnaConfig;
+
+    await template.save();
+
+    await AuditLog.create({
+      adminId: req.user!.userId,
+      adminUsername: req.user!.username,
+      action: 'QUESTION_TEMPLATE_UPDATED',
+      targetType: 'QuestionTemplate',
+      targetId: template._id.toString(),
+      details: { title: template.title, topic: template.topic, type: template.type }
+    });
+
+    res.json({ success: true, template });
+  } catch (err: any) {
+    console.error('Failed to update question template:', err);
+    res.status(500).json({ error: 'Failed to update question template' });
+  }
+});
+
+// DELETE /api/admin/questions/bank/:templateId
+// Permanently removes a question template from the bank
+adminQuestionBankRouter.delete('/:templateId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const template = await QuestionTemplate.findById(req.params.templateId);
+    if (!template) {
+      res.status(404).json({ error: 'Question template not found' });
+      return;
+    }
+
+    await QuestionTemplate.findByIdAndDelete(req.params.templateId);
+
+    await AuditLog.create({
+      adminId: req.user!.userId,
+      adminUsername: req.user!.username,
+      action: 'QUESTION_TEMPLATE_DELETED',
+      targetType: 'QuestionTemplate',
+      targetId: req.params.templateId,
+      details: { title: template.title, topic: template.topic }
+    });
+
+    res.json({ success: true, message: `Question template "${template.title}" deleted successfully.` });
+  } catch (err: any) {
+    console.error('Failed to delete question template:', err);
+    res.status(500).json({ error: 'Failed to delete question template' });
   }
 });

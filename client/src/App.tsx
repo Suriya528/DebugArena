@@ -23,6 +23,7 @@ import { CertificateVerifyView } from './components/public/CertificateVerifyView
 import { LandingPage } from './components/home/LandingPage.js';
 import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
 import { VerifySignInView } from './components/auth/VerifySignInView.js';
+import { KioskRecoveryPortal } from './components/participant/KioskRecoveryPortal.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
@@ -46,7 +47,7 @@ export const App: React.FC = () => {
   const [portalLoading, setPortalLoading] = useState<boolean>(false);
   const [hasStartedActiveRound, setHasStartedActiveRoundState] = useState<boolean>(() => {
     try {
-      return sessionStorage.getItem('debugarena_active_round_session') === 'true';
+      return localStorage.getItem('debugarena_active_round_session') === 'true';
     } catch {
       return false;
     }
@@ -55,9 +56,9 @@ export const App: React.FC = () => {
   const setHasStartedActiveRound = useCallback((val: boolean) => {
     try {
       if (val) {
-        sessionStorage.setItem('debugarena_active_round_session', 'true');
+        localStorage.setItem('debugarena_active_round_session', 'true');
       } else {
-        sessionStorage.removeItem('debugarena_active_round_session');
+        localStorage.removeItem('debugarena_active_round_session');
       }
     } catch {}
     setHasStartedActiveRoundState(val);
@@ -80,12 +81,10 @@ export const App: React.FC = () => {
       setRoundState(res.data);
       setViolationCount(res.data.progress?.violationCount || 0);
 
-      // If participant is in an active round, resume ONLY if they previously began this session
+      // Server-Authoritative Crash Recovery: If the round is active and progress status is in_progress,
+      // resume automatically regardless of whether browser restarted or computer crashed.
       if (res.data.round?.status === 'active' && res.data.progress?.status === 'in_progress') {
-        const stored = sessionStorage.getItem('debugarena_active_round_session');
-        if (stored === 'true') {
-          setHasStartedActiveRound(true);
-        }
+        setHasStartedActiveRound(true);
       }
       if (
         res.data.progress?.status === 'submitted' ||
@@ -122,6 +121,9 @@ export const App: React.FC = () => {
       await api.post('/participant/submit-round', {
         roundNumber: roundState.round?.roundNumber || 1
       });
+      try {
+        localStorage.removeItem('debugarena_participant_recovery');
+      } catch {}
       await fetchRoundState();
     } catch (e) {
       console.warn('Auto submit failed or already finalized');
@@ -209,6 +211,19 @@ export const App: React.FC = () => {
         roundNumber: roundState.round?.roundNumber || 1
       });
       setHasStartedActiveRound(false);
+      try {
+        const rNum = roundState.round?.roundNumber || 1;
+        Object.keys(localStorage).forEach(key => {
+          if (
+            key.startsWith(`debugarena_code_draft_${rNum}`) ||
+            key.startsWith(`debugarena_mcq_draft_${rNum}`) ||
+            key.startsWith(`debugarena_lang_draft_${rNum}`)
+          ) {
+            localStorage.removeItem(key);
+          }
+        });
+        localStorage.removeItem('debugarena_participant_recovery');
+      } catch {}
       await fetchRoundState();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to submit round');
@@ -319,8 +334,30 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Unauthenticated Public Landing Page
+  // 1. Unauthenticated Public Landing Page (or Kiosk Recovery if active session was interrupted)
   if (!user) {
+    const rawRecovery = localStorage.getItem('debugarena_participant_recovery');
+    if (rawRecovery) {
+      try {
+        const recoveryData = JSON.parse(rawRecovery);
+        if (recoveryData && (recoveryData.regNo || recoveryData.username)) {
+          return (
+            <KioskRecoveryPortal
+              recoveryData={recoveryData}
+              onResumeSuccess={() => {
+                fetchRoundState();
+              }}
+              onSwitchUser={() => {
+                localStorage.removeItem('debugarena_participant_recovery');
+                window.location.reload();
+              }}
+            />
+          );
+        }
+      } catch (e) {
+        localStorage.removeItem('debugarena_participant_recovery');
+      }
+    }
     return <LandingPage />;
   }
 
@@ -384,8 +421,9 @@ export const App: React.FC = () => {
             </p>
             <button
               onClick={requestFullscreen}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-all active:scale-[0.98] cursor-pointer"
+              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
             >
+              <Maximize2 className="w-4 h-4" />
               Return to Full-Screen Assessment
             </button>
           </div>

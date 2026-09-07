@@ -12,7 +12,8 @@ import {
   Clock,
   Award,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { College, Event, DynamicRound, AuditLog } from '../../types/index.js';
 import {
@@ -27,6 +28,7 @@ import {
 } from '../../services/api.js';
 import { EventBuilderModal } from './EventBuilderModal.js';
 import { RoundBuilderModal } from './RoundBuilderModal.js';
+import { DeleteEventModal } from './DeleteEventModal.js';
 
 export const EventManager: React.FC = () => {
   const [colleges, setColleges] = useState<College[]>([]);
@@ -42,6 +44,9 @@ export const EventManager: React.FC = () => {
   // Modals
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isRoundModalOpen, setIsRoundModalOpen] = useState(false);
+
+  // Delete Event Modal State
+  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
 
   // Unfreeze reason modal
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
@@ -101,6 +106,22 @@ export const EventManager: React.FC = () => {
     } catch (err) {
       console.error('Failed to switch to newly created event:', err);
       fetchData();
+    }
+  };
+
+  const handleEventDeleted = async (deletedId: string) => {
+    const remaining = events.filter(e => e._id !== deletedId);
+    setEvents(remaining);
+    if (selectedEventId === deletedId) {
+      localStorage.removeItem('debugarena_active_event_id');
+      if (remaining.length > 0) {
+        await handleSelectEvent(remaining[0]._id);
+      } else {
+        setSelectedEventId('');
+        setActiveEvent(null);
+        setRounds([]);
+        setAuditLogs([]);
+      }
     }
   };
 
@@ -245,17 +266,29 @@ export const EventManager: React.FC = () => {
             >
               <div className="flex justify-between items-start mb-2">
                 <span className="font-mono text-xs font-bold text-indigo-400">{ev.code}</span>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    ev.status === 'live'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : ev.status === 'frozen'
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                      : 'bg-slate-800 text-slate-300'
-                  }`}
-                >
-                  {ev.status}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      ev.status === 'live'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : ev.status === 'frozen'
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    {ev.status}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEventToDelete(ev);
+                    }}
+                    className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    title="Delete Event"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <h3 className="font-bold text-white text-sm mb-1 truncate">{ev.name}</h3>
               <p className="text-xs text-slate-400 line-clamp-1 mb-3">{ev.description || 'No description'}</p>
@@ -339,6 +372,16 @@ export const EventManager: React.FC = () => {
               >
                 <History className="w-3.5 h-3.5" />
                 <span>Audit Logs ({auditLogs.length})</span>
+              </button>
+
+              {/* Delete Event Button */}
+              <button
+                onClick={() => setEventToDelete(activeEvent)}
+                className="py-2 px-3.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Permanently delete this event and its dynamic rounds"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Delete</span>
               </button>
 
               {/* Add Round Button */}
@@ -522,6 +565,13 @@ export const EventManager: React.FC = () => {
         onClose={() => setIsRoundModalOpen(false)}
         eventId={activeEvent?._id || ''}
         onRoundCreated={fetchData}
+      />
+
+      <DeleteEventModal
+        isOpen={Boolean(eventToDelete)}
+        event={eventToDelete}
+        onClose={() => setEventToDelete(null)}
+        onDeleted={handleEventDeleted}
       />
     </div>
   );

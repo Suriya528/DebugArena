@@ -33,11 +33,19 @@ export const McqShell: React.FC<McqShellProps> = ({
     const answers: Record<string, number | null> = {};
     const visited = new Set<string>();
 
-    initialAttempts.forEach(att => {
-      if (att.selectedOption !== null && att.selectedOption !== undefined) {
-        answers[att.questionId] = att.selectedOption;
+    questions.forEach(q => {
+      const existingAttempt = initialAttempts.find(a => a.questionId === q._id);
+      const localDraft = localStorage.getItem(`debugarena_mcq_draft_${roundNumber}_${q._id}`);
+
+      if (localDraft !== null) {
+        const parsed = parseInt(localDraft, 10);
+        if (!isNaN(parsed)) {
+          answers[q._id] = parsed;
+        }
+      } else if (existingAttempt && existingAttempt.selectedOption !== null && existingAttempt.selectedOption !== undefined) {
+        answers[q._id] = existingAttempt.selectedOption;
       }
-      visited.add(att.questionId);
+      visited.add(q._id);
     });
 
     if (questions.length > 0) {
@@ -47,7 +55,7 @@ export const McqShell: React.FC<McqShellProps> = ({
     setSelectedAnswers(answers);
     setVisitedQuestions(visited);
     setMarkedForReview(new Set(initialMarkedForReview));
-  }, [initialAttempts, initialMarkedForReview, questions]);
+  }, [initialAttempts, initialMarkedForReview, questions, roundNumber]);
 
   const currentQ = questions[currentIndex];
 
@@ -94,6 +102,9 @@ export const McqShell: React.FC<McqShellProps> = ({
     if (!currentQ) return;
     const qId = currentQ._id;
     setSelectedAnswers(prev => ({ ...prev, [qId]: optionIndex }));
+    try {
+      localStorage.setItem(`debugarena_mcq_draft_${roundNumber}_${qId}`, optionIndex.toString());
+    } catch {}
     debouncedSave(qId, optionIndex);
   };
 
@@ -101,6 +112,9 @@ export const McqShell: React.FC<McqShellProps> = ({
     if (!currentQ) return;
     const qId = currentQ._id;
     setSelectedAnswers(prev => ({ ...prev, [qId]: null }));
+    try {
+      localStorage.removeItem(`debugarena_mcq_draft_${roundNumber}_${qId}`);
+    } catch {}
     debouncedSave(qId, null);
   };
 

@@ -231,3 +231,23 @@ export async function verifyCertificatePublic(certificateId: string) {
   return res.data;
 }
 
+export async function deleteEvent(eventId: string) {
+  const res = await api.delete(`/admin/events/${eventId}`);
+  return res.data;
+}
+
+export async function updateQuestionTemplate(templateId: string, data: any) {
+  const res = await api.put(`/admin/questions/bank/${templateId}`, data);
+  return res.data;
+}
+
+export async function deleteQuestionTemplate(templateId: string) {
+  const res = await api.delete(`/admin/questions/bank/${templateId}`);
+  return res.data;
+}
+
+export async function createQuestionDirect(data: any) {
+  const res = await api.post('/admin/questions', data);
+  return res.data.question;
+}
+

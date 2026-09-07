@@ -13,14 +13,18 @@ import {
   Sparkles,
   Layers,
   HelpCircle,
-  AlertCircle
+  AlertCircle,
+  Pencil
 } from 'lucide-react';
-import { api } from '../../services/api.js';
+import { api, updateQuestionTemplate, createQuestionDirect } from '../../services/api.js';
 
 interface AddQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onQuestionAdded: () => void;
+  editingTemplate?: any | null;
+  targetRoundNumber?: number;
+  targetEventId?: string;
 }
 
 const TOPIC_PRESETS = [
@@ -53,7 +57,10 @@ const BUG_CATEGORIES = [
 export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
   isOpen,
   onClose,
-  onQuestionAdded
+  onQuestionAdded,
+  editingTemplate = null,
+  targetRoundNumber,
+  targetEventId
 }) => {
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('Algorithms');
@@ -88,6 +95,97 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (editingTemplate) {
+      setTitle(editingTemplate.title || '');
+      const t = editingTemplate.topic || 'Algorithms';
+      if (TOPIC_PRESETS.includes(t)) {
+        setTopic(t);
+        setCustomTopic('');
+      } else {
+        setTopic('__custom__');
+        setCustomTopic(t);
+      }
+      setLanguage(editingTemplate.language || 'python');
+      setType(editingTemplate.type || 'debugging');
+      setDifficulty(editingTemplate.difficulty || 'medium');
+      setMarks(editingTemplate.marks ?? 20);
+      setExpectedSolveTimeMinutes(editingTemplate.expectedSolveTimeMinutes ?? 15);
+      setSkillTagsInput(Array.isArray(editingTemplate.skillTags) ? editingTemplate.skillTags.join(', ') : (editingTemplate.skillTags || ''));
+      setPrompt(editingTemplate.prompt || '');
+      setExplanation(editingTemplate.explanation || '');
+
+      if (editingTemplate.options && editingTemplate.options.length > 0) {
+        setOptions(editingTemplate.options.map((o: any) => ({
+          text: typeof o === 'string' ? o : o.text || '',
+          isCorrect: typeof o === 'object' ? Boolean(o.isCorrect) : false
+        })));
+      } else {
+        setOptions([
+          { text: '', isCorrect: true },
+          { text: '', isCorrect: false },
+          { text: '', isCorrect: false },
+          { text: '', isCorrect: false }
+        ]);
+      }
+
+      if (editingTemplate.starterCode) {
+        if (typeof editingTemplate.starterCode === 'object') {
+          const codeVal = editingTemplate.starterCode[editingTemplate.language || 'python'] || Object.values(editingTemplate.starterCode)[0] || '';
+          setStarterCode(typeof codeVal === 'string' ? codeVal : JSON.stringify(codeVal, null, 2));
+        } else {
+          setStarterCode(String(editingTemplate.starterCode));
+        }
+      } else {
+        setStarterCode('');
+      }
+
+      if (editingTemplate.testCases && editingTemplate.testCases.length > 0) {
+        setTestCases(editingTemplate.testCases.map((tc: any) => ({
+          input: tc.input || '',
+          output: tc.output || tc.expectedOutput || '',
+          isHidden: Boolean(tc.isHidden),
+          weight: tc.weight || 10
+        })));
+      } else {
+        setTestCases([
+          { input: '', output: '', isHidden: false, weight: 10 },
+          { input: '', output: '', isHidden: true, weight: 10 }
+        ]);
+      }
+
+      setHasDnaMutation(Boolean(editingTemplate.hasDnaMutation));
+      setBugCategory(editingTemplate.dnaConfig?.bugCategory || 'off_by_one');
+      setError(null);
+    } else if (isOpen) {
+      setTitle('');
+      setTopic('Algorithms');
+      setCustomTopic('');
+      setLanguage('python');
+      setType(targetRoundNumber === 1 ? 'mcq' : 'debugging');
+      setDifficulty('medium');
+      setMarks(20);
+      setExpectedSolveTimeMinutes(15);
+      setSkillTagsInput('Debugging, Logic');
+      setPrompt('');
+      setExplanation('');
+      setOptions([
+        { text: '', isCorrect: true },
+        { text: '', isCorrect: false },
+        { text: '', isCorrect: false },
+        { text: '', isCorrect: false }
+      ]);
+      setStarterCode('');
+      setTestCases([
+        { input: '', output: '', isHidden: false, weight: 10 },
+        { input: '', output: '', isHidden: true, weight: 10 }
+      ]);
+      setHasDnaMutation(false);
+      setBugCategory('off_by_one');
+      setError(null);
+    }
+  }, [editingTemplate, isOpen, targetRoundNumber]);
 
   if (!isOpen) return null;
 
@@ -204,11 +302,31 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         };
       }
 
-      await api.post('/admin/questions/bank', payload);
+      if (editingTemplate) {
+        await updateQuestionTemplate(editingTemplate._id, payload);
+      } else if (targetRoundNumber) {
+        await createQuestionDirect({
+          ...payload,
+          roundNumber: targetRoundNumber,
+          eventId: targetEventId,
+          type: type === 'mcq' ? 'mcq' : 'coding',
+          options: type === 'mcq' && payload.options ? payload.options.map((o: any) => o.text) : [],
+          correctOptionIndex: type === 'mcq' && payload.options ? Math.max(0, payload.options.findIndex((o: any) => o.isCorrect)) : 0,
+          testCases: (type === 'coding' || type === 'debugging') && payload.testCases ? payload.testCases.map((tc: any) => ({
+            input: tc.input,
+            expectedOutput: tc.output,
+            isHidden: tc.isHidden,
+            weight: tc.weight
+          })) : []
+        });
+      } else {
+        await api.post('/admin/questions/bank', payload);
+      }
+
       onQuestionAdded();
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save question to bank.');
+      setError(err.response?.data?.error || 'Failed to save question.');
     } finally {
       setLoading(false);
     }
@@ -220,12 +338,30 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400">
-              <Plus className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center ${
+              editingTemplate
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                : targetRoundNumber
+                ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400'
+                : 'bg-purple-500/15 border-purple-500/30 text-purple-400'
+            }`}>
+              {editingTemplate ? <Pencil className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Add Question to Bank</h2>
-              <p className="text-xs text-slate-400">Create reusable challenge templates for tournament rounds</p>
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                {editingTemplate
+                  ? `Edit: ${editingTemplate.title}`
+                  : targetRoundNumber
+                  ? `Add Question to Round ${targetRoundNumber}`
+                  : 'Add Question to Bank'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {editingTemplate
+                  ? 'Update question specifications, test cases, and scoring rules'
+                  : targetRoundNumber
+                  ? 'Deploy challenge directly to this active event round'
+                  : 'Create reusable challenge templates for tournament rounds'}
+              </p>
             </div>
           </div>
           <button
@@ -630,7 +766,15 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{loading ? 'Adding Question...' : 'Add Question to Bank'}</span>
+              <span>
+                {loading
+                  ? 'Saving...'
+                  : editingTemplate
+                  ? 'Save Changes'
+                  : targetRoundNumber
+                  ? `Add to Round ${targetRoundNumber}`
+                  : 'Add Question to Bank'}
+              </span>
             </button>
           </div>
         </form>

@@ -70,8 +70,17 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     questions.forEach(q => {
       const existingAttempt = initialAttempts.find(a => a.questionId === q._id);
       const defaultLang = (q.allowedLanguages && q.allowedLanguages[0]) || 'python';
+      const localDraft = localStorage.getItem(`debugarena_code_draft_${roundNumber}_${q._id}`);
+      const localLang = localStorage.getItem(`debugarena_lang_draft_${roundNumber}_${q._id}`);
 
-      if (existingAttempt && existingAttempt.code) {
+      if (localDraft) {
+        langs[q._id] = localLang || existingAttempt?.language || defaultLang;
+        codes[q._id] = localDraft;
+        bestScores[q._id] = existingAttempt?.score || 0;
+        if (existingAttempt?.testCaseResults) {
+          existingResults[q._id] = existingAttempt.testCaseResults;
+        }
+      } else if (existingAttempt && existingAttempt.code) {
         langs[q._id] = existingAttempt.language || defaultLang;
         codes[q._id] = existingAttempt.code;
         bestScores[q._id] = existingAttempt.score || 0;
@@ -90,7 +99,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     setCodeBuffers(codes);
     setScores(bestScores);
     setRunResults(existingResults);
-  }, [questions, initialAttempts]);
+  }, [questions, initialAttempts, roundNumber]);
 
   // Debounced save with idempotent operation tracking
   const debouncedSaveCode = useDebouncedCallback(
@@ -129,6 +138,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     if (!currentQ || newCode === undefined) return;
     const qId = currentQ._id;
     setCodeBuffers(prev => ({ ...prev, [qId]: newCode }));
+    try {
+      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${qId}`, newCode);
+    } catch {}
     debouncedSaveCode(qId, newCode, selectedLanguages[qId] || 'python');
   };
 
@@ -136,6 +148,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     if (!currentQ) return;
     const qId = currentQ._id;
     setSelectedLanguages(prev => ({ ...prev, [qId]: newLang }));
+    try {
+      localStorage.setItem(`debugarena_lang_draft_${roundNumber}_${qId}`, newLang);
+    } catch {}
 
     // If current code equals starter code of previous language or is empty, switch to new language starter code
     const currentCode = codeBuffers[qId];
@@ -145,6 +160,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
     if (!currentCode || currentCode === prevStarter) {
       setCodeBuffers(prev => ({ ...prev, [qId]: newStarter }));
+      try {
+        localStorage.setItem(`debugarena_code_draft_${roundNumber}_${qId}`, newStarter);
+      } catch {}
       debouncedSaveCode(qId, newStarter, newLang);
     } else {
       debouncedSaveCode(qId, currentCode, newLang);

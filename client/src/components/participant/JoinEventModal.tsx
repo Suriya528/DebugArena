@@ -36,6 +36,28 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
 
   if (!isOpen) return null;
 
+  const requestKioskFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        const elem = document.documentElement as any;
+        if (elem.requestFullscreen) {
+          await elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          await elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+          await elem.msRequestFullscreen();
+        }
+      }
+      if ('keyboard' in navigator && (navigator as any).keyboard?.lock) {
+        try {
+          await (navigator as any).keyboard.lock(['Escape']);
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Fullscreen request bypassed:', err);
+    }
+  };
+
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -48,7 +70,10 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
         return;
       }
 
-      await joinEventByCode({
+      // Engage fullscreen immediately on user submit gesture
+      await requestKioskFullscreen();
+
+      const res = await joinEventByCode({
         eventCode: eventCode.trim().toUpperCase(),
         name: fullName.trim(),
         regNo: regNo.trim().toUpperCase(),
@@ -56,6 +81,15 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
         year: year.trim(),
         password: password.trim()
       });
+
+      try {
+        localStorage.setItem('debugarena_participant_recovery', JSON.stringify({
+          name: fullName.trim(),
+          regNo: regNo.trim().toUpperCase(),
+          username: res?.user?.username || regNo.trim().toUpperCase(),
+          eventCode: eventCode.trim().toUpperCase()
+        }));
+      } catch {}
 
       if (onSuccess) onSuccess();
       onClose();
@@ -78,7 +112,19 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
         return;
       }
 
-      await login(loginUsername.trim(), loginPassword);
+      // Engage fullscreen immediately on user submit gesture
+      await requestKioskFullscreen();
+
+      const res = await login(loginUsername.trim(), loginPassword);
+
+      try {
+        localStorage.setItem('debugarena_participant_recovery', JSON.stringify({
+          name: res?.name || loginUsername.trim(),
+          regNo: loginUsername.trim(),
+          username: res?.username || loginUsername.trim()
+        }));
+      } catch {}
+
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {

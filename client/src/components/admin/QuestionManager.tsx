@@ -21,7 +21,13 @@ import {
   ArrowRight,
   Filter,
   Check,
-  Database
+  Database,
+  Pencil,
+  Copy,
+  X,
+  FileCode,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Question, Event, DynamicRound } from '../../types/index.js';
 import { api, getEvents, getEventDetails } from '../../services/api.js';
@@ -58,8 +64,13 @@ export const QuestionManager: React.FC = () => {
   const [countsByType, setCountsByType] = useState<Record<string, number>>({});
   const [totalBankCount, setTotalBankCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [bankLoading, setBankLoading] = useState<boolean>(false);
   const [seedingBank, setSeedingBank] = useState<boolean>(false);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [expandedBankId, setExpandedBankId] = useState<string | null>(null);
+  const [activeCodeLangTab, setActiveCodeLangTab] = useState<Record<string, string>>({});
+  const [directRoundTarget, setDirectRoundTarget] = useState<number | undefined>(undefined);
 
   // Modals & Notifications
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -69,6 +80,64 @@ export const QuestionManager: React.FC = () => {
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Live debounced search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  const toggleExpandBank = (id: string) => {
+    setExpandedBankId(prev => (prev === id ? null : id));
+  };
+
+  const handleEditTemplate = (template: any) => {
+    setEditingTemplate(template);
+    setDirectRoundTarget(undefined);
+    setIsAddModalOpen(true);
+  };
+
+  const handleDeleteTemplate = async (templateId: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${title}" from the Question Bank?`)) return;
+    try {
+      await api.delete(`/admin/questions/bank/${templateId}`);
+      setBankQuestions(prev => prev.filter(q => q._id !== templateId));
+      setTotalBankCount(prev => Math.max(0, prev - 1));
+      showToast(`Question "${title}" deleted from bank.`);
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to delete question template', 'error');
+    }
+  };
+
+  const handleDuplicateTemplate = async (template: any) => {
+    try {
+      const duplicated = {
+        title: `${template.title} (Copy)`,
+        topic: template.topic,
+        language: template.language,
+        type: template.type,
+        difficulty: template.difficulty,
+        expectedSolveTimeMinutes: template.expectedSolveTimeMinutes,
+        marks: template.marks,
+        skillTags: template.skillTags,
+        prompt: template.prompt,
+        explanation: template.explanation,
+        options: template.options,
+        allowedLanguages: template.allowedLanguages,
+        starterCode: template.starterCode,
+        testCases: template.testCases,
+        hasDnaMutation: template.hasDnaMutation,
+        dnaConfig: template.dnaConfig
+      };
+      await api.post('/admin/questions/bank', duplicated);
+      showToast(`Question duplicated as "${duplicated.title}"!`);
+      await fetchQuestionBank();
+    } catch (err: any) {
+      showToast('Failed to duplicate question', 'error');
+    }
   };
 
   // 1. Initial Load of Events
@@ -135,7 +204,7 @@ export const QuestionManager: React.FC = () => {
       if (selectedDifficulty) params.difficulty = selectedDifficulty;
       if (selectedType) params.type = selectedType;
       if (selectedLanguage) params.language = selectedLanguage;
-      if (searchQuery) params.search = searchQuery;
+      if (debouncedSearch) params.search = debouncedSearch;
 
       const res = await api.get('/admin/questions/bank', { params });
       setBankQuestions(res.data.questions || []);
@@ -157,7 +226,7 @@ export const QuestionManager: React.FC = () => {
     } else {
       fetchQuestionBank();
     }
-  }, [activeView, selectedRound, selectedEventId, selectedTopic, selectedDifficulty, selectedType, selectedLanguage]);
+  }, [activeView, selectedRound, selectedEventId, selectedTopic, selectedDifficulty, selectedType, selectedLanguage, debouncedSearch]);
 
   // Seed single round questions
   const handleSeedRoundQuestions = async (roundNum: number = selectedRound) => {
@@ -477,189 +546,356 @@ export const QuestionManager: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {bankQuestions.map(item => (
-                <div
-                  key={item._id}
-                  className="rounded-3xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between hover:border-slate-700 transition-all shadow-xl shadow-slate-950/40 group"
-                >
-                  <div>
-                    {/* Badges */}
-                    <div className="flex flex-wrap items-center gap-2 mb-3">
-                      {item.type === 'mcq' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
-                          <CheckCircle2 className="w-3 h-3" /> MCQ
-                        </span>
-                      ) : item.type === 'sql' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 font-mono">
-                          <Database className="w-3 h-3" /> SQL Query
-                        </span>
-                      ) : item.type === 'coding' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center gap-1 font-mono">
-                          <Code2 className="w-3 h-3" /> Coding
-                        </span>
-                      ) : item.type === 'aptitude' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 font-mono">
-                          <Sparkles className="w-3 h-3" /> Aptitude
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1 font-mono">
-                          <AlertOctagon className="w-3 h-3" /> Bug Hunting
-                        </span>
-                      )}
+            <div className="grid grid-cols-1 gap-4">
+              {bankQuestions.map(item => {
+                const isExpanded = expandedBankId === item._id;
+                const starterCodeObj = typeof item.starterCode === 'object' && item.starterCode !== null
+                  ? item.starterCode
+                  : { [item.language || 'python']: String(item.starterCode || '') };
+                const starterLanguages = Object.keys(starterCodeObj);
+                const currentLang = activeCodeLangTab[item._id] || item.language || starterLanguages[0] || 'python';
+                const currentStarterCode = starterCodeObj[currentLang] || Object.values(starterCodeObj)[0] || '';
 
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300">
-                        {item.topic}
-                      </span>
-                      {item.language && (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                          {item.language}
-                        </span>
-                      )}
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          item.difficulty === 'easy'
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : item.difficulty === 'hard'
-                            ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                            : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                        }`}
-                      >
-                        {item.difficulty}
-                      </span>
-                      {item.hasDnaMutation && (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1 animate-pulse">
-                          <Dna className="w-3 h-3" /> Question DNA
-                        </span>
-                      )}
-                      {item.dnaConfig?.bugCategory && (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
-                          <AlertOctagon className="w-2.5 h-2.5" /> Bug: {item.dnaConfig.bugCategory.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </div>
+                return (
+                  <div
+                    key={item._id}
+                    className={`rounded-3xl bg-slate-900 border transition-all shadow-xl shadow-slate-950/40 group ${
+                      isExpanded ? 'border-purple-500/60 ring-1 ring-purple-500/20' : 'border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="p-6">
+                      {/* Top Badges & Actions Bar */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.type === 'mcq' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                              <CheckCircle2 className="w-3 h-3" /> MCQ
+                            </span>
+                          ) : item.type === 'sql' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1 font-mono">
+                              <Database className="w-3 h-3" /> SQL Query
+                            </span>
+                          ) : item.type === 'coding' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center gap-1 font-mono">
+                              <Code2 className="w-3 h-3" /> Coding
+                            </span>
+                          ) : item.type === 'aptitude' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 font-mono">
+                              <Sparkles className="w-3 h-3" /> Aptitude
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1 font-mono">
+                              <AlertOctagon className="w-3 h-3" /> Bug Hunting
+                            </span>
+                          )}
 
-                    <h3 className="text-base font-black text-white mb-2 group-hover:text-indigo-300 transition-colors">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs text-slate-400 line-clamp-2 mb-3 leading-relaxed font-sans">{item.prompt}</p>
-
-                    {/* MCQ Options Preview */}
-                    {item.type === 'mcq' && item.options && item.options.length > 0 && (
-                      <div className="my-3 p-3 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-1.5">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Multiple Choice Options:
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {item.options.slice(0, 4).map((opt: any, optIdx: number) => (
-                            <div
-                              key={optIdx}
-                              className={`text-[11px] px-2.5 py-1.5 rounded-xl flex items-center gap-2 border font-mono ${
-                                opt.isCorrect
-                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 font-semibold'
-                                  : 'bg-slate-900/60 text-slate-400 border-slate-800/80'
-                              }`}
-                            >
-                              <span
-                                className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                                  opt.isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
-                                }`}
-                              >
-                                {String.fromCharCode(65 + optIdx)}
-                              </span>
-                              <span className="truncate flex-1">{opt.text}</span>
-                              {opt.isCorrect && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* SQL Starter Query / Schema Preview */}
-                    {item.type === 'sql' && item.starterCode && (
-                      <div className="my-3 p-3 rounded-2xl bg-slate-950/70 border border-amber-500/20 font-mono">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1.5 flex items-center gap-1">
-                          <Database className="w-3 h-3" /> Initial SQL Schema / Query Template:
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-amber-200/90 leading-relaxed overflow-x-auto max-h-24">
-                          <pre className="whitespace-pre-wrap font-mono">
-                            {typeof item.starterCode === 'object'
-                              ? (item.starterCode.sql || Object.values(item.starterCode)[0] || '')
-                              : item.starterCode}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Coding / Debugging Test Cases Preview */}
-                    {(item.type === 'coding' || item.type === 'debugging') && item.testCases && item.testCases.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-400 my-2.5">
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-1">
-                          <Code2 className="w-3 h-3 text-indigo-400" />
-                          {item.testCases.length} Test Case{item.testCases.length > 1 ? 's' : ''} ({item.testCases.filter((tc: any) => tc.isHidden).length} hidden)
-                        </span>
-                        {item.allowedLanguages && item.allowedLanguages.length > 0 && (
-                          <span className="text-slate-500">
-                            Allowed: {item.allowedLanguages.slice(0, 4).join(', ')}
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300">
+                            {item.topic}
                           </span>
+                          {item.language && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                              {item.language}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              item.difficulty === 'easy'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : item.difficulty === 'hard'
+                                ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                            }`}
+                          >
+                            {item.difficulty}
+                          </span>
+                          {item.hasDnaMutation && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1 animate-pulse">
+                              <Dna className="w-3 h-3" /> Question DNA
+                            </span>
+                          )}
+                          {item.dnaConfig?.bugCategory && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                              <AlertOctagon className="w-2.5 h-2.5" /> Bug: {item.dnaConfig.bugCategory.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Top Action Buttons (Edit, Duplicate, Delete) */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditTemplate(item);
+                            }}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-slate-800 cursor-pointer"
+                            title="Edit Question Template"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-amber-400" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicateTemplate(item);
+                            }}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-slate-800 cursor-pointer"
+                            title="Duplicate Question"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTemplate(item._id, item.title);
+                            }}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-slate-800 cursor-pointer"
+                            title="Delete Question"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Question Title & Prompt */}
+                      <div className="cursor-pointer" onClick={() => toggleExpandBank(item._id)}>
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-base font-black text-white mb-2 group-hover:text-indigo-300 transition-colors flex-1">
+                            {item.title}
+                          </h3>
+                          <span className="p-1 text-slate-500 hover:text-slate-300">
+                            {isExpanded ? <ChevronUp className="w-4 h-4 text-purple-400" /> : <ChevronDown className="w-4 h-4" />}
+                          </span>
+                        </div>
+                        {!isExpanded && (
+                          <p className="text-xs text-slate-400 line-clamp-2 mb-3 leading-relaxed font-sans">{item.prompt}</p>
                         )}
                       </div>
-                    )}
 
-                    {/* Skill Tags */}
-                    {item.skillTags?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-4">
-                        {item.skillTags.map((tag: string) => (
-                          <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-mono bg-slate-950 text-slate-400 border border-slate-800">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                      {/* EXPANDED ACCORDION VIEW */}
+                      {isExpanded && (
+                        <div className="my-4 pt-4 border-t border-slate-800/80 space-y-4 animate-in fade-in duration-150 text-left">
+                          {/* Full Problem Prompt */}
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                              <BookOpen className="w-3.5 h-3.5 text-purple-400" /> Full Problem Prompt:
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
+                              {item.prompt}
+                            </div>
+                          </div>
 
-                  <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-500" /> {item.expectedSolveTimeMinutes}m
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Award className="w-3 h-3 text-slate-500" /> {item.marks} pts
-                      </span>
-                    </div>
+                          {/* Explanation if present */}
+                          {item.explanation && (
+                            <div className="p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 text-xs text-indigo-300">
+                              <span className="font-bold text-indigo-200">💡 Explanation / Notes: </span>
+                              {item.explanation}
+                            </div>
+                          )}
 
-                    <div className="flex items-center gap-2">
-                      {/* Preview Variants Button (USP) */}
-                      {item.hasDnaMutation && (
-                        <button
-                          onClick={() => setPreviewTemplate({ id: item._id, title: item.title })}
-                          className="py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
-                        >
-                          <Dna className="w-3.5 h-3.5" />
-                          <span>Preview DNA Variants</span>
-                        </button>
+                          {/* MCQ Options Inspector */}
+                          {item.type === 'mcq' && item.options && item.options.length > 0 && (
+                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Multiple Choice Options & Key:
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {item.options.map((opt: any, optIdx: number) => {
+                                  const optText = typeof opt === 'string' ? opt : opt.text;
+                                  const isCorrect = typeof opt === 'object' ? opt.isCorrect : optIdx === 0;
+                                  return (
+                                    <div
+                                      key={optIdx}
+                                      className={`text-xs p-3 rounded-xl flex items-center gap-2.5 border font-mono ${
+                                        isCorrect
+                                          ? 'bg-emerald-500/10 text-emerald-200 border-emerald-500/40 font-bold'
+                                          : 'bg-slate-900/70 text-slate-300 border-slate-800'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                          isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
+                                        }`}
+                                      >
+                                        {String.fromCharCode(65 + optIdx)}
+                                      </span>
+                                      <span className="flex-1 break-words">{optText}</span>
+                                      {isCorrect && (
+                                        <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 flex items-center gap-1">
+                                          <Check className="w-3 h-3" /> Correct
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Coding / Debugging / SQL Starter Code Inspector */}
+                          {(item.type === 'coding' || item.type === 'debugging' || item.type === 'sql') && (
+                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                  <FileCode className="w-3.5 h-3.5 text-indigo-400" /> Starter Code Template:
+                                </div>
+                                {starterLanguages.length > 1 && (
+                                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                                    {starterLanguages.map(lang => (
+                                      <button
+                                        key={lang}
+                                        onClick={() => setActiveCodeLangTab(prev => ({ ...prev, [item._id]: lang }))}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                                          currentLang === lang
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'text-slate-400 hover:text-white'
+                                        }`}
+                                      >
+                                        {lang.toUpperCase()}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 overflow-x-auto max-h-56">
+                                <pre className="text-xs text-indigo-200/90 font-mono whitespace-pre-wrap leading-relaxed">
+                                  {currentStarterCode || '// No starter code configured for this language.'}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Test Cases Table */}
+                          {(item.type === 'coding' || item.type === 'debugging' || item.type === 'sql') && item.testCases && item.testCases.length > 0 && (
+                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                                <Code2 className="w-3.5 h-3.5 text-cyan-400" /> Test Cases Suite ({item.testCases.length} Cases):
+                              </div>
+                              <div className="space-y-2">
+                                {item.testCases.map((tc: any, tcIdx: number) => (
+                                  <div
+                                    key={tcIdx}
+                                    className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 font-mono text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                  >
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center justify-center">
+                                        #{tcIdx + 1}
+                                      </span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                          tc.isHidden
+                                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                        }`}
+                                      >
+                                        {tc.isHidden ? 'Hidden Eval' : 'Public Sample'}
+                                      </span>
+                                      <span className="text-[11px] text-slate-400 font-bold">
+                                        {tc.weight || 10} pts
+                                      </span>
+                                    </div>
+                                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                      <div className="p-2 rounded-lg bg-slate-950 border border-slate-800/80">
+                                        <span className="text-[10px] text-slate-500 block mb-0.5">Input:</span>
+                                        <span className="text-slate-300 whitespace-pre-wrap break-all">{tc.input || '(empty)'}</span>
+                                      </div>
+                                      <div className="p-2 rounded-lg bg-slate-950 border border-slate-800/80">
+                                        <span className="text-[10px] text-slate-500 block mb-0.5">Expected Output:</span>
+                                        <span className="text-emerald-400 whitespace-pre-wrap break-all">{tc.output || tc.expectedOutput || '(empty)'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
 
-                      {/* Deploy to Round Dropdown */}
-                      <select
-                        onChange={e => {
-                          if (e.target.value) {
-                            handleDeployToRound(item._id, parseInt(e.target.value, 10));
-                            e.target.value = '';
-                          }
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3 rounded-xl cursor-pointer focus:outline-none"
-                      >
-                        <option value="">Deploy to Round ▼</option>
-                        <option value="1">Round 1 (MCQ)</option>
-                        <option value="2">Round 2 (Bug Hunting)</option>
-                        <option value="3">Round 3 (Advanced Coding)</option>
-                        <option value="99">Round 99 (Tie-Breaker)</option>
-                      </select>
+                      {/* Collapsed Preview snippet */}
+                      {!isExpanded && item.type === 'mcq' && item.options && (
+                        <div className="my-2 text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{item.options.length} Multiple Choice Options (Click card to expand details)</span>
+                        </div>
+                      )}
+
+                      {!isExpanded && (item.type === 'coding' || item.type === 'debugging' || item.type === 'sql') && item.testCases && (
+                        <div className="my-2 text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
+                          <Code2 className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>{item.testCases.length} Test Cases ({item.testCases.filter((tc: any) => tc.isHidden).length} hidden)</span>
+                        </div>
+                      )}
+
+                      {/* Skill Tags */}
+                      {item.skillTags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2 mt-2">
+                          {item.skillTags.map((tag: string) => (
+                            <span key={tag} className="px-2 py-0.5 rounded-lg text-[10px] font-mono bg-slate-950 text-slate-400 border border-slate-800">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Footer Bar */}
+                    <div className="p-4 px-6 border-t border-slate-800/80 bg-slate-950/40 rounded-b-3xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-slate-500" /> {item.expectedSolveTimeMinutes}m
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Award className="w-3.5 h-3.5 text-slate-500" /> {item.marks} pts
+                        </span>
+                        <button
+                          onClick={() => toggleExpandBank(item._id)}
+                          className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer transition-colors ml-2"
+                        >
+                          {isExpanded ? 'Collapse Details' : 'Expand Details'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {item.hasDnaMutation && (
+                          <button
+                            onClick={() => setPreviewTemplate({ id: item._id, title: item.title })}
+                            className="py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Dna className="w-3.5 h-3.5" />
+                            <span>Preview DNA</span>
+                          </button>
+                        )}
+
+                        {/* Deploy to Round Dropdown */}
+                        <select
+                          onChange={e => {
+                            if (e.target.value) {
+                              handleDeployToRound(item._id, parseInt(e.target.value, 10));
+                              e.target.value = '';
+                            }
+                          }}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3 rounded-xl cursor-pointer focus:outline-none transition-all shadow-sm"
+                        >
+                          <option value="">Deploy to Round ▼</option>
+                          {dynamicRounds.length > 0 ? (
+                            dynamicRounds.map(dr => (
+                              <option key={dr.roundNumber} value={dr.roundNumber}>
+                                Round {dr.roundNumber}: {dr.title} ({dr.type.toUpperCase()})
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="1">Round 1 (MCQ)</option>
+                              <option value="2">Round 2 (Bug Hunting)</option>
+                              <option value="3">Round 3 (Advanced Coding)</option>
+                              <option value="99">Round 99 (Tie-Breaker)</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -744,6 +980,18 @@ export const QuestionManager: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                onClick={() => {
+                  setEditingTemplate(null);
+                  setDirectRoundTarget(selectedRound);
+                  setIsAddModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Question to Round</span>
+              </button>
+
               <button
                 onClick={() => handleSeedRoundQuestions(selectedRound)}
                 disabled={seedingRound}
@@ -900,13 +1148,28 @@ export const QuestionManager: React.FC = () => {
         </div>
       )}
 
-      {/* Add Question to Bank Modal */}
+      {/* Add / Edit Question Modal */}
       <AddQuestionModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        editingTemplate={editingTemplate}
+        targetRoundNumber={directRoundTarget}
+        targetEventId={selectedEventId}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingTemplate(null);
+          setDirectRoundTarget(undefined);
+        }}
         onQuestionAdded={() => {
-          fetchQuestionBank();
-          showToast('New question created and added to Question Bank!');
+          if (directRoundTarget) {
+            fetchRoundQuestions();
+            showToast(`New question added to Round ${directRoundTarget}!`);
+          } else if (editingTemplate) {
+            fetchQuestionBank();
+            showToast('Question template updated successfully!');
+          } else {
+            fetchQuestionBank();
+            showToast('New question created and added to Question Bank!');
+          }
         }}
       />
 

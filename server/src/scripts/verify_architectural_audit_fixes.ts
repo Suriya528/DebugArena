@@ -12,6 +12,10 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { Question } from '../models/Question.js';
 import { participantRouter } from '../routes/participant.js';
 import { adminRouter } from '../routes/admin.js';
+import { adminEventRouter } from '../routes/adminEvent.js';
+import { adminQuestionBankRouter } from '../routes/adminQuestionBank.js';
+import { Attempt } from '../models/Attempt.js';
+import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { authRouter } from '../routes/auth.js';
 import { initSocketIO } from '../services/socketService.js';
 
@@ -30,6 +34,8 @@ async function setup() {
 
   app.use('/api/auth', authRouter);
   app.use('/api/participant', participantRouter);
+  app.use('/api/admin/events', adminEventRouter);
+  app.use('/api/admin/questions/bank', adminQuestionBankRouter);
   app.use('/api/admin', adminRouter);
 
   await new Promise<void>((resolve) => {
@@ -230,6 +236,168 @@ async function runTests() {
   }
   console.log('  ✔ Submitted candidate preserved (status: "submitted").');
   console.log('  ✔ Eliminated candidate strictly preserved (status: "eliminated").\n');
+
+  // -------------------------------------------------------------
+  // TEST 4: Event Deletion & Cascade Purge
+  // -------------------------------------------------------------
+  console.log('--- TEST 4: Event Deletion & Multi-Tier Cascade Cleanup ---');
+  const testEvent = await Event.create({
+    collegeId: college._id,
+    name: 'HackSprint 2026',
+    code: 'HACK26',
+    status: 'draft'
+  });
+
+  const testRound = await DynamicRound.create({
+    eventId: testEvent._id,
+    collegeId: college._id,
+    roundNumber: 1,
+    title: 'Round 1 Dynamic',
+    roundType: 'mcq'
+  });
+
+  const testStudent = await User.create({
+    name: 'Cascade Student',
+    username: 'cascade_student',
+    passwordHash: 'hash123',
+    role: 'participant',
+    collegeId: college._id,
+    eventId: testEvent._id
+  });
+
+  const testQuestion = await Question.create({
+    collegeId: college._id,
+    eventId: testEvent._id,
+    roundNumber: 1,
+    type: 'mcq',
+    title: 'Cascade MCQ',
+    prompt: 'What is O(1)?',
+    options: ['Constant', 'Linear'],
+    correctOptionIndex: 0
+  });
+
+  const testAttempt = await Attempt.create({
+    userId: testStudent._id,
+    questionId: testQuestion._id,
+    roundNumber: 1,
+    selectedOption: 0,
+    score: 10
+  });
+
+  const testProgress = await RoundProgress.create({
+    userId: testStudent._id,
+    roundNumber: 1,
+    status: 'in_progress',
+    totalScore: 10
+  });
+
+  const delEventRes = await fetch(`${baseUrl}/api/admin/events/${testEvent._id.toString()}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${adminToken}` }
+  });
+  if (!delEventRes.ok) {
+    throw new Error(`Event deletion failed: ${await delEventRes.text()}`);
+  }
+
+  const checkEvt = await Event.findById(testEvent._id);
+  const checkRnd = await DynamicRound.findOne({ eventId: testEvent._id });
+  const checkQ = await Question.findOne({ eventId: testEvent._id });
+  const checkUsr = await User.findById(testStudent._id);
+  const checkAtt = await Attempt.findById(testAttempt._id);
+  const checkProg = await RoundProgress.findById(testProgress._id);
+
+  if (checkEvt || checkRnd || checkQ || checkUsr || checkAtt || checkProg) {
+    throw new Error('Cascade purge failed: orphaned records found after deleting event!');
+  }
+  console.log('  ✔ Event and all child resources (dynamic rounds, questions, participants, attempts, progress) purged with zero orphans.\n');
+
+  // -------------------------------------------------------------
+  // TEST 5: Question Bank CRUD (PUT & DELETE)
+  // -------------------------------------------------------------
+  console.log('--- TEST 5: Question Bank Template Update & Deletion ---');
+  const bankTemplate = await QuestionTemplate.create({
+    title: 'Original Bank Template',
+    topic: 'Arrays',
+    language: 'python',
+    type: 'debugging',
+    prompt: 'Fix the off-by-one bug',
+    marks: 20
+  });
+
+  // Test PUT /api/admin/questions/bank/:templateId
+  const updateRes = await fetch(`${baseUrl}/api/admin/questions/bank/${bankTemplate._id.toString()}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`
+    },
+    body: JSON.stringify({
+      title: 'Updated Bank Template',
+      topic: 'Dynamic Programming',
+      prompt: 'Updated prompt with deep DP analysis',
+      marks: 30
+    })
+  });
+  if (!updateRes.ok) {
+    throw new Error(`Template update failed: ${await updateRes.text()}`);
+  }
+
+  const updatedDoc = await QuestionTemplate.findById(bankTemplate._id);
+  if (updatedDoc?.title !== 'Updated Bank Template' || updatedDoc?.marks !== 30) {
+    throw new Error('Template update did not persist correctly!');
+  }
+  console.log('  ✔ Question Bank template successfully updated via PUT.');
+
+  // Test DELETE /api/admin/questions/bank/:templateId
+  const deleteTemplateRes = await fetch(`${baseUrl}/api/admin/questions/bank/${bankTemplate._id.toString()}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${adminToken}` }
+  });
+  if (!deleteTemplateRes.ok) {
+    throw new Error(`Template deletion failed: ${await deleteTemplateRes.text()}`);
+  }
+
+  const deletedDoc = await QuestionTemplate.findById(bankTemplate._id);
+  if (deletedDoc) {
+    throw new Error('Template was not deleted!');
+  }
+  console.log('  ✔ Question Bank template successfully removed via DELETE.\n');
+
+  // -------------------------------------------------------------
+  // TEST 6: Direct Question Creation auto-assigns collegeId
+  // -------------------------------------------------------------
+  console.log('--- TEST 6: Direct Question Creation auto-assigns collegeId ---');
+  const eventDirect = await Event.create({
+    collegeId: college._id,
+    name: 'Direct Event',
+    code: 'DIRECT26',
+    status: 'draft'
+  });
+
+  const directQRes = await fetch(`${baseUrl}/api/admin/questions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`
+    },
+    body: JSON.stringify({
+      eventId: eventDirect._id.toString(),
+      roundNumber: 2,
+      type: 'coding',
+      title: 'Direct Question',
+      prompt: 'Test prompt',
+      marks: 20
+    })
+  });
+  if (!directQRes.ok) {
+    throw new Error(`Direct question creation failed: ${await directQRes.text()}`);
+  }
+  const directQJson = await directQRes.json();
+  const savedDirectQ = await Question.findById(directQJson.question._id);
+  if (!savedDirectQ?.collegeId || savedDirectQ.collegeId.toString() !== college._id.toString()) {
+    throw new Error(`collegeId was not populated on Question! Got: ${savedDirectQ?.collegeId}`);
+  }
+  console.log('  ✔ Direct question creation correctly populated collegeId from parent event/user session.\n');
 
   console.log('================================================================');
   console.log('🎉 ALL ARCHITECTURAL AUDIT VERIFICATION TESTS PASSED!');
