@@ -3,6 +3,7 @@ import { Terminal, LogOut, Shield, User as UserIcon, Clock, Key } from 'lucide-r
 import { useAuth } from '../../context/AuthContext.js';
 import { ConnectionBadge } from './ConnectionBadge.js';
 import { PasskeyProfileModal } from '../admin/PasskeyProfileModal.js';
+import { ThemeToggle } from './ThemeToggle.js';
 
 interface NavbarProps {
   roundTitle?: string;
@@ -27,7 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
 
   return (
-    <header className="h-16 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
+    <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 bg-white/90 dark:bg-slate-950/70 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 transition-colors">
       {/* Brand & Round Title */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2.5">
@@ -102,10 +103,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Right User & Status */}
       <div className="flex items-center gap-2 sm:gap-3">
+        <ThemeToggle />
         <ConnectionBadge />
 
         {user && (
-          <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1.5 sm:pl-2 border-l border-slate-800">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1.5 sm:pl-2 border-l border-slate-300 dark:border-slate-800">
             {/* Organizer Profile & Security Passkey Access */}
             {user.role !== 'participant' ? (
               <button

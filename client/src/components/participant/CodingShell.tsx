@@ -17,6 +17,7 @@ import {
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
+import { useTheme } from '../../context/ThemeContext.js';
 
 interface CodingShellProps {
   questions: Question[];
@@ -33,6 +34,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   onSubmitRound,
   isSubmittingRound
 }) => {
+  const { isDark } = useTheme();
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
   const currentQ = questions[currentQIndex];
 
@@ -506,7 +508,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             <Editor
               height="100%"
               language={getMonacoLang(currentLang)}
-              theme="vs-dark"
+              theme={isDark ? "vs-dark" : "light"}
               value={currentCode}
               onChange={handleCodeChange}
               options={{

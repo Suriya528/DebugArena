@@ -37,13 +37,18 @@ import {
   BarChart2,
   Star,
   Hash,
-  Send
+  Send,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
 import { JoinEventModal } from '../participant/JoinEventModal.js';
 import { FooterDetailModal, FooterTopicId } from './FooterDetailModal.js';
+import { ThemeToggle } from '../common/ThemeToggle.js';
+import { useTheme } from '../../context/ThemeContext.js';
 
 export const LandingPage: React.FC = () => {
+  const { isDark } = useTheme();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -60,7 +65,6 @@ export const LandingPage: React.FC = () => {
   const [simulatedProctorStrike, setSimulatedProctorStrike] = useState<number>(0);
   const [proctorAlertMessage, setProctorAlertMessage] = useState<string | null>(null);
   const [activeTestCase, setActiveTestCase] = useState<number>(1);
-  const [selectedLanguage, setSelectedLanguage] = useState<'python' | 'cpp' | 'java'>('python');
 
   const handleVerifyCert = (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,41 +104,41 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] text-slate-100 flex flex-col selection:bg-amber-500 selection:text-black relative overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-amber-500 selection:text-black relative overflow-x-hidden font-sans transition-colors duration-200">
       {/* Background Matrix & Subtle Gradient Mesh */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.035]"
+        className="absolute inset-0 pointer-events-none opacity-[0.04] dark:opacity-[0.035]"
         style={{
           backgroundImage: `radial-gradient(#f59e0b 1px, transparent 1px)`,
           backgroundSize: '24px 24px'
         }}
       />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent pointer-events-none" />
-      <div className="absolute top-28 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-slate-800 to-transparent pointer-events-none" />
+      <div className="absolute top-28 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent pointer-events-none" />
 
       {/* Top LeetCode/HackerRank Tournament Alert Ticker */}
-      <div className="w-full bg-[#070a10] border-b border-slate-800/80 text-[11px] font-mono text-slate-400 py-1.5 px-4 z-50">
+      <div className="w-full bg-slate-100/90 dark:bg-[#070a10] border-b border-slate-200 dark:border-slate-800/80 text-[11px] font-mono text-slate-600 dark:text-slate-400 py-1.5 px-4 z-50 transition-colors">
         <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none whitespace-nowrap gap-6">
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-amber-400 font-bold">
-              <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold">
+              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               <span>WEEKLY CONTEST #24: LIVE NOW</span>
             </span>
-            <span className="text-slate-700">|</span>
-            <span className="text-emerald-400 font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
               <span>1,420 Active Collegiate Sandboxes</span>
             </span>
-            <span className="text-slate-700 hidden sm:inline">|</span>
-            <span className="text-slate-400 hidden sm:inline">Engine: Pyodide WASM v314.0 (Zero Server Lag)</span>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <span className="hidden sm:inline">Engine: Pyodide WASM v314.0 (Zero Server Lag)</span>
           </div>
 
-          <div className="flex items-center gap-4 text-slate-400">
-            <span className="hidden md:inline text-slate-500">Proctoring: KIOSK_LEVEL_3</span>
-            <span className="text-slate-700 hidden md:inline">|</span>
+          <div className="flex items-center gap-4">
+            <span className="hidden md:inline text-slate-400 dark:text-slate-500">Proctoring: KIOSK_LEVEL_3</span>
+            <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
             <button
               onClick={() => openTopic('system-status')}
-              className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1 cursor-pointer"
+              className="text-amber-600 dark:text-amber-400 hover:underline transition-colors flex items-center gap-1 cursor-pointer font-medium"
             >
               <span>Cluster Telemetry</span>
               <Activity className="w-3 h-3" />
@@ -143,8 +147,8 @@ export const LandingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Primary Navigation Header (LeetCode & HackerRank Style) */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/90 bg-[#0a0e17]/95 backdrop-blur-xl">
+      {/* Primary Navigation Header (LeetCode & HackerRank Style with Dark/Light Toggle) */}
+      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800/90 bg-white/95 dark:bg-[#0a0e17]/95 backdrop-blur-xl transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           {/* Brand Identity */}
           <div className="flex items-center gap-3">
@@ -153,61 +157,64 @@ export const LandingPage: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-black text-xl tracking-tight text-white">DebugArena</span>
-                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] font-bold border border-amber-500/30">
+                <span className="font-black text-xl tracking-tight text-slate-900 dark:text-white">DebugArena</span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold border border-amber-500/30">
                   LEET_v2.4
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">Competitive Code Debugging & Tournament Platform</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Competitive Code Debugging & Tournament Platform</p>
             </div>
           </div>
 
           {/* Quick Nav Anchor Links */}
-          <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-slate-300">
+          <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-slate-600 dark:text-slate-300">
             <button
               onClick={() => scrollToSection('problem-arena')}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <Code2 className="w-3.5 h-3.5 text-amber-400" />
+              <Code2 className="w-3.5 h-3.5 text-amber-500" />
               <span>Problem Arena</span>
             </button>
             <button
               onClick={() => scrollToSection('explore-tracks')}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <Compass className="w-3.5 h-3.5 text-emerald-400" />
+              <Compass className="w-3.5 h-3.5 text-emerald-500" />
               <span>Explore Tracks</span>
             </button>
             <button
               onClick={() => scrollToSection('weekly-contest')}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
               <span>Weekly Contest</span>
             </button>
             <button
               onClick={() => scrollToSection('integrity-proctor')}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-rose-500" />
               <span>Anti-Cheat Kiosk</span>
             </button>
             <button
               onClick={() => scrollToSection('verification')}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
+              className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <Award className="w-3.5 h-3.5 text-cyan-400" />
+              <Award className="w-3.5 h-3.5 text-cyan-500" />
               <span>Verify Proofs</span>
             </button>
           </nav>
 
-          {/* Action CTAs & Mobile Hamburger */}
+          {/* Action CTAs, Dark/Light Mode Toggle & Mobile Hamburger */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Theme Toggle Button (Light/Dark mode) */}
+            <ThemeToggle />
+
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="hidden sm:inline-flex h-10 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="hidden sm:inline-flex h-10 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-900/90 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all items-center justify-center gap-2 cursor-pointer active:scale-95 shadow-sm"
             >
-              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>Organizer Portal</span>
             </button>
 
@@ -225,7 +232,7 @@ export const LandingPage: React.FC = () => {
             {/* Mobile Hamburger Menu Button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
+              className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-900/80 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-800 transition-all cursor-pointer"
               aria-label="Toggle Navigation Menu"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -235,14 +242,23 @@ export const LandingPage: React.FC = () => {
 
         {/* Collapsible Mobile Navigation Drawer */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden border-t border-slate-800 bg-[#0d121f]/98 backdrop-blur-2xl px-4 py-5 space-y-4 animate-in slide-in-from-top-2 duration-200">
-            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-300">
+          <div className="lg:hidden border-t border-slate-200 dark:border-slate-800 bg-white/98 dark:bg-[#0d121f]/98 backdrop-blur-2xl px-4 py-5 space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-xl">
+            {/* Mobile Theme Toggle Row */}
+            <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                {isDark ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
+                <span>Appearance Mode</span>
+              </span>
+              <ThemeToggle showLabel={true} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
               <button
                 onClick={() => {
                   scrollToSection('problem-arena');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
               >
                 Problem Arena
               </button>
@@ -251,7 +267,7 @@ export const LandingPage: React.FC = () => {
                   scrollToSection('explore-tracks');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
               >
                 Explore Tracks
               </button>
@@ -260,7 +276,7 @@ export const LandingPage: React.FC = () => {
                   scrollToSection('weekly-contest');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
               >
                 Weekly Contest
               </button>
@@ -269,7 +285,7 @@ export const LandingPage: React.FC = () => {
                   scrollToSection('integrity-proctor');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors"
               >
                 Anti-Cheat Kiosk
               </button>
@@ -278,7 +294,7 @@ export const LandingPage: React.FC = () => {
                   scrollToSection('verification');
                   setIsMobileMenuOpen(false);
                 }}
-                className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 text-left hover:text-amber-400 hover:border-amber-500/40 transition-colors col-span-2"
+                className="p-3 rounded-xl bg-slate-100 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 text-left hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-400 dark:hover:border-amber-500/40 transition-colors col-span-2"
               >
                 Verify Certificate Proofs
               </button>
@@ -290,9 +306,9 @@ export const LandingPage: React.FC = () => {
                   setIsAdminModalOpen(true);
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-3 px-4 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
-                <Shield className="w-4 h-4 text-amber-400" />
+                <Shield className="w-4 h-4 text-amber-500" />
                 <span>Organizer Control Room</span>
               </button>
 
@@ -308,9 +324,9 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 ARENA_CLUSTER: ONLINE
               </span>
               <button
@@ -318,7 +334,7 @@ export const LandingPage: React.FC = () => {
                   openTopic('system-status');
                   setIsMobileMenuOpen(false);
                 }}
-                className="text-amber-400 hover:underline"
+                className="text-amber-600 dark:text-amber-400 hover:underline"
               >
                 System Telemetry &rarr;
               </button>
@@ -337,22 +353,22 @@ export const LandingPage: React.FC = () => {
             {/* Left Column: Hero Headline & Action Matrix */}
             <div className="lg:col-span-6 space-y-6 text-left">
               {/* LeetCode Season Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 font-mono shadow-sm">
-                <Flame className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
-                <span className="text-amber-400 font-bold uppercase tracking-wider">Collegiate Debugging Arena</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-slate-400">2026 Season</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 font-mono shadow-sm">
+                <Flame className="w-3.5 h-3.5 text-amber-500 animate-bounce" />
+                <span className="text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">Collegiate Debugging Arena</span>
+                <span className="text-slate-400 dark:text-slate-600">|</span>
+                <span className="text-slate-600 dark:text-slate-400">2026 Season</span>
               </div>
 
               {/* Commanding Headline */}
               <div className="space-y-3">
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.1]">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.1]">
                   A New Way to{' '}
-                  <span className="bg-gradient-to-r from-amber-400 via-orange-400 to-amber-200 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 dark:from-amber-400 dark:via-orange-400 dark:to-amber-200 bg-clip-text text-transparent">
                     Learn, Compete & Debug Code.
                   </span>
                 </h1>
-                <p className="text-sm sm:text-base text-slate-400 leading-relaxed max-w-xl pt-1 font-normal">
+                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl pt-1 font-normal">
                   DebugArena is the premier competitive platform built for developers to master real-world debugging. 
                   Diagnose tricky production edge-cases, solve algorithmic bugs, and race on live collegiate scoreboards under hardware-enforced kiosk anti-cheat lockdown.
                 </p>
@@ -371,33 +387,33 @@ export const LandingPage: React.FC = () => {
 
                 <button
                   onClick={() => setIsAdminModalOpen(true)}
-                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group"
+                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-slate-800 dark:text-white bg-white hover:bg-slate-100 dark:bg-slate-900/90 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group shadow-sm"
                 >
-                  <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                  <Key className="w-4 h-4 text-amber-500 shrink-0" />
                   <span>Organizer Portal (Passkey)</span>
                 </button>
               </div>
 
               {/* LeetCode & HackerRank Telemetry Counter Stats */}
               <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-lg font-mono text-[11px]">
-                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/90">
-                  <div className="text-amber-400 font-bold text-base">50,000+</div>
-                  <p className="text-slate-400 text-[10px] mt-0.5">Submissions Judged</p>
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
+                  <div className="text-amber-600 dark:text-amber-400 font-bold text-base">50,000+</div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Submissions Judged</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/90">
-                  <div className="text-emerald-400 font-bold text-base">100%</div>
-                  <p className="text-slate-400 text-[10px] mt-0.5">Client WASM Speed</p>
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
+                  <div className="text-emerald-600 dark:text-emerald-400 font-bold text-base">100%</div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Client WASM Speed</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/90">
-                  <div className="text-rose-400 font-bold text-base">0.0ms</div>
-                  <p className="text-slate-400 text-[10px] mt-0.5">Cold Start Latency</p>
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
+                  <div className="text-rose-600 dark:text-rose-400 font-bold text-base">0.0ms</div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Cold Start Latency</p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/90">
-                  <div className="text-cyan-400 font-bold text-base">SHA-256</div>
-                  <p className="text-slate-400 text-[10px] mt-0.5">Verified Proofs</p>
+                <div className="p-3 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/90 shadow-sm">
+                  <div className="text-cyan-600 dark:text-cyan-400 font-bold text-base">SHA-256</div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[10px] mt-0.5">Verified Proofs</p>
                 </div>
               </div>
             </div>
@@ -454,7 +470,7 @@ export const LandingPage: React.FC = () => {
 
                 {/* TAB 1: LEETCODE STYLE PROBLEM & CODE EDITOR */}
                 {activeConsoleTab === 'debugger' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3.5">
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3.5 text-slate-200">
                     {/* LeetCode Problem Info Strip */}
                     <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
                       <div className="flex items-center gap-2">
@@ -696,7 +712,7 @@ export const LandingPage: React.FC = () => {
 
                 {/* TAB 2: PROCTORING RADAR */}
                 {activeConsoleTab === 'proctor' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-4">
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-4 text-slate-200">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
                       <div>
                         <span className="text-slate-500 uppercase">Proctor Status: </span>
@@ -761,7 +777,7 @@ export const LandingPage: React.FC = () => {
 
                 {/* TAB 3: LIVE STANDINGS */}
                 {activeConsoleTab === 'leaderboard' && (
-                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3">
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3 text-slate-200">
                     <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-[11px]">
                       <div>
                         <span className="text-slate-500 uppercase">Live Contest: </span>
@@ -818,25 +834,25 @@ export const LandingPage: React.FC = () => {
         {/* ========================================================= */}
         {/* SECTION 2: EXPLORE DEBUGGING TRACKS (LEETCODE / HACKERRANK) */}
         {/* ========================================================= */}
-        <section id="explore-tracks" className="py-20 border-t border-slate-800/90 bg-[#070a12]">
+        <section id="explore-tracks" className="py-20 border-t border-slate-200 dark:border-slate-800/90 bg-slate-100/70 dark:bg-[#070a12] transition-colors">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-amber-400 font-mono mb-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-amber-600 dark:text-amber-400 font-mono mb-3 shadow-sm">
                   <Compass className="w-3.5 h-3.5" />
                   <span>SKILL_TRACKS_&_BADGES</span>
                 </div>
-                <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                   Explore Debugging Tracks & Skill Categories
                 </h2>
-                <p className="mt-2 text-sm text-slate-400 max-w-xl">
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 max-w-xl">
                   Curated problem sets designed to train developers on real-world defect diagnosis across key computer science domains.
                 </p>
               </div>
 
               <button
                 onClick={() => setIsJoinModalOpen(true)}
-                className="h-10 px-5 rounded-xl text-xs font-bold text-amber-400 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center gap-2 self-start md:self-auto cursor-pointer"
+                className="h-10 px-5 rounded-xl text-xs font-bold text-slate-800 dark:text-amber-400 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700/80 transition-all inline-flex items-center gap-2 self-start md:self-auto cursor-pointer shadow-sm"
               >
                 <span>View All 500+ Problems</span>
                 <ChevronRight className="w-4 h-4" />
@@ -847,31 +863,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 1: Pointers & Memory Bounds */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 font-bold text-[11px] border border-rose-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
                       Hard
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">14 Challenges</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Pointers & Memory Bounds
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     Hunt down buffer overflows, null pointer dereferences, off-by-one heap allocations, and memory leaks in low-level systems.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">C / C++</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Memory Safety</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Segmentation</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">C / C++</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Memory Safety</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Segmentation</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">68.4%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">68.4%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -881,31 +897,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 2: Binary Search & Array Invariants */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 font-bold text-[11px] border border-amber-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
                       Medium
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">22 Challenges</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Binary Search & Invariants
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     Debug subtle mid-point calculation overflows, termination conditions, rotated array splits, and boundary predicates.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Python / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Divide & Conquer</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Monotonicity</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / Java</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Divide & Conquer</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Monotonicity</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">76.2%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">76.2%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -915,31 +931,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 3: Concurrency & Thread Contention */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 font-bold text-[11px] border border-rose-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold text-[11px] border border-rose-500/30">
                       Hard
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">10 Challenges</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Concurrency & Deadlocks
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     Resolve asynchronous race hazards, mutex deadlocks, thread starvations, and non-atomic state updates in distributed logic.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Go / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Multithreading</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Lock Ordering</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Go / Java</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Multithreading</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Lock Ordering</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">62.1%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">62.1%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -949,31 +965,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 4: Tree Traversal & Recursion Depth */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 font-bold text-[11px] border border-amber-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
                       Medium
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">16 Challenges</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Tree Traversal & Cycles
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     Fix infinite recursion loops, unvisited cyclic graph nodes, inverted binary search trees, and stack overflow pitfalls.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Python / C++</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">DFS / BFS</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Graph Theory</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / C++</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">DFS / BFS</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Graph Theory</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">81.5%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">81.5%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -983,31 +999,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 5: Dynamic Programming & Memoization */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 font-bold text-[11px] border border-amber-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] border border-amber-500/30">
                       Medium
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">18 Challenges</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Dynamic Programming & States
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     Correct corrupted memoization caches, overlapping subproblem transitions, base case initialization bugs, and index shifts.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Python / Java</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Memoization</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Knapsack</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Python / Java</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Memoization</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Knapsack</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">70.9%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">70.9%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -1017,31 +1033,31 @@ export const LandingPage: React.FC = () => {
               {/* Track 6: Rapid MCQ Algorithmic Screening */}
               <div
                 onClick={() => setIsJoinModalOpen(true)}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
                       Easy
                     </span>
                     <span className="text-[11px] font-mono text-slate-500">30 Questions</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Rapid MCQ Algorithmic Filter
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                     High-speed conceptual screening questions testing asymptotic complexity, bit manipulation, operator precedence, and memory layout.
                   </p>
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Multi-Lang</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Time Complexity</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Bitwise Math</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Multi-Lang</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Time Complexity</span>
+                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Bitwise Math</span>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Acceptance: <strong className="text-slate-300">93.8%</strong></span>
-                  <span className="text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Acceptance: <strong className="text-slate-700 dark:text-slate-300">93.8%</strong></span>
+                  <span className="text-amber-600 dark:text-amber-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 font-mono">
                     <span>Start Practice</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </span>
@@ -1054,22 +1070,22 @@ export const LandingPage: React.FC = () => {
         {/* ========================================================= */}
         {/* SECTION 3: WEEKLY TOURNAMENT ARENA (LEETCODE CONTEST)     */}
         {/* ========================================================= */}
-        <section id="weekly-contest" className="py-20 border-t border-slate-800/90 relative overflow-hidden">
+        <section id="weekly-contest" className="py-20 border-t border-slate-200 dark:border-slate-800/90 relative overflow-hidden transition-colors">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             {/* Tournament Headline Card */}
-            <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-[#0e1628] via-[#0b101d] to-[#070a12] border border-amber-500/30 shadow-2xl relative overflow-hidden">
+            <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-white dark:from-[#0e1628] dark:via-[#0b101d] dark:to-[#070a12] border border-amber-300/80 dark:border-amber-500/30 shadow-2xl relative overflow-hidden transition-colors">
               <div className="absolute -right-20 -top-20 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
               <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
                 <div className="space-y-4 max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-xs text-amber-300 font-mono">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 font-mono">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
                     <span>TOURNAMENT_MODE : WEEKLY CONTEST #24</span>
                   </div>
-                  <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                  <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                     Compete in Synchronized Live Rounds
                   </h2>
-                  <p className="text-sm text-slate-300 leading-relaxed">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                     Every Saturday, thousands of collegiate developers enter the synchronized arena. Contestants progress through 3 rigorous tournament stages scored in real-time.
                   </p>
                 </div>
@@ -1085,36 +1101,36 @@ export const LandingPage: React.FC = () => {
               </div>
 
               {/* 3-Round Progression Visual Pipeline */}
-              <div className="mt-10 pt-8 border-t border-slate-800/80 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col">
+              <div className="mt-10 pt-8 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
                   <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-amber-400">STAGE 01</span>
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400">STAGE 01</span>
                     <span className="text-[10px] text-slate-500">15 Mins</span>
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1.5">MCQ Screening Round</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">MCQ Screening Round</h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Rapid 20-question algorithmic filter testing Big-O time complexity, bit operations, and output tracing.
                   </p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col">
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
                   <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-emerald-400">STAGE 02</span>
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">STAGE 02</span>
                     <span className="text-[10px] text-slate-500">45 Mins</span>
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1.5">Timed Debugging Sprint</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Timed Debugging Sprint</h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     3 In-depth broken codebases executed in client Pyodide WASM. Contestants diagnose and patch boundary bugs.
                   </p>
                 </div>
 
-                <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col">
+                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm">
                   <div className="flex items-center justify-between mb-3 font-mono">
-                    <span className="text-xs font-bold text-rose-400">STAGE 03</span>
+                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400">STAGE 03</span>
                     <span className="text-[10px] text-slate-500">10 Mins</span>
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1.5">Sudden-Death Tie-Breaker</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Sudden-Death Tie-Breaker</h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Head-to-head sprint where milliseconds decide the victor. The fastest verified patch secures the championship.
                   </p>
                 </div>
@@ -1126,17 +1142,17 @@ export const LandingPage: React.FC = () => {
         {/* ========================================================= */}
         {/* SECTION 4: ENTERPRISE PROCTORING & TRUST (HACKERRANK WORK) */}
         {/* ========================================================= */}
-        <section id="integrity-proctor" className="py-20 border-t border-slate-800/90 bg-[#070a12]">
+        <section id="integrity-proctor" className="py-20 border-t border-slate-200 dark:border-slate-800/90 bg-slate-50 dark:bg-[#070a12] transition-colors">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center max-w-3xl mx-auto mb-16">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-rose-400 font-mono mb-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-rose-600 dark:text-rose-400 font-mono mb-3 shadow-sm">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>INTEGRITY_ENGINE</span>
               </div>
-              <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+              <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                 Enterprise Anti-Cheat Proctoring for Universities
               </h2>
-              <p className="mt-3 text-sm text-slate-400 leading-relaxed">
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                 Engineered to enforce fair, tamper-proof competitions in university computer labs, campus placements, and remote hackathons.
               </p>
             </div>
@@ -1145,20 +1161,20 @@ export const LandingPage: React.FC = () => {
               {/* Feature Card 1 */}
               <div
                 onClick={() => openTopic('kiosk-proctoring')}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-rose-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-rose-400 dark:hover:border-rose-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-5 group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 dark:text-rose-400 mb-5 group-hover:scale-105 transition-transform">
                     <ShieldCheck className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-rose-300 transition-colors">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-rose-600 dark:group-hover:text-rose-300 transition-colors">
                     Hardware Focus-Lock Kiosk
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Browser-enforced fullscreen lock. Flags window blur, tab switching, and paste events with multi-strike penalty rules.
                   </p>
                 </div>
-                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-rose-400 font-semibold font-mono">
+                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold font-mono">
                   <span>SPEC_DOCS</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -1167,20 +1183,20 @@ export const LandingPage: React.FC = () => {
               {/* Feature Card 2 */}
               <div
                 onClick={() => openTopic('code-sandbox')}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-amber-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-amber-400 dark:hover:border-amber-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-5 group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 mb-5 group-hover:scale-105 transition-transform">
                     <Cpu className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-amber-300 transition-colors">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors">
                     Pyodide WASM Sandbox
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     In-browser Python 3.11 worker execution with strict 2,000ms execution caps, 128MB memory bounds, and zero server cold-start delays.
                   </p>
                 </div>
-                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-amber-400 font-semibold font-mono">
+                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 font-semibold font-mono">
                   <span>SPEC_DOCS</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -1189,20 +1205,20 @@ export const LandingPage: React.FC = () => {
               {/* Feature Card 3 */}
               <div
                 onClick={() => openTopic('multi-stage-rounds')}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-indigo-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-5 group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 dark:text-indigo-400 mb-5 group-hover:scale-105 transition-transform">
                     <Layers className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-indigo-300 transition-colors">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
                     Multi-Round Pipeline
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Sequential tournament progression: MCQ screening rounds, algorithmic debugging sprints, and sudden-death tie-breakers.
                   </p>
                 </div>
-                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-indigo-400 font-semibold font-mono">
+                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-indigo-600 dark:text-indigo-400 font-semibold font-mono">
                   <span>SPEC_DOCS</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -1211,20 +1227,20 @@ export const LandingPage: React.FC = () => {
               {/* Feature Card 4 */}
               <div
                 onClick={() => openTopic('cryptographic-credentials')}
-                className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800/90 hover:border-emerald-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+                className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800/90 hover:border-emerald-400 dark:hover:border-emerald-500/50 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
               >
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5 group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 mb-5 group-hover:scale-105 transition-transform">
                     <Award className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-emerald-300 transition-colors">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
                     SHA-256 Verifiable Proofs
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Automated cryptographically signed certificates with public URLs for recruiters and LinkedIn profiles. Zero login needed to verify.
                   </p>
                 </div>
-                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-emerald-400 font-semibold font-mono">
+                <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
                   <span>SPEC_DOCS</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -1236,53 +1252,53 @@ export const LandingPage: React.FC = () => {
         {/* ========================================================= */}
         {/* SECTION 5: TOURNAMENT WORKFLOW TIMELINE                   */}
         {/* ========================================================= */}
-        <section className="py-20 border-t border-slate-800/90 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section className="py-20 border-t border-slate-200 dark:border-slate-800/90 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
               Collegiate Tournament Lifecycle
             </h2>
-            <p className="mt-3 text-xs sm:text-sm text-slate-400">
+            <p className="mt-3 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
               How universities run smooth coding events from preliminary registration to certified rankings.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 01
               </div>
-              <h4 className="text-sm font-bold text-white mb-1.5">Event Setup</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Event Setup</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Organizers specify round durations, select questions from the repository, and generate a 6-digit event code.
               </p>
             </div>
 
-            <div className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 02
               </div>
-              <h4 className="text-sm font-bold text-white mb-1.5">Kiosk Roll Call</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Kiosk Roll Call</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Students enter the lobby with their event code and registration number. The system initializes hardware focus locks.
               </p>
             </div>
 
-            <div className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 03
               </div>
-              <h4 className="text-sm font-bold text-white mb-1.5">Synchronized Battle</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Synchronized Battle</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Contestants debug under kiosk lockdown while server-synchronized timers and automated test runners score submissions.
               </p>
             </div>
 
-            <div className="p-6 rounded-3xl bg-[#0d121f] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 flex flex-col items-start shadow-sm">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 04
               </div>
-              <h4 className="text-sm font-bold text-white mb-1.5">Verified Badges</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1.5">Verified Badges</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Final standings are published instantly. Achievers receive cryptographically signed SHA-256 digital certificates.
               </p>
             </div>
@@ -1292,26 +1308,26 @@ export const LandingPage: React.FC = () => {
         {/* ========================================================= */}
         {/* SECTION 6: INTEGRATED PUBLIC CERTIFICATE VERIFICATION     */}
         {/* ========================================================= */}
-        <section id="verification" className="py-20 border-t border-slate-800/90 max-w-4xl mx-auto px-4 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto mb-4">
+        <section id="verification" className="py-20 border-t border-slate-200 dark:border-slate-800/90 max-w-4xl mx-auto px-4 text-center transition-colors">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto mb-4">
             <Search className="w-6 h-6" />
           </div>
-          <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+          <h3 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
             Authenticate Official Tournament Credentials
           </h3>
-          <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-md mx-auto">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-md mx-auto">
             Recruiters, university faculty, and candidates can verify the authenticity, rank, score, and cryptographic signature of any issued certificate.
           </p>
 
           {/* Quick Sample IDs */}
-          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-mono text-slate-400">
+          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-mono text-slate-500">
             <span>Sample IDs:</span>
             {['CERT-DEBUG-2026-A1', 'CERT-ACM-STANFORD-04'].map((sample) => (
               <button
                 key={sample}
                 type="button"
                 onClick={() => setCertLookupId(sample)}
-                className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-amber-300 transition-colors cursor-pointer"
+                className="px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-500/50 text-amber-600 dark:text-amber-300 transition-colors cursor-pointer shadow-sm"
               >
                 {sample}
               </button>
@@ -1320,13 +1336,13 @@ export const LandingPage: React.FC = () => {
 
           <form onSubmit={handleVerifyCert} className="mt-5 flex flex-col sm:flex-row items-center gap-2.5 max-w-md mx-auto">
             <div className="relative flex-1 w-full">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
               <input
                 type="text"
                 value={certLookupId}
                 onChange={(e) => setCertLookupId(e.target.value)}
                 placeholder="Enter Certificate ID (e.g. CERT-DEBUG-2026-A1)"
-                className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-900/90 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+                className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors shadow-sm"
               />
             </div>
             <button
@@ -1342,7 +1358,7 @@ export const LandingPage: React.FC = () => {
       {/* ========================================================= */}
       {/* SECTION 7: REAL PRODUCTION-GRADE SAAS FOOTER              */}
       {/* ========================================================= */}
-      <footer className="border-t border-slate-800/90 bg-[#06080e] pt-16 pb-12 text-slate-400 text-xs">
+      <footer className="border-t border-slate-200 dark:border-slate-800/90 bg-slate-100 dark:bg-[#06080e] pt-16 pb-12 text-slate-600 dark:text-slate-400 text-xs transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
             {/* Column 1: Brand & Live Status */}
@@ -1351,9 +1367,9 @@ export const LandingPage: React.FC = () => {
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20">
                   <Terminal className="w-4 h-4 text-slate-950 stroke-[2.5]" />
                 </div>
-                <span className="font-bold text-white text-base tracking-tight">DebugArena</span>
+                <span className="font-bold text-slate-900 dark:text-white text-base tracking-tight">DebugArena</span>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-sm font-normal">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-sm font-normal">
                 The enterprise competitive programming and code assessment platform built for university hackathons, campus recruitment, and departmental tournaments.
               </p>
 
@@ -1361,24 +1377,24 @@ export const LandingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => openTopic('system-status')}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 text-[11px] text-emerald-400 transition-all cursor-pointer active:scale-95 group shadow-sm"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/90 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-[11px] text-emerald-600 dark:text-emerald-400 transition-all cursor-pointer active:scale-95 group shadow-sm"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-mono font-medium">All Tournament Systems Operational</span>
-                <ArrowRight className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                <ArrowRight className="w-3 h-3 text-slate-400 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
               </button>
             </div>
 
             {/* Column 2: Architecture & Platform */}
             <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
                 Platform Spec
               </h4>
               <ul className="space-y-2.5">
                 <li>
                   <button
                     onClick={() => openTopic('code-sandbox')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     WASM Sandbox Engine
                   </button>
@@ -1386,7 +1402,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('kiosk-proctoring')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Focus-Lock Kiosk Specs
                   </button>
@@ -1394,7 +1410,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('multi-stage-rounds')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     3-Round Tournament Engine
                   </button>
@@ -1402,7 +1418,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('cryptographic-credentials')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     SHA-256 Verifiable Proofs
                   </button>
@@ -1410,7 +1426,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('question-bank')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Question Bank & Test Suites
                   </button>
@@ -1420,14 +1436,14 @@ export const LandingPage: React.FC = () => {
 
             {/* Column 3: Access Portals */}
             <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
                 Tournament Portals
               </h4>
               <ul className="space-y-2.5">
                 <li>
                   <button
                     onClick={() => setIsJoinModalOpen(true)}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left font-semibold text-slate-300"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left font-semibold text-amber-600 dark:text-slate-300"
                   >
                     Enter Active Contest &rarr;
                   </button>
@@ -1435,7 +1451,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => setIsAdminModalOpen(true)}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Organizer Control Room
                   </button>
@@ -1443,7 +1459,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => setIsAdminModalOpen(true)}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Create College Workspace
                   </button>
@@ -1451,7 +1467,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => scrollToSection('verification')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Public Certificate Lookup
                   </button>
@@ -1459,7 +1475,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('organizer-dispatch')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Host Operations Checklist
                   </button>
@@ -1469,14 +1485,14 @@ export const LandingPage: React.FC = () => {
 
             {/* Column 4: Integrity & Compliance */}
             <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 font-mono">
                 Integrity & Trust
               </h4>
               <ul className="space-y-2.5">
                 <li>
                   <button
                     onClick={() => openTopic('anti-cheat-guidelines')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Anti-Cheat Rulebook
                   </button>
@@ -1484,7 +1500,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('academic-honor-code')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Collegiate Honor Code
                   </button>
@@ -1492,7 +1508,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('security-standards')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Passkey & Auth Security
                   </button>
@@ -1500,7 +1516,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('data-privacy')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Student Data Privacy
                   </button>
@@ -1508,7 +1524,7 @@ export const LandingPage: React.FC = () => {
                 <li>
                   <button
                     onClick={() => openTopic('system-status')}
-                    className="hover:text-amber-400 transition-colors cursor-pointer text-left"
+                    className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer text-left"
                   >
                     Cluster Telemetry & Logs
                   </button>
@@ -1518,35 +1534,35 @@ export const LandingPage: React.FC = () => {
           </div>
 
           {/* Bottom Legal & Copyright Bar */}
-          <div className="pt-8 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
+          <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
             <div>
               &copy; {new Date().getFullYear()} DebugArena Technologies. High-stakes competition infrastructure for universities.
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <button
                 onClick={() => openTopic('privacy-policy')}
-                className="hover:text-slate-300 transition-colors cursor-pointer"
+                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
               >
                 Privacy Policy
               </button>
               <span>•</span>
               <button
                 onClick={() => openTopic('terms-of-service')}
-                className="hover:text-slate-300 transition-colors cursor-pointer"
+                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
               >
                 Terms of Service
               </button>
               <span>•</span>
               <button
                 onClick={() => openTopic('academic-license')}
-                className="hover:text-slate-300 transition-colors cursor-pointer"
+                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
               >
                 Academic Free License
               </button>
               <span>•</span>
               <button
                 onClick={() => openTopic('system-status')}
-                className="hover:text-slate-300 transition-colors cursor-pointer"
+                className="hover:text-slate-800 dark:hover:text-slate-300 transition-colors cursor-pointer"
               >
                 Status
               </button>

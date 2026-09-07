@@ -3,6 +3,7 @@ import Editor from '@monaco-editor/react';
 import { Play, Send, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api } from '../../services/api.js';
+import { useTheme } from '../../context/ThemeContext.js';
 
 interface TieBreakShellProps {
   question: Question;
@@ -17,6 +18,7 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
   tieBreakId,
   onCompleted
 }) => {
+  const { isDark } = useTheme();
   const defaultLang = (question.allowedLanguages && question.allowedLanguages[0]) || 'python';
   const [language, setLanguage] = useState<string>(attempt?.language || defaultLang);
   const [code, setCode] = useState<string>(
@@ -183,7 +185,7 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
             <Editor
               height="100%"
               language={language === 'c' || language === 'cpp' ? 'cpp' : language === 'js' ? 'javascript' : language}
-              theme="vs-dark"
+              theme={isDark ? "vs-dark" : "light"}
               value={code}
               onChange={val => setCode(val || '')}
               options={{ fontSize: 13, minimap: { enabled: false } }}
