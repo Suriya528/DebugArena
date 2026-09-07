@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Shield,
   Terminal,
@@ -17,15 +17,38 @@ import {
   Code2,
   ExternalLink,
   Sparkles,
-  Activity
+  Activity,
+  Play,
+  RotateCcw,
+  AlertTriangle,
+  AlertCircle,
+  FileCheck,
+  Flame,
+  Check,
+  Info,
+  Server,
+  Key
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
 import { JoinEventModal } from '../participant/JoinEventModal.js';
+import { FooterDetailModal, FooterTopicId } from './FooterDetailModal.js';
 
 export const LandingPage: React.FC = () => {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [certLookupId, setCertLookupId] = useState('');
+
+  // Footer Details Modal state
+  const [footerTopic, setFooterTopic] = useState<FooterTopicId | null>(null);
+  const [isFooterModalOpen, setIsFooterModalOpen] = useState(false);
+
+  // Interactive Live Simulator widget state
+  const [activeConsoleTab, setActiveConsoleTab] = useState<'debugger' | 'proctor' | 'leaderboard'>('debugger');
+  const [isEvaluatingCode, setIsEvaluatingCode] = useState(false);
+  const [hasEvaluated, setHasEvaluated] = useState(true);
+  const [hasInjectedDefect, setHasInjectedDefect] = useState(false);
+  const [simulatedProctorStrike, setSimulatedProctorStrike] = useState<number>(0);
+  const [proctorAlertMessage, setProctorAlertMessage] = useState<string | null>(null);
 
   const handleVerifyCert = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +58,11 @@ export const LandingPage: React.FC = () => {
     }
   };
 
+  const openTopic = (topic: FooterTopicId) => {
+    setFooterTopic(topic);
+    setIsFooterModalOpen(true);
+  };
+
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
@@ -42,41 +70,105 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#070b13] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black relative overflow-x-hidden font-sans">
-      {/* Background ambient lighting */}
-      <div className="absolute top-0 left-1/4 -mt-32 w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute top-1/3 right-10 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-[450px] h-[450px] bg-purple-600/10 rounded-full blur-[140px] pointer-events-none" />
+  // Run interactive sandbox simulator
+  const handleRunSimulatorJudge = () => {
+    setIsEvaluatingCode(true);
+    setTimeout(() => {
+      setIsEvaluatingCode(false);
+      setHasEvaluated(true);
+    }, 700);
+  };
 
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#070b13]/90 backdrop-blur-xl">
+  // Simulate tab switch violation
+  const handleSimulateViolation = () => {
+    setSimulatedProctorStrike((prev) => Math.min(3, prev + 1));
+    setProctorAlertMessage('TELEMETRY ALERT: window.onblur event captured! Focus-lock violation recorded.');
+    setTimeout(() => {
+      setProctorAlertMessage(null);
+    }, 4500);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#06090e] text-slate-100 flex flex-col selection:bg-cyan-400 selection:text-black relative overflow-x-hidden font-sans">
+      {/* High-Tech Architectural Grid Overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.035]"
+        style={{
+          backgroundImage: `radial-gradient(#94a3b8 1px, transparent 1px)`,
+          backgroundSize: '28px 28px'
+        }}
+      />
+
+      {/* Engineering Precision Horizon Lines */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent pointer-events-none" />
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 w-full max-w-7xl h-px bg-gradient-to-r from-transparent via-slate-800 to-transparent pointer-events-none" />
+
+      {/* Top Telemetry & Status Ticker Bar */}
+      <div className="w-full bg-[#04060a] border-b border-slate-800/80 text-[11px] font-mono text-slate-400 py-1.5 px-4 z-50">
+        <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none whitespace-nowrap gap-6">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>ARENA_CLUSTER: ONLINE</span>
+            </span>
+            <span className="text-slate-600">|</span>
+            <span className="text-slate-400">ENGINE: Pyodide v314.0 (WASM/V8)</span>
+            <span className="text-slate-600 hidden sm:inline">|</span>
+            <span className="text-slate-400 hidden sm:inline">PROCTOR: KIOSK_LEVEL_3</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-slate-400">
+            <span className="hidden md:inline text-slate-500">GATEWAY_LATENCY: 12ms</span>
+            <span className="text-slate-600 hidden md:inline">|</span>
+            <button
+              onClick={() => openTopic('system-status')}
+              className="text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <span>TELEMETRY_LOGS</span>
+              <Activity className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Primary Navigation Header */}
+      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#06090e]/95 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          {/* Brand Identity */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg shadow-cyan-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500 via-indigo-600 to-indigo-800 flex items-center justify-center text-white font-black shadow-lg shadow-cyan-500/20 border border-cyan-400/30">
               <Terminal className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-lg tracking-tight text-white">DebugArena</span>
+                <span className="px-2 py-0.2 rounded bg-slate-800/90 text-cyan-400 font-mono text-[10px] font-bold border border-slate-700">
+                  v2.4
+                </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">Collegiate Tournament Platform</p>
+              <p className="text-[11px] text-slate-400 font-medium">Collegiate Tournament Operating System</p>
             </div>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-400">
+          {/* Quick Nav Anchor Links */}
+          <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-slate-400">
             <button
-              onClick={() => scrollToSection('features')}
+              onClick={() => scrollToSection('tournament-os')}
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Features
+              Platform OS
+            </button>
+            <button
+              onClick={() => scrollToSection('architecture')}
+              className="hover:text-white transition-colors cursor-pointer"
+            >
+              Engine Matrix
             </button>
             <button
               onClick={() => scrollToSection('how-it-works')}
               className="hover:text-white transition-colors cursor-pointer"
             >
-              How It Works
+              Tournament Workflow
             </button>
             <button
               onClick={() => scrollToSection('verification')}
@@ -87,301 +179,636 @@ export const LandingPage: React.FC = () => {
           </nav>
 
           {/* Action CTAs */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="h-10 px-4 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+              className="h-10 px-4 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
-              <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
+              <Shield className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span>Organizer Portal</span>
             </button>
 
             <button
               onClick={() => setIsJoinModalOpen(true)}
-              className="h-10 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              className="h-10 px-5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-lg shadow-cyan-500/25 border border-transparent transition-all inline-flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
             >
-              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
-              <span>Join Tournament</span>
+              <Trophy className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+              <span>Join with Code</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="flex-1">
-        {/* Hero Section */}
-        <section className="relative pt-16 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
-          {/* Status Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs text-slate-300 mb-8 backdrop-blur-md shadow-xl">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="font-semibold text-slate-200">Next-Gen Collegiate Code & Debugging Arena</span>
-          </div>
+        {/* ========================================================= */}
+        {/* HERO SECTION: ASYMMETRIC COMMAND CONSOLE & SIMULATOR      */}
+        {/* ========================================================= */}
+        <section id="tournament-os" className="relative pt-12 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+            {/* Left Column: Command Overview */}
+            <div className="lg:col-span-6 space-y-6 text-left">
+              {/* Season Badge */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 font-mono shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span className="text-cyan-300 font-bold uppercase">2026 Season</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-slate-400">Campus Tournaments & Screening</span>
+              </div>
 
-          <h1 className="text-4xl sm:text-6xl font-black text-white tracking-tight max-w-4xl mx-auto leading-[1.15]">
-            Host High-Stakes Collegiate <br />
-            <span className="bg-gradient-to-r from-cyan-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-              Debugging Competitions.
-            </span>
-          </h1>
+              {/* Commanding Headline */}
+              <div className="space-y-2">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.1]">
+                  The Collegiate <br />
+                  <span className="bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
+                    Debugging Tournament
+                  </span>{' '}
+                  Operating System.
+                </h1>
+                <p className="text-sm sm:text-base text-slate-400 leading-relaxed max-w-xl pt-2 font-normal">
+                  Purpose-built for engineering colleges, student symposiums, and departmental coding rounds.
+                  Features in-browser WebAssembly test sandboxes, hardware focus-lock proctoring, live collegiate scoreboards, and instant SHA-256 verifiable credentials.
+                </p>
+              </div>
 
-          <p className="mt-6 text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            The all-in-one tournament platform for university hackathons, campus drives, and departmental coding rounds. Built with automated test runners, focus-lock proctoring, live scoreboards, and verified credentials.
-          </p>
+              {/* Primary Launch Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 max-w-lg">
+                <button
+                  onClick={() => setIsJoinModalOpen(true)}
+                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-xl shadow-cyan-500/20 border border-transparent transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap"
+                >
+                  <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
+                  <span>Enter Contest Lobby</span>
+                  <ArrowRight className="w-4 h-4 text-slate-950 shrink-0" />
+                </button>
 
-          {/* Action CTAs */}
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-xl mx-auto">
-            <button
-              onClick={() => setIsJoinModalOpen(true)}
-              className="w-full sm:w-auto sm:min-w-[230px] h-12 px-7 rounded-2xl text-sm font-bold text-slate-950 bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 shadow-xl shadow-cyan-500/20 border border-transparent transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap"
-            >
-              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
-              <span>Enter with Event Code</span>
-              <ArrowRight className="w-4 h-4 text-slate-950 shrink-0" />
-            </button>
+                <button
+                  onClick={() => setIsAdminModalOpen(true)}
+                  className="h-12 px-6 rounded-2xl text-xs sm:text-sm font-bold text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group"
+                >
+                  <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Instant Passkey Sign-In</span>
+                </button>
+              </div>
 
-            <button
-              onClick={() => setIsAdminModalOpen(true)}
-              className="w-full sm:w-auto sm:min-w-[230px] h-12 px-7 rounded-2xl text-sm font-semibold text-white bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 transition-all inline-flex items-center justify-center gap-2.5 active:scale-95 cursor-pointer whitespace-nowrap group"
-            >
-              <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Organizer Sign-In</span>
-              <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors shrink-0" />
-            </button>
-          </div>
+              {/* Architectural Highlights Matrix */}
+              <div className="pt-4 grid grid-cols-2 gap-3 max-w-lg font-mono text-[11px]">
+                <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/80">
+                  <div className="text-cyan-400 font-bold flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5" />
+                    <span>WASM ISOLATION</span>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-0.5">Pyodide 3.11 client sandbox</p>
+                </div>
 
-          {/* Trust Metrics / Stats Row */}
-          <div className="mt-16 pt-8 border-t border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-4xl mx-auto text-center">
-            <div>
-              <div className="text-2xl sm:text-3xl font-black text-white">4+ Languages</div>
-              <p className="text-xs text-slate-400 mt-1">Python, Java, C++, JS</p>
+                <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/80">
+                  <div className="text-rose-400 font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>KIOSK PROCTOR</span>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-0.5">Strict blur & tab-lock traps</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/80">
+                  <div className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5" />
+                    <span>SHA-256 PROOFS</span>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-0.5">Cryptographically signed certs</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/80">
+                  <div className="text-indigo-400 font-bold flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>3-ROUND PIPELINE</span>
+                  </div>
+                  <p className="text-slate-400 text-[10px] mt-0.5">MCQ + Debug + Sudden Death</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-black text-cyan-400">Strict Kiosk</div>
-              <p className="text-xs text-slate-400 mt-1">Focus & Tab-Lock</p>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-black text-indigo-400">&lt; 500ms</div>
-              <p className="text-xs text-slate-400 mt-1">Execution Sandbox</p>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-black text-emerald-400">SHA-256</div>
-              <p className="text-xs text-slate-400 mt-1">Verifiable Credentials</p>
+
+            {/* Right Column: Live Interactive Tournament Sandbox Simulator */}
+            <div className="lg:col-span-6">
+              <div className="relative rounded-3xl border border-slate-700/80 bg-[#090d16] shadow-2xl overflow-hidden backdrop-blur-md">
+                {/* Simulator Window Header */}
+                <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+                  {/* Window Controls */}
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+                    <span className="ml-2 font-mono text-slate-400 text-[11px] font-semibold hidden sm:inline">
+                      DEBUGARENA_SIMULATOR://LIVE_RUNNER
+                    </span>
+                  </div>
+
+                  {/* Mode Tabs */}
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono">
+                    <button
+                      onClick={() => setActiveConsoleTab('debugger')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        activeConsoleTab === 'debugger'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Judge Sandbox
+                    </button>
+                    <button
+                      onClick={() => setActiveConsoleTab('proctor')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        activeConsoleTab === 'proctor'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Proctor Radar
+                    </button>
+                    <button
+                      onClick={() => setActiveConsoleTab('leaderboard')}
+                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        activeConsoleTab === 'leaderboard'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Scoreboard
+                    </button>
+                  </div>
+                </div>
+
+                {/* TAB 1: CODE DEBUGGER SANDBOX */}
+                {activeConsoleTab === 'debugger' && (
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-4">
+                    {/* Problem Meta */}
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 uppercase">Challenge: </span>
+                        <span className="text-white font-bold">Fix Binary Search Off-By-One</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setHasInjectedDefect(!hasInjectedDefect);
+                            setHasEvaluated(false);
+                          }}
+                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-amber-300 transition-colors border border-slate-700 cursor-pointer"
+                        >
+                          {hasInjectedDefect ? 'Fix Starter Bug' : 'Inject Faulty Code'}
+                        </button>
+                        <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold text-[10px] border border-cyan-500/30">
+                          PYTHON 3.11
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Code Snippet Box */}
+                    <div className="p-3.5 rounded-2xl bg-[#05070c] border border-slate-800/90 text-slate-300 text-[11px] leading-relaxed overflow-x-auto">
+                      <div>
+                        <span className="text-indigo-400 font-bold">def</span>{' '}
+                        <span className="text-cyan-300 font-bold">binary_search</span>(arr, target):
+                      </div>
+                      <div className="pl-4">
+                        low, high = <span className="text-amber-400">0</span>, <span className="text-indigo-400">len</span>(arr) -{' '}
+                        <span className="text-amber-400">1</span>
+                      </div>
+                      <div className="pl-4">
+                        <span className="text-indigo-400 font-bold">while</span> low &lt;= high:
+                      </div>
+                      <div className="pl-8">
+                        mid = (low + high) // <span className="text-amber-400">2</span>
+                      </div>
+                      <div className="pl-8">
+                        <span className="text-indigo-400 font-bold">if</span> arr[mid] == target:
+                      </div>
+                      <div className="pl-12">
+                        {hasInjectedDefect ? (
+                          <span className="text-rose-400 bg-rose-500/10 px-1 py-0.5 rounded border border-rose-500/30">
+                            <span className="text-indigo-400 font-bold">return</span> mid + 1{' '}
+                            <span className="text-slate-500"># &lt;-- Off-by-one Defect!</span>
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            <span className="text-indigo-400 font-bold">return</span> mid{' '}
+                            <span className="text-slate-500"># &lt;-- Verified Correct Index</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="pl-8">
+                        <span className="text-indigo-400 font-bold">elif</span> arr[mid] &lt; target:
+                      </div>
+                      <div className="pl-12">
+                        low = mid + <span className="text-amber-400">1</span>
+                      </div>
+                      <div className="pl-8">
+                        <span className="text-indigo-400 font-bold">else</span>:
+                      </div>
+                      <div className="pl-12">
+                        high = mid - <span className="text-amber-400">1</span>
+                      </div>
+                      <div className="pl-4">
+                        <span className="text-indigo-400 font-bold">return</span> -<span className="text-amber-400">1</span>
+                      </div>
+                    </div>
+
+                    {/* Test Evaluation Results */}
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 uppercase font-bold text-[10px]">Pyodide WASM Judge Evaluation</span>
+                        <button
+                          disabled={isEvaluatingCode}
+                          onClick={handleRunSimulatorJudge}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] flex items-center gap-1.5 transition-all shadow-md shadow-cyan-500/20 active:scale-95 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Play className={`w-3 h-3 ${isEvaluatingCode ? 'animate-spin' : ''}`} />
+                          <span>{isEvaluatingCode ? 'Compiling & Judging...' : 'Run Sandboxed Judge'}</span>
+                        </button>
+                      </div>
+
+                      {/* Result Pills */}
+                      <div className="space-y-1.5">
+                        <div
+                          className={`p-2.5 rounded-xl border flex items-center justify-between text-[11px] transition-all ${
+                            hasInjectedDefect
+                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {hasInjectedDefect ? (
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            )}
+                            <span>Case 1: `arr=[2, 5, 8, 12]`, `target=8`</span>
+                          </span>
+                          <span className="text-slate-400 font-semibold">{hasInjectedDefect ? 'FAIL (Expected 2, Got 3)' : 'PASS (18ms)'}</span>
+                        </div>
+
+                        <div
+                          className={`p-2.5 rounded-xl border flex items-center justify-between text-[11px] transition-all ${
+                            hasInjectedDefect
+                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {hasInjectedDefect ? (
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            )}
+                            <span>Case 2: Hidden Boundary Match (Weight: 50)</span>
+                          </span>
+                          <span className="text-slate-400 font-semibold">{hasInjectedDefect ? 'FAIL' : 'PASS (14ms)'}</span>
+                        </div>
+                      </div>
+
+                      {/* Summary Score Bar */}
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">
+                          Score:{' '}
+                          <strong className={hasInjectedDefect ? 'text-rose-400' : 'text-emerald-400'}>
+                            {hasInjectedDefect ? '0 / 100' : '100 / 100'}
+                          </strong>
+                        </span>
+                        <span className={`font-bold ${hasInjectedDefect ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {hasInjectedDefect ? 'TEST SUITE REJECTED' : 'ALL ASSERTIONS VERIFIED'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: PROCTORING RADAR */}
+                {activeConsoleTab === 'proctor' && (
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 uppercase">Proctor Status: </span>
+                        <span className="text-emerald-400 font-bold">ARMED & WATCHING</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[10px] font-bold border border-rose-500/30">
+                        KIOSK LOCK LEVEL 3
+                      </span>
+                    </div>
+
+                    {/* Proctor Alert Box */}
+                    {proctorAlertMessage && (
+                      <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 animate-bounce" />
+                        <span>{proctorAlertMessage}</span>
+                      </div>
+                    )}
+
+                    {/* 4 Proctor Shields Grid */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 01: Fullscreen</span>
+                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Enforced Kiosk
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 02: Tab Switch</span>
+                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Blur Traps Active
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 03: Clipboard</span>
+                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> External Paste Blocked
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Trap 04: DevTools</span>
+                        <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Inspect Suppressed
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Violation Strike Counter */}
+                    <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Recorded Strike Telemetry</span>
+                        <span className="text-white text-xs font-bold">Current Strike: {simulatedProctorStrike} / 3</span>
+                      </div>
+                      <button
+                        onClick={handleSimulateViolation}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-bold transition-all cursor-pointer active:scale-95"
+                      >
+                        Simulate Tab-Switch Blur
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: LIVE SCOREBOARD */}
+                {activeConsoleTab === 'leaderboard' && (
+                  <div className="p-4 sm:p-5 font-mono text-xs space-y-3">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 uppercase">Live Event: </span>
+                        <span className="text-cyan-400 font-bold">Inter-Collegiate Hackathon #2026</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                        ROUND 2 ACTIVE
+                      </span>
+                    </div>
+
+                    {/* Top Ranks */}
+                    <div className="space-y-1.5">
+                      {[
+                        { rank: 1, name: 'Ananya Sharma', college: 'Stanford Engineering', score: '380 pts', time: '18m 12s', badge: 'Qualified R3' },
+                        { rank: 2, name: 'Karthik Raja', college: 'CEG Anna University', score: '365 pts', time: '21m 04s', badge: 'Qualified R3' },
+                        { rank: 3, name: 'David Chen', college: 'MIT EECS', score: '350 pts', time: '22m 30s', badge: 'Qualified R3' },
+                        { rank: 4, name: 'Elena Rostova', college: 'Cambridge Computer Lab', score: '340 pts', time: '24m 15s', badge: 'In Contention' }
+                      ].map((item) => (
+                        <div
+                          key={item.rank}
+                          className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-[11px]"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
+                                item.rank === 1
+                                  ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                                  : item.rank === 2
+                                  ? 'bg-slate-300/20 text-slate-200 border border-slate-400/40'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}
+                            >
+                              {item.rank}
+                            </span>
+                            <div>
+                              <span className="text-white font-bold">{item.name}</span>
+                              <span className="text-slate-500 block text-[10px]">{item.college}</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-cyan-400 font-bold block">{item.score}</span>
+                            <span className="text-[10px] text-slate-500">{item.time}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Live Code Arena Interactive Preview */}
-        <section className="py-12 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
-          <div className="rounded-3xl border border-slate-800 bg-[#090e18] shadow-2xl overflow-hidden">
-            {/* Editor Top Bar */}
-            <div className="px-5 py-3.5 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-                <span className="ml-3 font-mono text-slate-400 text-[11px]">Round 2: Algorithmic Debugging Sprint</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-mono font-bold flex items-center gap-1">
-                  <Activity className="w-3 h-3" /> PROCTORING ARMED
-                </span>
-                <span className="font-mono text-cyan-400 font-bold">14:32</span>
-              </div>
-            </div>
-
-            {/* Editor & Execution Split Pane */}
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 font-mono text-xs">
-              {/* Code Snippet */}
-              <div className="p-5 text-slate-300 leading-relaxed bg-[#070b13]/50 overflow-x-auto">
-                <div className="text-slate-500 mb-2">// Fix the off-by-one bug in binary search</div>
-                <div><span className="text-indigo-400">def</span> <span className="text-cyan-300">binary_search</span>(arr, target):</div>
-                <div className="pl-4">low = <span className="text-amber-400">0</span></div>
-                <div className="pl-4">high = <span className="text-indigo-400">len</span>(arr) - <span className="text-amber-400">1</span></div>
-                <div className="pl-4"><span className="text-indigo-400">while</span> low &lt;= high:</div>
-                <div className="pl-8">mid = (low + high) // <span className="text-amber-400">2</span></div>
-                <div className="pl-8"><span className="text-indigo-400">if</span> arr[mid] == target:</div>
-                <div className="pl-12 text-emerald-400"><span className="text-indigo-400">return</span> mid  <span className="text-slate-500"># Bug resolved</span></div>
-                <div className="pl-8"><span className="text-indigo-400">elif</span> arr[mid] &lt; target:</div>
-                <div className="pl-12">low = mid + <span className="text-amber-400">1</span></div>
-                <div className="pl-8"><span className="text-indigo-400">else</span>:</div>
-                <div className="pl-12">high = mid - <span className="text-amber-400">1</span></div>
-                <div className="pl-4"><span className="text-indigo-400">return</span> -<span className="text-amber-400">1</span></div>
-              </div>
-
-              {/* Live Sandbox Results */}
-              <div className="p-5 bg-slate-950/60 flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Test Suite Evaluation</div>
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Test Case 1: Standard Array</span>
-                    <span className="text-slate-400">18ms</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Test Case 2: Boundary Match</span>
-                    <span className="text-slate-400">22ms</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Test Case 3: Element Not Found</span>
-                    <span className="text-slate-400">14ms</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Score: <strong className="text-white">100/100</strong></span>
-                  <span className="text-emerald-400 font-semibold">ALL TESTS PASSED</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Feature Grid */}
-        <section id="features" className="py-20 border-t border-slate-800/60 bg-slate-950/40">
+        {/* ========================================================= */}
+        {/* SECTION 2: ARCHITECTURAL ENGINE MATRIX                    */}
+        {/* ========================================================= */}
+        <section id="architecture" className="py-20 border-t border-slate-800/80 bg-slate-950/40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto mb-16">
-              <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-                Architected for Competition Integrity
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-cyan-400 font-mono mb-3">
+                <span>SYSTEM_SPECIFICATION</span>
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                Engineered for Zero-Cheat Collegiate Contests
               </h2>
-              <p className="mt-3 text-sm text-slate-400">
-                A complete software suite designed for collegiate departments, academic hackathons, and high-volume technical screening.
+              <p className="mt-3 text-sm text-slate-400 leading-relaxed">
+                Every subsystem is architected from first principles to survive unstable classroom Wi-Fi, power outages, and evasion attempts.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Card 1 */}
-              <div className="p-6 rounded-3xl bg-[#0b101c] border border-slate-800 hover:border-cyan-500/40 transition-all group">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-5 group-hover:scale-110 transition-transform">
-                  <ShieldCheck className="w-6 h-6" />
+              {/* Feature Card 1 */}
+              <div
+                onClick={() => openTopic('kiosk-proctoring')}
+                className="p-6 rounded-3xl bg-[#090e18] border border-slate-800/90 hover:border-rose-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-5 group-hover:scale-105 transition-transform">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-rose-300 transition-colors">
+                    Hardware Focus-Lock Kiosk
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Browser-enforced fullscreen lock. Flags window blur, tab switching, and paste events with multi-strike penalty rules.
+                  </p>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Focus-Lock Proctoring</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Enforces full-screen kiosk mode, tracks window blur and tab switching, and detects unauthorized copy-paste attempts with configurable multi-strike penalty rules.
-                </p>
+                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-rose-400 font-semibold font-mono">
+                  <span>SPEC_DOCS</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
 
-              {/* Card 2 */}
-              <div className="p-6 rounded-3xl bg-[#0b101c] border border-slate-800 hover:border-indigo-500/40 transition-all group">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-5 group-hover:scale-110 transition-transform">
-                  <Code2 className="w-6 h-6" />
+              {/* Feature Card 2 */}
+              <div
+                onClick={() => openTopic('code-sandbox')}
+                className="p-6 rounded-3xl bg-[#090e18] border border-slate-800/90 hover:border-cyan-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-5 group-hover:scale-105 transition-transform">
+                    <Cpu className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-cyan-300 transition-colors">
+                    Pyodide WASM Sandbox
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    In-browser Python 3.11 worker execution with strict 2,000ms execution caps, 128MB memory bounds, and zero server cold-start delays.
+                  </p>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Sandboxed Test Runner</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Real-time code evaluation across Python, Java, C++, and JavaScript with isolated memory limits, execution time thresholds, and automated unit test verification.
-                </p>
+                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-cyan-400 font-semibold font-mono">
+                  <span>SPEC_DOCS</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
 
-              {/* Card 3 */}
-              <div className="p-6 rounded-3xl bg-[#0b101c] border border-slate-800 hover:border-purple-500/40 transition-all group">
-                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-5 group-hover:scale-110 transition-transform">
-                  <Layers className="w-6 h-6" />
+              {/* Feature Card 3 */}
+              <div
+                onClick={() => openTopic('multi-stage-rounds')}
+                className="p-6 rounded-3xl bg-[#090e18] border border-slate-800/90 hover:border-indigo-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-5 group-hover:scale-105 transition-transform">
+                    <Layers className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-indigo-300 transition-colors">
+                    Multi-Round Pipeline
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Sequential tournament progression: MCQ screening rounds, algorithmic debugging sprints, and sudden-death tie-breakers.
+                  </p>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Dynamic Multi-Stage Rounds</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Configure custom tournament progression with MCQ screening rounds, rapid debugging sprints, and automated sudden-death tie-breakers for top finalists.
-                </p>
+                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-indigo-400 font-semibold font-mono">
+                  <span>SPEC_DOCS</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
 
-              {/* Card 4 */}
-              <div className="p-6 rounded-3xl bg-[#0b101c] border border-slate-800 hover:border-emerald-500/40 transition-all group">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5 group-hover:scale-110 transition-transform">
-                  <Award className="w-6 h-6" />
+              {/* Feature Card 4 */}
+              <div
+                onClick={() => openTopic('cryptographic-credentials')}
+                className="p-6 rounded-3xl bg-[#090e18] border border-slate-800/90 hover:border-emerald-500/50 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5 group-hover:scale-105 transition-transform">
+                    <Award className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white mb-2 group-hover:text-emerald-300 transition-colors">
+                    SHA-256 Verifiable Proofs
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Automated cryptographically signed certificates with public URLs for recruiters and LinkedIn profiles. Zero login needed to verify.
+                  </p>
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Verifiable Credentials</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Auto-generates cryptographically signed achievement certificates complete with individual ranks, scores, and permanent public verification hashes for recruiters.
-                </p>
+                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-emerald-400 font-semibold font-mono">
+                  <span>SPEC_DOCS</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* "How It Works" Section */}
-        <section id="how-it-works" className="py-20 border-t border-slate-800/60 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* ========================================================= */}
+        {/* SECTION 3: TOURNAMENT WORKFLOW TIMELINE                   */}
+        {/* ========================================================= */}
+        <section id="how-it-works" className="py-20 border-t border-slate-800/80 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-              How Tournaments Run
+              Collegiate Tournament Lifecycle
             </h2>
-            <p className="mt-3 text-sm text-slate-400">
-              From event creation to final certificate issuance in four frictionless steps.
+            <p className="mt-3 text-xs sm:text-sm text-slate-400">
+              How universities run smooth coding events from preliminary registration to certified rankings.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            {/* Step 1 */}
-            <div className="relative p-6 rounded-3xl bg-[#0b101c] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 font-black text-xs flex items-center justify-center mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="p-6 rounded-3xl bg-[#090e18] border border-slate-800 flex flex-col items-start">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 01
               </div>
-              <h4 className="text-sm font-bold text-white mb-2">Create & Configure</h4>
+              <h4 className="text-sm font-bold text-white mb-1.5">Event Setup</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Organizers set up tournament rounds, select question banks, and configure proctoring limits.
+                Organizers specify round durations, select questions from the repository, and generate a 6-digit event code.
               </p>
             </div>
 
-            {/* Step 2 */}
-            <div className="relative p-6 rounded-3xl bg-[#0b101c] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 font-black text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-[#090e18] border border-slate-800 flex flex-col items-start">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 02
               </div>
-              <h4 className="text-sm font-bold text-white mb-2">Lobby Access</h4>
+              <h4 className="text-sm font-bold text-white mb-1.5">Kiosk Roll Call</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Participants enter with a 6-digit event code and student roll number with instant reconnection safety.
+                Students enter the lobby with their event code and registration number. The system initializes hardware focus locks.
               </p>
             </div>
 
-            {/* Step 3 */}
-            <div className="relative p-6 rounded-3xl bg-[#0b101c] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 font-black text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-[#090e18] border border-slate-800 flex flex-col items-start">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 03
               </div>
-              <h4 className="text-sm font-bold text-white mb-2">Proctored Arena</h4>
+              <h4 className="text-sm font-bold text-white mb-1.5">Synchronized Battle</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Contestants debug under focus lockdown while the sandboxed judge verifies test cases in milliseconds.
+                Contestants debug under kiosk lockdown while server-synchronized timers and automated test runners score submissions.
               </p>
             </div>
 
-            {/* Step 4 */}
-            <div className="relative p-6 rounded-3xl bg-[#0b101c] border border-slate-800 flex flex-col items-start">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center mb-4">
+            <div className="p-6 rounded-3xl bg-[#090e18] border border-slate-800 flex flex-col items-start">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 font-mono font-bold text-xs flex items-center justify-center mb-4">
                 04
               </div>
-              <h4 className="text-sm font-bold text-white mb-2">Rankings & Certs</h4>
+              <h4 className="text-sm font-bold text-white mb-1.5">Verified Badges</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Live leaderboards update automatically and top performers receive verified cryptographic certificates.
+                Final standings are published instantly. Achievers receive cryptographically signed SHA-256 digital certificates.
               </p>
             </div>
           </div>
         </section>
 
-        {/* Certificate Quick Lookup Section */}
-        <section id="verification" className="py-20 border-t border-slate-800/60 max-w-4xl mx-auto px-4 text-center">
+        {/* ========================================================= */}
+        {/* SECTION 4: INTEGRATED PUBLIC CERTIFICATE VERIFICATION     */}
+        {/* ========================================================= */}
+        <section id="verification" className="py-20 border-t border-slate-800/80 max-w-4xl mx-auto px-4 text-center">
           <div className="w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 mx-auto mb-4">
             <Search className="w-6 h-6" />
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-            Verify Official Tournament Certificate
+            Authenticate Official Tournament Credentials
           </h3>
           <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Recruiters, colleges, and students can authenticate the score, rank, and cryptographic hash of any issued credential.
+            Recruiters, university faculty, and candidates can verify the authenticity, rank, score, and cryptographic signature of any issued certificate.
           </p>
 
-          <form onSubmit={handleVerifyCert} className="mt-6 flex flex-col sm:flex-row items-center gap-2.5 max-w-md mx-auto">
+          {/* Quick Sample IDs */}
+          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-mono text-slate-400">
+            <span>Sample IDs:</span>
+            {['CERT-DEBUG-2026-A1', 'CERT-ACM-STANFORD-04'].map((sample) => (
+              <button
+                key={sample}
+                type="button"
+                onClick={() => setCertLookupId(sample)}
+                className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-cyan-500/50 text-cyan-300 transition-colors cursor-pointer"
+              >
+                {sample}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleVerifyCert} className="mt-5 flex flex-col sm:flex-row items-center gap-2.5 max-w-md mx-auto">
             <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
                 type="text"
                 value={certLookupId}
                 onChange={(e) => setCertLookupId(e.target.value)}
-                placeholder="Enter Certificate ID (e.g. CERT-DEBUG-001)"
-                className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-900 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                placeholder="Enter Certificate ID (e.g. CERT-DEBUG-2026-A1)"
+                className="w-full pl-10 pr-3.5 py-3 rounded-2xl bg-slate-900/90 border border-slate-700 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition-colors"
               />
             </div>
             <button
               type="submit"
-              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors whitespace-nowrap shadow-lg shadow-indigo-600/30 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-colors whitespace-nowrap shadow-lg shadow-cyan-500/20 cursor-pointer"
             >
               Verify Credential
             </button>
@@ -389,78 +816,236 @@ export const LandingPage: React.FC = () => {
         </section>
       </main>
 
-      {/* Production-Grade SaaS Footer */}
-      <footer className="border-t border-slate-800/80 bg-[#05080e] pt-16 pb-12 text-slate-400">
+      {/* ========================================================= */}
+      {/* SECTION 5: REAL PRODUCTION-GRADE SAAS FOOTER              */}
+      {/* ========================================================= */}
+      <footer className="border-t border-slate-800/80 bg-[#04070c] pt-16 pb-12 text-slate-400 text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
-            {/* Column 1: Brand & Status */}
-            <div className="col-span-2">
-              <div className="flex items-center gap-2.5 mb-4">
+            {/* Column 1: Brand & Live Status */}
+            <div className="col-span-2 space-y-4">
+              <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-black shadow-md shadow-cyan-500/20">
                   <Terminal className="w-4 h-4 text-white" />
                 </div>
-                <span className="font-bold text-white text-base">DebugArena</span>
+                <span className="font-bold text-white text-base tracking-tight">DebugArena</span>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-sm mb-5">
-                The enterprise-grade competitive debugging and code assessment platform built for university hackathons, campus recruitment, and departmental tournaments.
+              <p className="text-xs text-slate-400 leading-relaxed max-w-sm font-normal">
+                The enterprise competitive programming and code assessment platform built for university hackathons, campus recruitment, and departmental tournaments.
               </p>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>All Tournament Systems Operational</span>
-              </div>
+
+              {/* Clickable System Status Badge */}
+              <button
+                type="button"
+                onClick={() => openTopic('system-status')}
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 text-[11px] text-emerald-400 transition-all cursor-pointer active:scale-95 group shadow-sm"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-mono font-medium">All Tournament Systems Operational</span>
+                <ArrowRight className="w-3 h-3 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
             </div>
 
-            {/* Column 2: Platform */}
+            {/* Column 2: Architecture & Platform */}
             <div>
-              <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Platform</h4>
-              <ul className="space-y-2 text-xs">
-                <li><button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors cursor-pointer">Code Sandbox</button></li>
-                <li><button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors cursor-pointer">Focus-Lock Kiosk</button></li>
-                <li><button onClick={() => scrollToSection('features')} className="hover:text-white transition-colors cursor-pointer">Multi-Stage Rounds</button></li>
-                <li><button onClick={() => scrollToSection('verification')} className="hover:text-white transition-colors cursor-pointer">Credential Verification</button></li>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+                Platform Spec
+              </h4>
+              <ul className="space-y-2.5">
+                <li>
+                  <button
+                    onClick={() => openTopic('code-sandbox')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    WASM Sandbox Engine
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('kiosk-proctoring')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Focus-Lock Kiosk Specs
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('multi-stage-rounds')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    3-Round Tournament Engine
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('cryptographic-credentials')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    SHA-256 Verifiable Proofs
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('question-bank')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Question Bank & Test Suites
+                  </button>
+                </li>
               </ul>
             </div>
 
-            {/* Column 3: Portals */}
+            {/* Column 3: Access Portals */}
             <div>
-              <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Access Portals</h4>
-              <ul className="space-y-2 text-xs">
-                <li><button onClick={() => setIsJoinModalOpen(true)} className="hover:text-white transition-colors cursor-pointer">Enter Tournament</button></li>
-                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-white transition-colors cursor-pointer">Organizer Sign-In</button></li>
-                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-white transition-colors cursor-pointer">University Setup</button></li>
-                <li><button onClick={() => scrollToSection('verification')} className="hover:text-white transition-colors cursor-pointer">Certificate Lookup</button></li>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+                Tournament Portals
+              </h4>
+              <ul className="space-y-2.5">
+                <li>
+                  <button
+                    onClick={() => setIsJoinModalOpen(true)}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left font-semibold text-slate-300"
+                  >
+                    Enter Active Contest &rarr;
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setIsAdminModalOpen(true)}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Organizer Control Room
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setIsAdminModalOpen(true)}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Create College Workspace
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => scrollToSection('verification')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Public Certificate Lookup
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('organizer-dispatch')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Host Operations Checklist
+                  </button>
+                </li>
               </ul>
             </div>
 
             {/* Column 4: Integrity & Compliance */}
             <div>
-              <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Integrity</h4>
-              <ul className="space-y-2 text-xs">
-                <li className="text-slate-500">Anti-Cheat Guidelines</li>
-                <li className="text-slate-500">Academic Honor Code</li>
-                <li className="text-slate-500">Data Privacy</li>
-                <li className="text-slate-500">Security Standards</li>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4 font-mono">
+                Integrity & Trust
+              </h4>
+              <ul className="space-y-2.5">
+                <li>
+                  <button
+                    onClick={() => openTopic('anti-cheat-guidelines')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Anti-Cheat Rulebook
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('academic-honor-code')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Collegiate Honor Code
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('security-standards')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Passkey & Auth Security
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('data-privacy')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Student Data Privacy
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => openTopic('system-status')}
+                    className="hover:text-cyan-400 transition-colors cursor-pointer text-left"
+                  >
+                    Cluster Telemetry & Logs
+                  </button>
+                </li>
               </ul>
             </div>
           </div>
 
-          {/* Bottom Bar */}
-          <div className="pt-8 border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          {/* Bottom Legal & Copyright Bar */}
+          <div className="pt-8 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500">
             <div>
-              &copy; {new Date().getFullYear()} DebugArena Platform. Built for competitive programming and academic excellence.
+              &copy; {new Date().getFullYear()} DebugArena Technologies. High-stakes competition infrastructure for universities.
             </div>
-            <div className="flex items-center gap-4">
-              <span>Privacy Policy</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                onClick={() => openTopic('privacy-policy')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Privacy Policy
+              </button>
               <span>•</span>
-              <span>Terms of Service</span>
+              <button
+                onClick={() => openTopic('terms-of-service')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Terms of Service
+              </button>
               <span>•</span>
-              <span>Academic License</span>
+              <button
+                onClick={() => openTopic('academic-license')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Academic Free License
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => openTopic('system-status')}
+                className="hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                Status
+              </button>
             </div>
           </div>
         </div>
       </footer>
 
-      {/* Modals */}
+      {/* Real Interactive Technical Documentation Modal */}
+      <FooterDetailModal
+        isOpen={isFooterModalOpen}
+        topic={footerTopic}
+        onClose={() => setIsFooterModalOpen(false)}
+        onSelectTopic={(t) => setFooterTopic(t)}
+        onAction={(type) => {
+          if (type === 'join') setIsJoinModalOpen(true);
+          if (type === 'admin') setIsAdminModalOpen(true);
+          if (type === 'verify') scrollToSection('verification');
+        }}
+      />
+
+      {/* Core Application Modals (Unchanged Business Logic) */}
       <AdminAuthModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
       <JoinEventModal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
     </div>
