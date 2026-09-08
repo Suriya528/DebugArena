@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Clock,
   ChevronRight,
+  ChevronDown,
   Hash,
   Send,
   Bug,
@@ -33,7 +34,9 @@ import {
   Laptop,
   Check,
   Zap,
-  Radio
+  Radio,
+  Sparkles,
+  HelpCircle
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
 import { JoinEventModal } from '../participant/JoinEventModal.js';
@@ -63,6 +66,9 @@ export const LandingPage: React.FC = () => {
   // Proctor Kiosk Strike Demo State
   const [simulatedKioskStrikes, setSimulatedKioskStrikes] = useState(0);
   const [kioskAlert, setKioskAlert] = useState<string | null>(null);
+
+  // FAQ Accordion State
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const handleJoinWithCode = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +121,33 @@ export const LandingPage: React.FC = () => {
       setKioskAlert(null);
     }, 5000);
   };
+
+  const faqs = [
+    {
+      q: 'How do students join an on-campus competition?',
+      a: 'Students enter the custom Event Code provided by the host (e.g. DEBUG26). In the join modal, they provide their Full Name, Roll/Registration Number, and Department to immediately enter the fullscreen proctored assessment.'
+    },
+    {
+      q: 'Can organizers customize the number and types of rounds?',
+      a: 'Yes. DebugArena includes a Dynamic Event Pipeline Designer. Organizers can configure 1, 2, or multiple stages, selecting between rapid Algorithmic MCQ screening and timed Code Debugging challenges with custom durations and advancement quotas.'
+    },
+    {
+      q: 'Which programming languages are supported for code debugging?',
+      a: 'Organizers can enable Python, C, C++, Java, and JavaScript. Candidates receive faulty starter code, diagnose defects, test with arbitrary stdin inputs, and submit patches to pass sample and hidden test suites.'
+    },
+    {
+      q: 'How does the Fullscreen Kiosk Anti-Cheat work in college labs?',
+      a: 'Upon entering the assessment lobby, participants are locked into browser fullscreen. Window minimization, tab switching, focus blur, and external clipboard paste events trigger strikes with configurable limits and auto-submission.'
+    },
+    {
+      q: 'What happens if a lab computer reboots or Wi-Fi drops?',
+      a: 'DebugArena features crash-resilient offline draft sync. Answers and code drafts are continuously cached locally and synchronized to the backend every 1.5 seconds. If a PC reboots, opening the link immediately recovers the exact session and timer state.'
+    },
+    {
+      q: 'Are certificates customizable and publicly verifiable?',
+      a: 'Yes. Certificate issuance is optional per event. When enabled, certificates automatically adopt the host college’s dynamic color combination, official seal, and signatory details with an HMAC-SHA256 QR code verified on the public ledger.'
+    }
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 flex flex-col selection:bg-amber-500 selection:text-black relative overflow-x-hidden font-sans transition-colors duration-200">
@@ -209,6 +242,12 @@ export const LandingPage: React.FC = () => {
                 className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
               >
                 Event Leaderboard
+              </button>
+              <button
+                onClick={() => scrollToSection('faq')}
+                className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+              >
+                FAQ
               </button>
               <button
                 onClick={() => scrollToSection('official-certificates')}
@@ -322,11 +361,11 @@ export const LandingPage: React.FC = () => {
       </header>
 
       {/* Main Competitive Platform Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-16">
         {/* ========================================================= */}
         {/* 3. HERO: EVENT CODE FAST-ENTRY & LIVE DEBUGGING WORKSPACE */}
         {/* ========================================================= */}
-        <section id="hero" className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <section id="hero" className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-2">
           {/* Left Col: Real Purpose, Event Code Box, Faculty Controls */}
           <div className="lg:col-span-6 space-y-5">
             {/* Campus Edition Badge */}
@@ -631,6 +670,28 @@ export const LandingPage: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* STATS / TRUST PROOF STRIP                                 */}
+        {/* ========================================================= */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 shadow-sm text-center space-y-1">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono">10,000+</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Debugging Solutions Evaluated</div>
+          </div>
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 shadow-sm text-center space-y-1">
+            <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 font-mono">50+</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">College Tech Fests &amp; Contests</div>
+          </div>
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 shadow-sm text-center space-y-1">
+            <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">&lt; 20ms</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Custom Stdin Test Response</div>
+          </div>
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 shadow-sm text-center space-y-1">
+            <div className="text-2xl sm:text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">100%</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Offline Lab Crash Resilience</div>
           </div>
         </section>
 
@@ -1048,10 +1109,95 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
         </section>
+
+        {/* ========================================================= */}
+        {/* 8. FAQ ACCORDION                                          */}
+        {/* ========================================================= */}
+        <section id="faq" className="space-y-6 pt-4">
+          <div className="text-center max-w-2xl mx-auto space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs font-bold">
+              <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+              <span>FREQUENTLY ASKED QUESTIONS</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+              Everything You Need to Know
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
+              Common questions from university conveners, lab assistants, and participating student developers.
+            </p>
+          </div>
+
+          <div className="max-w-3xl mx-auto space-y-3">
+            {faqs.map((item, idx) => {
+              const isOpen = openFaqIndex === idx;
+              return (
+                <div
+                  key={idx}
+                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d121f] overflow-hidden transition-all shadow-sm"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                    className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors"
+                  >
+                    <span className="font-bold text-sm text-slate-900 dark:text-white">
+                      {item.q}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180 text-amber-500' : ''
+                      }`}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="px-4 sm:px-5 pb-4 sm:pb-5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                      {item.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ========================================================= */}
+        {/* 9. BOTTOM CALL TO ACTION BANNER                           */}
+        {/* ========================================================= */}
+        <section className="rounded-3xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/30 p-8 sm:p-12 text-center space-y-6 relative overflow-hidden backdrop-blur-sm">
+          <div className="max-w-2xl mx-auto space-y-3 relative z-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono text-xs font-bold border border-amber-500/30">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>COLLEGE HOST READY</span>
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+              Ready to Host Your College's Next Debugging Championship?
+            </h2>
+            <p className="text-xs sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+              Launch dynamic rounds with automated grading, real-time lab anti-cheat proctoring, and instant cryptographic certificates in minutes.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 relative z-10">
+            <button
+              onClick={() => setIsAdminModalOpen(true)}
+              className="w-full sm:w-auto h-11 px-6 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/25 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 font-sans"
+            >
+              <Shield className="w-4 h-4 text-slate-950" />
+              <span>Host College Event</span>
+            </button>
+            <button
+              onClick={() => setIsJoinModalOpen(true)}
+              className="w-full sm:w-auto h-11 px-6 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:border-amber-400 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 font-sans"
+            >
+              <Trophy className="w-4 h-4 text-amber-500" />
+              <span>Enter Competition with Code</span>
+            </button>
+          </div>
+        </section>
       </main>
 
       {/* ========================================================= */}
-      {/* 8. LEETCODE CLEAN DEVELOPER FOOTER                        */}
+      {/* 10. LEETCODE CLEAN DEVELOPER FOOTER                       */}
       {/* ========================================================= */}
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-[#06080e] pt-10 pb-8 text-slate-500 dark:text-slate-400 text-xs mt-12 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
