@@ -20,6 +20,7 @@ import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
+import { EventDirectJoinView } from './components/public/EventDirectJoinView.js';
 import { LandingPage } from './components/home/LandingPage.js';
 import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
 import { VerifySignInView } from './components/auth/VerifySignInView.js';
@@ -32,6 +33,15 @@ import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2 } from 'lucide-
 export const App: React.FC = () => {
   const { user, loading: authLoading, login } = useAuth();
   const { socket } = useRealtime();
+
+  // URL Path State for direct routes
+  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Login form state
   const [username, setUsername] = useState<string>('');
@@ -329,6 +339,35 @@ export const App: React.FC = () => {
       <VerifySignInView
         onBackToHome={() => {
           window.location.href = '/';
+        }}
+      />
+    );
+  }
+
+  // Public Direct Join Portal (/join/:eventCode, /arena/:eventCode, /event/:eventCode)
+  const isJoinRoute =
+    currentPath.startsWith('/join/') ||
+    currentPath.startsWith('/arena/') ||
+    currentPath.startsWith('/event/');
+
+  const directEventCode = isJoinRoute
+    ? (currentPath.split('/join/')[1] ||
+       currentPath.split('/arena/')[1] ||
+       currentPath.split('/event/')[1])?.trim()
+    : null;
+
+  if (isJoinRoute && directEventCode) {
+    return (
+      <EventDirectJoinView
+        eventCode={directEventCode}
+        onJoinedSuccess={() => {
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
+          fetchRoundState();
+        }}
+        onBackToHome={() => {
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
         }}
       />
     );

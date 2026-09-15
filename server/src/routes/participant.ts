@@ -31,6 +31,57 @@ const recentViolationMap = new Map<string, { time: number; type: string; count: 
 
 // -------------------- PUBLIC PARTICIPANT ACCESS --------------------
 
+// GET /api/participant/event-info/:eventCode
+// Public endpoint for previewing an event's metadata before joining
+participantRouter.get('/event-info/:eventCode', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const cleanCode = req.params.eventCode.trim().toUpperCase();
+    const event = await Event.findOne({ code: cleanCode });
+    if (!event) {
+      res.status(404).json({ error: `Event with code '${cleanCode}' not found.` });
+      return;
+    }
+
+    let college: any = null;
+    if (event.collegeId) {
+      const { College } = await import('../models/College.js');
+      college = await College.findById(event.collegeId);
+    }
+
+    const rounds = await DynamicRound.find({ eventId: event._id })
+      .select('roundNumber title description type durationMinutes questionCount totalMarks passingMarks allowedLanguages status')
+      .sort({ roundNumber: 1 });
+
+    res.json({
+      success: true,
+      event: {
+        _id: event._id,
+        name: event.name,
+        code: event.code,
+        description: event.description,
+        bannerUrl: event.bannerUrl,
+        status: event.status,
+        rules: event.rules,
+        scoringConfig: event.scoringConfig,
+        certificateConfig: {
+          enabled: event.certificateConfig?.enabled || false
+        },
+        college: college ? {
+          _id: college._id,
+          name: college.name,
+          code: college.code,
+          primaryColor: college.primaryColor,
+          secondaryColor: college.secondaryColor
+        } : null,
+        rounds
+      }
+    });
+  } catch (err: any) {
+    console.error('Failed to get event info:', err);
+    res.status(500).json({ error: 'Failed to retrieve event details' });
+  }
+});
+
 // POST /api/participant/join-by-code
 // Allows a participant to join an active event using an event code, supporting idempotent reconnection
 participantRouter.post('/join-by-code', async (req: Request, res: Response): Promise<void> => {

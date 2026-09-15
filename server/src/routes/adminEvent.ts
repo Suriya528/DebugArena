@@ -18,6 +18,7 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { TieBreak } from '../models/TieBreak.js';
 import { seedEventRoundQuestions } from '../services/defaultQuestions.js';
 import { executeCleanupJob } from '../services/cleanupEngine.js';
+import { runTestCases, executeSingleTestCase } from '../services/judgeService.js';
 
 export const adminEventRouter = Router();
 
@@ -969,3 +970,106 @@ adminEventRouter.get(
     }
   }
 );
+
+// GET /api/admin/events/:eventId/sandbox-preview
+// Provides admin with dry-run event structure and questions for testing without timer/kiosk constraints
+adminEventRouter.get('/:eventId/sandbox-preview', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Multi-tenant check
+    if (req.user?.role !== 'super_admin' && req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+    const questions = await Question.find({ eventId }).sort({ roundNumber: 1, orderIndex: 1 });
+
+    res.json({
+      success: true,
+      event: {
+        _id: event._id,
+        name: event.name,
+        code: event.code,
+        status: event.status,
+        rules: event.rules
+      },
+      rounds,
+      questions
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch sandbox preview' });
+  }
+});
+
+// POST /api/admin/events/sandbox-run
+// Allows admin to test-execute code or custom stdin without creating Attempt, Progress, or Leaderboard records
+adminEventRouter.post('/sandbox-run', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { code, language, questionId, customStdin } = req.body;
+    if (!code || !language) {
+      res.status(400).json({ error: 'Code and language are required' });
+      return;
+    }
+
+    // If customStdin is provided, run arbitrary stdin test
+    if (customStdin !== undefined && customStdin !== null) {
+      const execResult = await executeSingleTestCase(code, language, String(customStdin), 3000);
+      res.json({
+        success: true,
+        type: 'custom_stdin',
+        result: {
+          stdout: execResult.stdout,
+          stderr: execResult.stderr,
+          compileError: execResult.compileError,
+          runtimeError: execResult.runtimeError,
+          timeout: execResult.timeout,
+          runtimeMs: execResult.runtimeMs,
+          status: execResult.compileError ? 'compile_error' : execResult.timeout ? 'timeout' : execResult.runtimeError ? 'runtime_error' : 'success'
+        }
+      });
+      return;
+    }
+
+    // Otherwise, run against official question test cases if questionId provided
+    if (questionId) {
+      const question = await Question.findById(questionId);
+      if (!question) {
+        res.status(404).json({ error: 'Question not found' });
+        return;
+      }
+
+      const testCases = question.testCases || [];
+      const testResults = await runTestCases(code, language, testCases, question.timeLimitMs || 3000);
+
+      const passedCount = testResults.filter(r => r.passed).length;
+      res.json({
+        success: true,
+        type: 'test_cases',
+        totalTestCases: testCases.length,
+        passedTestCases: passedCount,
+        allPassed: passedCount === testCases.length,
+        results: testResults
+      });
+      return;
+    }
+
+    // Fallback: run execution with empty input
+    const execResult = await executeSingleTestCase(code, language, '', 3000);
+    res.json({
+      success: true,
+      type: 'dry_run',
+      result: execResult
+    });
+  } catch (err: any) {
+    console.error('Failed to run sandbox test:', err);
+    res.status(500).json({ error: err.message || 'Failed to execute code' });
+  }
+});
+

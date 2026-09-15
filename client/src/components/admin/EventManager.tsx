@@ -13,7 +13,11 @@ import {
   Award,
   ChevronRight,
   ExternalLink,
-  Trash2
+  Trash2,
+  Copy,
+  Check,
+  QrCode,
+  Sparkles
 } from 'lucide-react';
 import { College, Event, DynamicRound, AuditLog } from '../../types/index.js';
 import {
@@ -29,6 +33,8 @@ import {
 import { EventBuilderModal } from './EventBuilderModal.js';
 import { RoundBuilderModal } from './RoundBuilderModal.js';
 import { DeleteEventModal } from './DeleteEventModal.js';
+import { ProjectorQrModal } from './ProjectorQrModal.js';
+import { AdminTestSandboxModal } from './AdminTestSandboxModal.js';
 
 export const EventManager: React.FC = () => {
   const [colleges, setColleges] = useState<College[]>([]);
@@ -51,6 +57,17 @@ export const EventManager: React.FC = () => {
   // Unfreeze reason modal
   const [showUnfreezeModal, setShowUnfreezeModal] = useState(false);
   const [unfreezeReason, setUnfreezeReason] = useState('');
+
+  // Share & Test Hub States
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isProjectorModalOpen, setIsProjectorModalOpen] = useState(false);
+  const [isSandboxModalOpen, setIsSandboxModalOpen] = useState(false);
+
+  const handleCopyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -311,7 +328,89 @@ export const EventManager: React.FC = () => {
 
       {/* Active Event Dynamic Rounds Workspace */}
       {activeEvent && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="space-y-6">
+          {/* Event Share & Test Hub Card */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+              <div className="space-y-2 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-indigo-400" /> Assessment Access Hub
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
+                    Code: <strong className="text-amber-400">{activeEvent.code}</strong>
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-white tracking-tight">
+                  Participant Direct-Join &amp; Dry-Run Preview
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Contestants can directly access the proctored arena via the dedicated link or scannable projector QR code. Admins can test code against test cases in the dry-run sandbox without polluting the leaderboard.
+                </p>
+              </div>
+
+              {/* Actions & Link Box */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                {/* Direct Link Display & Copy */}
+                <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-2xl p-1.5 pl-3.5 gap-2 shadow-inner">
+                  <span className="text-xs font-mono text-indigo-300 truncate max-w-[220px] sm:max-w-[280px]">
+                    {`${window.location.origin}/join/${activeEvent.code}`}
+                  </span>
+                  <button
+                    onClick={() => handleCopyLink(`${window.location.origin}/join/${activeEvent.code}`)}
+                    className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 cursor-pointer shrink-0"
+                    title="Copy direct join link"
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span className="text-[11px]">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span className="text-[11px]">Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                  <a
+                    href={`/join/${activeEvent.code}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                    title="Open participant portal in new tab"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                {/* Projector Mode (QR) Button */}
+                <button
+                  onClick={() => setIsProjectorModalOpen(true)}
+                  className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold font-mono flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                  title="Open Lab Projector Display Mode"
+                >
+                  <QrCode className="w-4 h-4 text-cyan-400" />
+                  <span>Projector QR</span>
+                </button>
+
+                {/* Admin Sandbox Dry-Run Button */}
+                <button
+                  onClick={() => setIsSandboxModalOpen(true)}
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black font-mono flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-500/20 cursor-pointer active:scale-95"
+                  title="Dry-run code and test cases without leaderboard pollution"
+                >
+                  <Sparkles className="w-4 h-4 text-slate-950" />
+                  <span>Dry-Run Sandbox</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Dynamic Round Pipeline Workspace */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -513,7 +612,8 @@ export const EventManager: React.FC = () => {
             </div>
           )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* Unfreeze Emergency Override Modal */}
       {showUnfreezeModal && (
@@ -572,6 +672,29 @@ export const EventManager: React.FC = () => {
         event={eventToDelete}
         onClose={() => setEventToDelete(null)}
         onDeleted={handleEventDeleted}
+      />
+
+      <ProjectorQrModal
+        isOpen={isProjectorModalOpen}
+        onClose={() => setIsProjectorModalOpen(false)}
+        event={
+          activeEvent
+            ? {
+                name: activeEvent.name,
+                code: activeEvent.code,
+                collegeName:
+                  typeof activeEvent.collegeId === 'object'
+                    ? (activeEvent.collegeId as any)?.name
+                    : undefined
+              }
+            : null
+        }
+      />
+
+      <AdminTestSandboxModal
+        isOpen={isSandboxModalOpen}
+        onClose={() => setIsSandboxModalOpen(false)}
+        eventId={activeEvent?._id || ''}
       />
     </div>
   );
