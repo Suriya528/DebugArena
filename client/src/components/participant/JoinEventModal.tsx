@@ -15,8 +15,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
   defaultEventCode = '',
   onSuccess
 }) => {
-  const { joinEventByCode, login } = useAuth();
-  const [activeTab, setActiveTab] = useState<'code' | 'login'>('code');
+  const { joinEventByCode } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,11 +27,6 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
   const [year, setYear] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  // Direct Participant Login State
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -100,40 +94,6 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
     }
   };
 
-  const handleDirectLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (!loginUsername.trim() || !loginPassword.trim()) {
-        setError('Please enter your Roll Number / Username and Password.');
-        setLoading(false);
-        return;
-      }
-
-      // Engage fullscreen immediately on user submit gesture
-      await requestKioskFullscreen();
-
-      const res = await login(loginUsername.trim(), loginPassword);
-
-      try {
-        localStorage.setItem('debugarena_participant_recovery', JSON.stringify({
-          name: res?.name || loginUsername.trim(),
-          regNo: loginUsername.trim(),
-          username: res?.username || loginUsername.trim()
-        }));
-      } catch {}
-
-      if (onSuccess) onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid credentials. Check your Roll Number and Password.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-lg bg-[#0c1220] border border-cyan-500/30 rounded-3xl p-5 sm:p-8 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
@@ -156,37 +116,9 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
             <Trophy className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Participant Portal</h2>
-            <p className="text-xs text-slate-400">Join an active tournament or resume your test session</p>
+            <h2 className="text-xl font-bold text-white tracking-tight">Join Competition Lobby</h2>
+            <p className="text-xs text-slate-400">Enter your tournament access code and candidate credentials</p>
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex p-1 bg-slate-900/80 border border-slate-800 rounded-2xl mb-6">
-          <button
-            type="button"
-            onClick={() => { setActiveTab('code'); setError(null); }}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-              activeTab === 'code'
-                ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-lg'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Hash className="w-4 h-4 text-cyan-300" />
-            <span>Join Tournament</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('login'); setError(null); }}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-              activeTab === 'login'
-                ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-lg'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <KeyRound className="w-4 h-4" />
-            <span>Participant Sign In</span>
-          </button>
         </div>
 
         {error && (
@@ -196,9 +128,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
           </div>
         )}
 
-        {/* Tab 1: Join with Event Code */}
-        {activeTab === 'code' && (
-          <form onSubmit={handleJoinByCode} className="space-y-3.5 overflow-y-auto pr-1 flex-1">
+        <form onSubmit={handleJoinByCode} className="space-y-3.5 overflow-y-auto pr-1 flex-1">
             <div>
               <label className="text-xs font-medium text-slate-300 mb-1 block">Event Access Code</label>
               <div className="relative">
@@ -309,60 +239,7 @@ export const JoinEventModal: React.FC<JoinEventModalProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-        )}
-
-        {/* Tab 2: Direct Username/Password */}
-        {activeTab === 'login' && (
-          <form onSubmit={handleDirectLogin} className="space-y-4 overflow-y-auto pr-1 flex-1">
-            <div>
-              <label className="text-xs font-medium text-slate-300 mb-1.5 block">Roll Number or Participant Username</label>
-              <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  required
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
-                  placeholder="e.g., 22CS101 or contestant handle"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-slate-300 mb-1.5 block">Session Password / PIN</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type={showLoginPassword ? 'text' : 'password'}
-                  required
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="Enter your session password"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowLoginPassword(!showLoginPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
-                  aria-label={showLoginPassword ? "Hide password" : "Show password"}
-                >
-                  {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-600/30 active:scale-[0.99] disabled:opacity-50 cursor-pointer shrink-0"
-            >
-              <span>{loading ? 'Authenticating...' : 'Sign In & Resume Competition'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-        )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };

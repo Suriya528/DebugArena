@@ -343,7 +343,7 @@ export const LandingPage: React.FC = () => {
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 flex items-center justify-center gap-2"
               >
                 <Shield className="w-4 h-4 text-amber-500" />
-                <span>Host College Event / Organizer Login</span>
+                <span>Organizer Portal (Host Tournament)</span>
               </button>
               <button
                 onClick={() => {
@@ -1240,7 +1240,7 @@ export const LandingPage: React.FC = () => {
               <div className="font-bold text-slate-900 dark:text-white uppercase text-[11px] font-mono">Event Portals</div>
               <ul className="space-y-1 text-[11px]">
                 <li><button onClick={() => setIsJoinModalOpen(true)} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer text-amber-600 dark:text-amber-400 font-semibold">Join with Event Code &rarr;</button></li>
-                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Host College Event / Login</button></li>
+                <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Organizer Portal (Admins &amp; Faculty)</button></li>
                 <li><button onClick={() => openTopic('organizer-dispatch')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Organizer Operations Guide</button></li>
                 <li><button onClick={() => scrollToSection('event-leaderboard')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">View Event Leaderboard</button></li>
                 <li><button onClick={() => scrollToSection('official-certificates')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Public Certificate Lookup</button></li>
