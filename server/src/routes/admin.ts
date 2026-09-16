@@ -514,7 +514,7 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
       userFilter.eventId = req.user.eventId;
     }
 
-    const participants = await User.find(userFilter).sort({ createdAt: -1 });
+    const participants = await User.find(userFilter).populate('eventId', 'name code').sort({ createdAt: -1 });
     const participantIds = participants.map(p => p._id);
     const progressList = await RoundProgress.find({ userId: { $in: participantIds } });
     const violations = await ViolationLog.find({ userId: { $in: participantIds } });
@@ -531,6 +531,9 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
         department: p.department,
         year: p.year,
         regNo: p.regNo,
+        eventId: p.eventId?._id || p.eventId,
+        eventName: (p.eventId as any)?.name || 'General Tournament',
+        eventCode: (p.eventId as any)?.code || null,
         isDisqualified: p.isDisqualified,
         disqualificationReason: p.disqualificationReason,
         rounds: userProgress.map(pr => ({
@@ -557,40 +560,58 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
   try {
     const { username, name, password, department, year, regNo, eventId: bodyEventId } = req.body;
     if (!username || !password || !name) {
-      res.status(400).json({ error: 'Username, name, and password are required' });
+      res.status(400).json({ error: 'Username/Roll number, display name, and password are required' });
       return;
     }
 
-    const existing = await User.findOne({ username: username.toLowerCase().trim() });
-    if (existing) {
-      res.status(400).json({ error: 'Username already exists' });
-      return;
-    }
-
-    let effectiveEventId = req.user?.eventId;
-    if (bodyEventId) {
-      if (req.user?.collegeId) {
-        const ev = await Event.findOne({ _id: bodyEventId, collegeId: req.user.collegeId });
-        if (ev) effectiveEventId = ev._id.toString();
-      } else {
-        effectiveEventId = bodyEventId;
+    let effectiveEventId = bodyEventId || req.user?.eventId;
+    if (!effectiveEventId) {
+      const latestEvent = await Event.findOne({
+        $or: [
+          { ownerId: req.user!.userId },
+          { collegeId: req.user?.collegeId }
+        ]
+      }).sort({ createdAt: -1 });
+      if (latestEvent) {
+        effectiveEventId = latestEvent._id.toString();
       }
+    }
+
+    const cleanUsername = username.toLowerCase().trim();
+    const cleanRegNo = (regNo || username).trim().toUpperCase();
+
+    // Event-scoped duplicate check: allow same username in different tournaments
+    const duplicateQuery: any = {
+      role: 'participant',
+      $or: [{ username: cleanUsername }, { regNo: cleanRegNo }]
+    };
+    if (effectiveEventId) {
+      duplicateQuery.eventId = effectiveEventId;
+    }
+
+    const existing = await User.findOne(duplicateQuery);
+    if (existing) {
+      res.status(409).json({
+        error: `A participant with username '${cleanUsername}' or roll number '${cleanRegNo}' already exists in this event.`
+      });
+      return;
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
-      username: username.toLowerCase().trim(),
+      username: cleanUsername,
       name: name.trim(),
       passwordHash,
       role: 'participant',
       collegeId: req.user?.collegeId,
       eventId: effectiveEventId,
-      department: department ? String(department).trim() : undefined,
-      year: year ? String(year).trim() : undefined,
-      regNo: regNo ? String(regNo).trim() : undefined
+      department: department ? String(department).trim() : 'CSE',
+      year: year ? String(year).trim() : 'III',
+      regNo: cleanRegNo,
+      status: 'active'
     });
 
-    res.json({
+    res.status(201).json({
       success: true,
       participant: {
         id: user._id,
@@ -598,30 +619,35 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
         name: user.name,
         department: user.department,
         year: user.year,
-        regNo: user.regNo
+        regNo: user.regNo,
+        eventId: user.eventId
       }
     });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to create participant' });
+  } catch (err: any) {
+    console.error('Failed to create participant:', err);
+    res.status(500).json({ error: err.message || 'Failed to create participant' });
   }
 });
 
 // POST /api/admin/participants/bulk
 adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { participants, eventId: bodyEventId } = req.body; // Array of { username, name, password }
+    const { participants, eventId: bodyEventId } = req.body;
     if (!Array.isArray(participants) || participants.length === 0) {
       res.status(400).json({ error: 'Array of participants is required' });
       return;
     }
 
-    let effectiveEventId = req.user?.eventId;
-    if (bodyEventId) {
-      if (req.user?.collegeId) {
-        const ev = await Event.findOne({ _id: bodyEventId, collegeId: req.user.collegeId });
-        if (ev) effectiveEventId = ev._id.toString();
-      } else {
-        effectiveEventId = bodyEventId;
+    let effectiveEventId = bodyEventId || req.user?.eventId;
+    if (!effectiveEventId) {
+      const latestEvent = await Event.findOne({
+        $or: [
+          { ownerId: req.user!.userId },
+          { collegeId: req.user?.collegeId }
+        ]
+      }).sort({ createdAt: -1 });
+      if (latestEvent) {
+        effectiveEventId = latestEvent._id.toString();
       }
     }
 
@@ -631,28 +657,39 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
     for (const item of participants) {
       try {
         if (!item.username || !item.password || !item.name) {
-          errors.push({ item, error: 'Missing required fields' });
+          errors.push({ item, error: 'Missing required username, name, or password' });
           continue;
         }
-        const existing = await User.findOne({ username: item.username.toLowerCase().trim() });
+
+        const cleanUsername = item.username.toLowerCase().trim();
+        const cleanRegNo = (item.regNo || item.username).trim().toUpperCase();
+
+        const duplicateQuery: any = {
+          role: 'participant',
+          $or: [{ username: cleanUsername }, { regNo: cleanRegNo }]
+        };
+        if (effectiveEventId) duplicateQuery.eventId = effectiveEventId;
+
+        const existing = await User.findOne(duplicateQuery);
         if (existing) {
-          errors.push({ item, error: 'Username already exists' });
+          errors.push({ item, error: `Participant '${cleanUsername}' already exists in this tournament` });
           continue;
         }
 
         const passwordHash = await bcrypt.hash(item.password, 10);
         const user = await User.create({
-          username: item.username.toLowerCase().trim(),
+          username: cleanUsername,
           name: item.name.trim(),
           passwordHash,
           role: 'participant',
           collegeId: req.user?.collegeId,
           eventId: effectiveEventId,
-          department: item.department ? String(item.department).trim() : undefined,
-          year: item.year ? String(item.year).trim() : undefined,
-          regNo: item.regNo ? String(item.regNo).trim() : undefined
+          department: item.department ? String(item.department).trim() : 'CSE',
+          year: item.year ? String(item.year).trim() : 'III',
+          regNo: cleanRegNo,
+          status: 'active'
         });
-        created.push({ id: user._id, username: user.username, name: user.name });
+        created.push({ id: user._id, username: user.username, name: user.name, regNo: user.regNo });
       } catch (e: any) {
         errors.push({ item, error: e.message });
       }
@@ -665,8 +702,9 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
       created,
       errors
     });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to bulk import participants' });
+  } catch (err: any) {
+    console.error('Failed to bulk import participants:', err);
+    res.status(500).json({ error: err.message || 'Failed to bulk import participants' });
   }
 });
 
