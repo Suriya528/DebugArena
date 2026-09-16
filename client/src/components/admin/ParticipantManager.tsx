@@ -15,7 +15,6 @@ import {
   Key,
   RefreshCw,
   Download,
-  Filter,
   Calendar,
   Sparkles,
   AlertCircle
@@ -42,26 +41,21 @@ export const ParticipantManager: React.FC = () => {
   const [replayTarget, setReplayTarget] = useState<{ id: string; username: string; questionId: string } | null>(null);
   const [skillTarget, setSkillTarget] = useState<{ id?: string; username?: string } | null>(null);
 
-  // Single Add form with custom credentials
+  // Single Add form with custom credentials (username & password only)
   const [formData, setFormData] = useState({
-    name: '',
     username: '',
-    regNo: '',
     password: '',
-    department: 'CSE',
-    year: 'III',
     eventId: ''
   });
-  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(true);
   const [addLoading, setAddLoading] = useState<boolean>(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Bulk import string and file metadata
+  // Bulk import string and file metadata (username & password)
   const [bulkCsvText, setBulkCsvText] = useState<string>('');
   const [csvFileName, setCsvFileName] = useState<string>('');
   const [bulkEventId, setBulkEventId] = useState<string>('');
   const [bulkLoading, setBulkLoading] = useState<boolean>(false);
-  const [bulkResult, setBulkResult] = useState<{ createdCount: number; errorCount: number } | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -124,12 +118,8 @@ export const ParticipantManager: React.FC = () => {
 
   const handleOpenAddModal = () => {
     setFormData({
-      name: '',
       username: '',
-      regNo: '',
       password: generatePassword(),
-      department: 'CSE',
-      year: 'III',
       eventId: selectedEventId || (events[0]?._id || '')
     });
     setShowPassword(true);
@@ -142,26 +132,24 @@ export const ParticipantManager: React.FC = () => {
     setAddLoading(true);
     setAddError(null);
 
-    const payload = {
-      name: formData.name.trim(),
-      username: (formData.username || formData.regNo).trim().toLowerCase(),
-      regNo: (formData.regNo || formData.username).trim().toUpperCase(),
-      password: formData.password.trim(),
-      department: formData.department.trim(),
-      year: formData.year.trim(),
-      eventId: formData.eventId || selectedEventId || undefined
-    };
+    const cleanUsername = formData.username.trim().toLowerCase();
+    const cleanPassword = formData.password.trim();
 
-    if (!payload.name || !payload.username || !payload.password) {
-      setAddError('Full name, username/roll number, and custom password are required.');
+    if (!cleanUsername || !cleanPassword) {
+      setAddError('Username and password are required.');
       setAddLoading(false);
       return;
     }
 
     try {
-      await api.post('/admin/participants', payload);
+      await api.post('/admin/participants', {
+        username: cleanUsername,
+        name: cleanUsername,
+        password: cleanPassword,
+        eventId: formData.eventId || selectedEventId || undefined
+      });
       setShowAddModal(false);
-      showToast(`Participant "${payload.name}" (@${payload.username}) added successfully with custom password.`);
+      showToast(`Participant @${cleanUsername} added successfully.`);
       await fetchParticipants(selectedEventId);
     } catch (err: any) {
       setAddError(err.response?.data?.error || 'Failed to add participant');
@@ -185,15 +173,15 @@ export const ParticipantManager: React.FC = () => {
   };
 
   const handleDownloadSampleCsv = () => {
-    const sample = `username,name,password,department,year,regNo
-contestant1,Alice Johnson,Alice@2026,CSE,III,21CS101
-contestant2,Bob Smith,Bob@Pass26,IT,III,21IT204
-contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
+    const sample = `username,password
+suriya,pass123
+team1,debug2026
+alex,secret456`;
     const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'sample_participants_custom_credentials.csv');
+    link.setAttribute('download', 'participants_sample.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -216,26 +204,23 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
       if (
         i === 0 &&
         (parts[0]?.toLowerCase().includes('user') ||
-          parts[0]?.toLowerCase().includes('roll') ||
-          parts[1]?.toLowerCase().includes('name'))
+          parts[0]?.toLowerCase().includes('username') ||
+          parts[1]?.toLowerCase().includes('pass'))
       ) {
         continue;
       }
 
-      if (parts.length >= 3) {
+      if (parts.length >= 2 && parts[0] && parts[1]) {
         parsed.push({
           username: parts[0],
-          name: parts[1],
-          password: parts[2],
-          department: parts[3] || 'CSE',
-          year: parts[4] || 'III',
-          regNo: parts[5] || parts[0]
+          name: parts[0],
+          password: parts[1]
         });
       }
     }
 
     if (parsed.length === 0) {
-      alert('No valid CSV rows parsed. Format must be: username,name,password[,department,year,regNo]');
+      alert('No valid rows parsed. Format must be: username,password');
       setBulkLoading(false);
       return;
     }
@@ -245,8 +230,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
         participants: parsed,
         eventId: bulkEventId || selectedEventId || undefined
       });
-      setBulkResult({ createdCount: res.data.createdCount, errorCount: res.data.errorCount });
-      showToast(`Bulk Import Complete: ${res.data.createdCount} participants created with custom credentials.`);
+      showToast(`Bulk Import Complete: ${res.data.createdCount} participants created.`);
       setShowBulkModal(false);
       setBulkCsvText('');
       setCsvFileName('');
@@ -314,7 +298,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
             Participant Management
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Manage contestant rosters, assign custom names & passwords, and monitor active rounds.
+            Manage contestant rosters, assign custom usernames & passwords, and monitor active rounds.
           </p>
         </div>
 
@@ -341,7 +325,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search name, roll no, @user..."
+              placeholder="Search @user..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-xs text-white rounded-xl pl-9 pr-4 py-2 focus:outline-none focus:border-indigo-500"
@@ -383,7 +367,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
               <tr>
-                <th className="p-4">Participant & Tournament</th>
+                <th className="p-4">Participant (@Username)</th>
                 <th className="p-4">Total Score</th>
                 <th className="p-4">Rounds Status</th>
                 <th className="p-4">Violations</th>
@@ -404,21 +388,18 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
               ) : filteredParticipants.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-slate-400 font-sans">
-                    No participants found. Click <span className="text-indigo-400 font-semibold">"Add Participant"</span> to issue custom credentials for this tournament.
+                    No participants found. Click <span className="text-indigo-400 font-semibold">"Add Participant"</span> to issue a custom username & password.
                   </td>
                 </tr>
               ) : (
                 filteredParticipants.map(p => (
                   <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="p-4 font-sans">
-                      <div className="font-bold text-white text-sm">{p.name}</div>
+                      <div className="font-bold text-white text-sm">@{p.username}</div>
                       <div className="text-[11px] text-slate-400 font-mono flex flex-wrap items-center gap-1.5 mt-0.5">
-                        <span className="text-indigo-300 font-semibold">@{p.username}</span>
-                        {p.regNo && <span className="text-slate-400">({p.regNo})</span>}
-                        {p.department && <span className="text-slate-500">• {p.department}</span>}
-                        {p.year && <span className="text-slate-500">• Yr {p.year}</span>}
+                        {p.name && p.name !== p.username && <span className="text-slate-300 font-semibold">{p.name}</span>}
                         {p.eventName && (
-                          <span className="ml-1 px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-semibold font-sans">
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-semibold font-sans">
                             {p.eventName}
                           </span>
                         )}
@@ -535,23 +516,21 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
         </div>
       </div>
 
-      {/* Add Single Participant Modal with Custom Name & Password */}
+      {/* Add Single Participant Modal (Username & Password Only) */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
           <form
             onSubmit={handleAddSingle}
-            className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4"
+            className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-indigo-400" />
-                  Add Participant with Custom Credentials
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Set custom display name, roll number, and password for this contestant.
-                </p>
-              </div>
+            <div className="border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-indigo-400" />
+                Add Participant
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Simply enter a custom username and password for this contestant.
+              </p>
             </div>
 
             {addError && (
@@ -561,76 +540,48 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
               </div>
             )}
 
-            {/* Target Tournament */}
+            {/* Target Tournament (if multiple) */}
+            {events.length > 1 && (
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Tournament
+                </label>
+                <select
+                  required
+                  value={formData.eventId}
+                  onChange={e => setFormData({ ...formData, eventId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {events.map((ev: any) => (
+                    <option key={ev._id} value={ev._id}>
+                      {ev.name} ({ev.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Custom Username */}
             <div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Target Tournament <span className="text-rose-400">*</span>
+                Username <span className="text-rose-400">*</span>
               </label>
-              <select
+              <input
+                type="text"
                 required
-                value={formData.eventId}
-                onChange={e => setFormData({ ...formData, eventId: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-              >
-                {events.map((ev: any) => (
-                  <option key={ev._id} value={ev._id}>
-                    {ev.name} ({ev.code})
-                  </option>
-                ))}
-              </select>
+                autoFocus
+                placeholder="e.g. suriya or team1 or 21cs101"
+                value={formData.username}
+                onChange={e => setFormData({ ...formData, username: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Custom Display Name */}
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Custom Display / Team Name <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Suriya K or Team Alpha"
-                  value={formData.name}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setFormData(prev => ({
-                      ...prev,
-                      name: val,
-                      username: prev.username || val.toLowerCase().replace(/[^a-z0-9_]/g, '')
-                    }));
-                  }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Roll Number / Reg No */}
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Roll No / Registration No <span className="text-rose-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 21CS101 or REG042"
-                  value={formData.regNo}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setFormData(prev => ({
-                      ...prev,
-                      regNo: val,
-                      username: val.toLowerCase().replace(/[^a-z0-9_]/g, '')
-                    }));
-                  }}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white uppercase font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-            </div>
-
-            {/* Custom Password Field with Generator & Toggle */}
+            {/* Custom Password */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-slate-300">
-                  Custom Password <span className="text-rose-400">*</span>
+                  Password <span className="text-rose-400">*</span>
                 </label>
                 <button
                   type="button"
@@ -638,7 +589,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
                   className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3" />
-                  Generate Random
+                  Random
                 </button>
               </div>
 
@@ -647,44 +598,18 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="Enter custom password (e.g. suriya123, Pass@2026)"
+                  placeholder="Enter custom password (e.g. 123456)"
                   value={formData.password}
                   onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-10 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-10 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                  className="absolute right-3 top-3 text-slate-400 hover:text-white"
                 >
                   {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-              </div>
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                The participant will use this password and their roll number to sign in via their event join link.
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Department (Optional)</label>
-                <input
-                  type="text"
-                  value={formData.department}
-                  onChange={e => setFormData({ ...formData, department: e.target.value })}
-                  placeholder="CSE"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-slate-400 block mb-1">Year (Optional)</label>
-                <input
-                  type="text"
-                  value={formData.year}
-                  onChange={e => setFormData({ ...formData, year: e.target.value })}
-                  placeholder="III"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
-                />
               </div>
             </div>
 
@@ -702,25 +627,25 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-1.5"
               >
                 {addLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                <span>Save Participant</span>
+                <span>Add Participant</span>
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Bulk CSV Modal with Custom Credentials */}
+      {/* Bulk CSV Modal (Username & Password Only) */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <Upload className="w-5 h-5 text-indigo-400" />
-                  Bulk Import Participants via CSV
+                  Bulk Import Participants
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Import contestants with custom display names and custom passwords.
+                  Import multiple contestants using simply username and password.
                 </p>
               </div>
               <button
@@ -733,26 +658,28 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
             </div>
 
             {/* Target Tournament */}
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Assign to Tournament <span className="text-rose-400">*</span>
-              </label>
-              <select
-                required
-                value={bulkEventId}
-                onChange={e => setBulkEventId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-              >
-                {events.map((ev: any) => (
-                  <option key={ev._id} value={ev._id}>
-                    {ev.name} ({ev.code})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {events.length > 1 && (
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Tournament
+                </label>
+                <select
+                  required
+                  value={bulkEventId}
+                  onChange={e => setBulkEventId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {events.map((ev: any) => (
+                    <option key={ev._id} value={ev._id}>
+                      {ev.name} ({ev.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              CSV Column Format: <code className="text-indigo-400 font-bold">username, name, password, [department, year, regNo]</code>
+              Format: <code className="text-indigo-400 font-bold">username, password</code> (one per line)
             </p>
 
             {/* File Upload Area */}
@@ -761,7 +688,6 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
               <span className="text-xs font-semibold text-slate-300 group-hover:text-white">
                 {csvFileName ? `Selected: ${csvFileName}` : 'Click to browse & upload .csv file'}
               </span>
-              <span className="text-[11px] text-slate-500 mt-0.5">Custom names and passwords per participant supported</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
@@ -772,7 +698,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
 
             <div className="relative">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-bold text-slate-400 uppercase">Or Paste CSV Text:</span>
+                <span className="text-[11px] font-bold text-slate-400 uppercase">Or Paste List:</span>
                 {bulkCsvText && (
                   <button
                     onClick={() => {
@@ -789,7 +715,7 @@ contestant3,Charlie Davis,Charlie#99,ECE,II,22EC308`;
                 rows={5}
                 value={bulkCsvText}
                 onChange={e => setBulkCsvText(e.target.value)}
-                placeholder={`team1,Suriya K,pass@123,CSE,III,21CS101\nteam2,Cyber Warriors,Alpha#2026,ECE,IV,20EC205`}
+                placeholder={`suriya, pass123\nteam1, debug2026\nalex, secret456`}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
               />
             </div>

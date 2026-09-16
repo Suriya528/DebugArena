@@ -558,9 +558,9 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
 // POST /api/admin/participants
 adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { username, name, password, department, year, regNo, eventId: bodyEventId } = req.body;
-    if (!username || !password || !name) {
-      res.status(400).json({ error: 'Username/Roll number, display name, and password are required' });
+    const { username, password, name, department, year, regNo, eventId: bodyEventId } = req.body;
+    if (!username || !password) {
+      res.status(400).json({ error: 'Username and password are required' });
       return;
     }
 
@@ -578,7 +578,8 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
     }
 
     const cleanUsername = username.toLowerCase().trim();
-    const cleanRegNo = (regNo || username).trim().toUpperCase();
+    const effectiveName = (name && name.trim()) ? name.trim() : cleanUsername;
+    const cleanRegNo = (regNo || cleanUsername).trim().toUpperCase();
 
     // Event-scoped duplicate check: allow same username in different tournaments
     const duplicateQuery: any = {
@@ -592,7 +593,7 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
     const existing = await User.findOne(duplicateQuery);
     if (existing) {
       res.status(409).json({
-        error: `A participant with username '${cleanUsername}' or roll number '${cleanRegNo}' already exists in this event.`
+        error: `Participant '${cleanUsername}' already exists in this event.`
       });
       return;
     }
@@ -600,7 +601,7 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({
       username: cleanUsername,
-      name: name.trim(),
+      name: effectiveName,
       passwordHash,
       role: 'participant',
       collegeId: req.user?.collegeId,
@@ -656,13 +657,14 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
 
     for (const item of participants) {
       try {
-        if (!item.username || !item.password || !item.name) {
-          errors.push({ item, error: 'Missing required username, name, or password' });
+        if (!item.username || !item.password) {
+          errors.push({ item, error: 'Missing username or password' });
           continue;
         }
 
         const cleanUsername = item.username.toLowerCase().trim();
-        const cleanRegNo = (item.regNo || item.username).trim().toUpperCase();
+        const effectiveName = (item.name && item.name.trim()) ? item.name.trim() : cleanUsername;
+        const cleanRegNo = (item.regNo || cleanUsername).trim().toUpperCase();
 
         const duplicateQuery: any = {
           role: 'participant',
@@ -679,7 +681,7 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
         const passwordHash = await bcrypt.hash(item.password, 10);
         const user = await User.create({
           username: cleanUsername,
-          name: item.name.trim(),
+          name: effectiveName,
           passwordHash,
           role: 'participant',
           collegeId: req.user?.collegeId,
