@@ -28,6 +28,8 @@ export interface IQuestion extends Document {
   memoryLimitMb?: number;
   tags?: string[];
   topic?: string;
+  fingerprint?: string;
+  status: 'draft' | 'validated' | 'published' | 'archived';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,7 +65,14 @@ const QuestionSchema = new Schema<IQuestion>(
     timeLimitMs: { type: Number, default: 3000 },
     memoryLimitMb: { type: Number, default: 256 },
     tags: [{ type: String }],
-    topic: { type: String, default: 'Algorithms' }
+    topic: { type: String, default: 'Algorithms' },
+    fingerprint: { type: String, index: true },
+    status: {
+      type: String,
+      enum: ['draft', 'validated', 'published', 'archived'],
+      default: 'published',
+      index: true
+    }
   },
   { timestamps: true }
 );

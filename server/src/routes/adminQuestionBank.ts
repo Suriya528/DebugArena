@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import multer from 'multer';
 import { authenticate, requireAnyAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { Question } from '../models/Question.js';
@@ -6,6 +7,17 @@ import { Event } from '../models/Event.js';
 import { previewVariants } from '../services/dnaService.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { seedDefaultQuestionTemplates } from '../services/defaultQuestions.js';
+import {
+  parseRawFile,
+  previewImport,
+  commitImport,
+  generateOfficialTemplate
+} from '../services/importEngine.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }
+});
 
 export const adminQuestionBankRouter = Router();
 
@@ -331,5 +343,84 @@ adminQuestionBankRouter.delete('/:templateId', async (req: AuthenticatedRequest,
   } catch (err: any) {
     console.error('Failed to delete question template:', err);
     res.status(500).json({ error: 'Failed to delete question template' });
+  }
+});
+
+// GET /api/admin/questions/bank/template/:type/:format
+adminQuestionBankRouter.get('/template/:type/:format', (req: AuthenticatedRequest, res: Response): void => {
+  try {
+    const rawType = (req.params.type || 'mcq').toLowerCase();
+    const rawFormat = (req.params.format || 'xlsx').toLowerCase();
+
+    const type = rawType === 'coding' ? 'coding' : 'mcq';
+    const format = (['csv', 'xlsx', 'json'].includes(rawFormat) ? rawFormat : 'xlsx') as 'csv' | 'xlsx' | 'json';
+
+    const { buffer, mimeType, fileName } = generateOfficialTemplate(type, format);
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Failed to generate template:', err);
+    res.status(500).json({ error: 'Failed to generate official question template' });
+  }
+});
+
+// POST /api/admin/questions/bank/import/preview
+adminQuestionBankRouter.post(
+  '/import/preview',
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: 'No question file uploaded. Please provide a CSV, XLSX, or JSON file.' });
+        return;
+      }
+
+      const defaultType = (req.body.defaultType || 'mcq').toLowerCase() as 'mcq' | 'coding';
+      const rawRows = parseRawFile(req.file.path, req.file.originalname, req.file.buffer);
+      const preview = await previewImport(rawRows, defaultType);
+
+      res.json({
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        preview
+      });
+    } catch (err: any) {
+      console.error('Question import preview failed:', err);
+      res.status(400).json({ error: err.message || 'Failed to parse and preview uploaded question file.' });
+    }
+  }
+);
+
+// POST /api/admin/questions/bank/import/confirm
+adminQuestionBankRouter.post('/import/confirm', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { questions, eventId, roundNumber, fileName, fileSize } = req.body;
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      res.status(400).json({ error: 'No questions provided for confirmation import.' });
+      return;
+    }
+
+    const result = await commitImport({
+      questions,
+      adminUserId: req.user!.userId,
+      adminUsername: req.user!.username,
+      collegeId: req.user?.collegeId?.toString(),
+      eventId,
+      roundNumber: roundNumber ? parseInt(roundNumber, 10) : undefined,
+      sourceFileName: fileName || 'batch_upload',
+      fileSizeBytes: fileSize || 0
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully imported ${result.insertedCount} questions to the Question Bank.`,
+      insertedCount: result.insertedCount,
+      auditId: result.auditId
+    });
+  } catch (err: any) {
+    console.error('Question import commit failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to commit imported questions.' });
   }
 });

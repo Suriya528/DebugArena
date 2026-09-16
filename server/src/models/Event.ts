@@ -2,12 +2,26 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IEvent extends Document {
   collegeId: mongoose.Types.ObjectId;
+  ownerId?: mongoose.Types.ObjectId;
   name: string;
   code: string;
   description: string;
   bannerUrl?: string;
-  status: 'draft' | 'registration' | 'ready' | 'live' | 'frozen' | 'completed' | 'finalizing' | 'finalized' | 'cleaned';
+  participantAccessTokenHash?: string;
+  adminAccessTokenHash?: string;
+  participantTokenCipher?: string;
+  adminTokenCipher?: string;
+  status: 'draft' | 'ready' | 'live' | 'ended' | 'archived' | 'registration' | 'frozen' | 'completed' | 'finalizing' | 'finalized' | 'cleaned';
   rules: string[];
+  startDate?: Date;
+  endDate?: Date;
+  durationMinutes?: number;
+  publishedAt?: Date;
+  startedAt?: Date;
+  endedAt?: Date;
+  archivedAt?: Date;
+  isSetupValid?: boolean;
+  validationErrors?: string[];
   scoringConfig: {
     negativeMarking: boolean;
     tieBreakerPriority: ('codingScore' | 'debuggingScore' | 'totalTime' | 'earliestSubmit')[];
@@ -53,16 +67,30 @@ export interface IEvent extends Document {
 const EventSchema = new Schema<IEvent>(
   {
     collegeId: { type: Schema.Types.ObjectId, ref: 'College', required: true, index: true },
+    ownerId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     name: { type: String, required: true, trim: true },
     code: { type: String, required: true, uppercase: true, trim: true },
     description: { type: String, default: '' },
     bannerUrl: { type: String, default: '' },
+    participantAccessTokenHash: { type: String, index: true, sparse: true },
+    adminAccessTokenHash: { type: String, index: true, sparse: true },
+    participantTokenCipher: { type: String },
+    adminTokenCipher: { type: String },
     status: {
       type: String,
-      enum: ['draft', 'registration', 'ready', 'live', 'frozen', 'completed', 'finalizing', 'finalized', 'cleaned'],
+      enum: ['draft', 'ready', 'live', 'ended', 'archived', 'registration', 'frozen', 'completed', 'finalizing', 'finalized', 'cleaned'],
       default: 'draft'
     },
     rules: { type: [String], default: [] },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    durationMinutes: { type: Number, default: 60 },
+    publishedAt: { type: Date },
+    startedAt: { type: Date },
+    endedAt: { type: Date },
+    archivedAt: { type: Date },
+    isSetupValid: { type: Boolean, default: false },
+    validationErrors: { type: [String], default: [] },
     scoringConfig: {
       negativeMarking: { type: Boolean, default: false },
       tieBreakerPriority: {
@@ -113,6 +141,7 @@ const EventSchema = new Schema<IEvent>(
 
 // Compound unique index: Event codes are unique per college
 EventSchema.index({ collegeId: 1, code: 1 }, { unique: true });
+EventSchema.index({ ownerId: 1, createdAt: -1 });
 EventSchema.index({ status: 1, cleanupStatus: 1, retentionExpiresAt: 1, retentionHold: 1 });
 
 export const Event = mongoose.model<IEvent>('Event', EventSchema);

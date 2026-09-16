@@ -251,3 +251,69 @@ export async function createQuestionDirect(data: any) {
   return res.data.question;
 }
 
+// Question Import & Official Templates
+export function getQuestionTemplateDownloadUrl(type: 'mcq' | 'coding', format: 'csv' | 'xlsx' | 'json'): string {
+  return `${baseURL}/admin/questions/bank/template/${type}/${format}`;
+}
+
+export async function previewQuestionImport(formData: FormData) {
+  const res = await api.post('/admin/questions/bank/import/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return res.data;
+}
+
+export async function confirmQuestionImport(data: {
+  questions: any[];
+  eventId?: string;
+  roundNumber?: number;
+  fileName?: string;
+  fileSize?: number;
+}) {
+  const res = await api.post('/admin/questions/bank/import/confirm', data);
+  return res.data;
+}
+
+// Event Lifecycle, Validation, & Token Administration
+export async function regenerateAdminLink(eventId: string) {
+  const res = await api.post(`/admin/events/${eventId}/regenerate-admin-link`);
+  return res.data;
+}
+
+export async function validateEventSetup(eventId: string) {
+  const res = await api.post(`/admin/events/${eventId}/validate`);
+  return res.data;
+}
+
+export async function publishEvent(eventId: string) {
+  const res = await api.post(`/admin/events/${eventId}/publish`);
+  return res.data;
+}
+
+export async function startEvent(eventId: string) {
+  const res = await api.post(`/admin/events/${eventId}/start`);
+  return res.data;
+}
+
+// Token-Based Participant & Admin Direct Entry
+export async function getParticipantEventAccess(participantToken: string) {
+  const res = await api.get(`/participant/access/${encodeURIComponent(participantToken)}`);
+  return res.data;
+}
+
+export async function participantJoinByToken(data: {
+  participantToken: string;
+  name: string;
+  regNo: string;
+  department?: string;
+  year?: string;
+  password: string;
+}) {
+  const res = await api.post('/participant/join-by-token', data);
+  return res.data;
+}
+
+export async function getAdminEventManagement(adminToken: string) {
+  const res = await api.get(`/admin/events/manage/${encodeURIComponent(adminToken)}`);
+  return res.data;
+}

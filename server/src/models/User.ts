@@ -36,7 +36,7 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>(
   {
-    username: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    username: { type: String, required: true, trim: true, lowercase: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
     passwordHash: { type: String, required: function(this: any) { return this.authProvider === 'local'; } },
@@ -73,5 +73,15 @@ const UserSchema = new Schema<IUser>(
 );
 
 UserSchema.index({ email: 1 }, { unique: true, sparse: true });
+// Event-scoped uniqueness for participants
+UserSchema.index(
+  { eventId: 1, username: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
+);
+// Global uniqueness for administrators/coordinators
+UserSchema.index(
+  { username: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { role: { $ne: 'participant' } } }
+);
 
 export const User = mongoose.model<IUser>('User', UserSchema);

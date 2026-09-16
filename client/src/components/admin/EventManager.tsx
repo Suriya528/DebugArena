@@ -17,7 +17,11 @@ import {
   Copy,
   Check,
   QrCode,
-  Sparkles
+  Sparkles,
+  Shield,
+  ShieldCheck,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { College, Event, DynamicRound, AuditLog } from '../../types/index.js';
 import {
@@ -28,6 +32,9 @@ import {
   unfreezeEvent,
   startDynamicRound,
   getEventAuditLogs,
+  regenerateAdminLink,
+  validateEventSetup,
+  startEvent,
   api
 } from '../../services/api.js';
 import { EventBuilderModal } from './EventBuilderModal.js';
@@ -60,13 +67,73 @@ export const EventManager: React.FC = () => {
 
   // Share & Test Hub States
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedAdminLink, setCopiedAdminLink] = useState(false);
   const [isProjectorModalOpen, setIsProjectorModalOpen] = useState(false);
   const [isSandboxModalOpen, setIsSandboxModalOpen] = useState(false);
+  const [isRegeneratingAdmin, setIsRegeneratingAdmin] = useState(false);
+  const [isValidatingSetup, setIsValidatingSetup] = useState(false);
+  const [validationResult, setValidationResult] = useState<any | null>(null);
+  const [isStartingEvent, setIsStartingEvent] = useState(false);
 
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleCopyAdminLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedAdminLink(true);
+    setTimeout(() => setCopiedAdminLink(false), 2500);
+  };
+
+  const handleRegenerateAdmin = async () => {
+    if (!activeEvent) return;
+    if (!window.confirm('Revoke and regenerate the private Admin Management Link? Any administrators using the previous admin link will need the new link. Participant links will remain unchanged.')) {
+      return;
+    }
+    try {
+      setIsRegeneratingAdmin(true);
+      const res = await regenerateAdminLink(activeEvent._id);
+      setActiveEvent(prev => prev ? { ...prev, adminLink: res.adminLink } : prev);
+      alert('Admin management link successfully regenerated! Please copy and bookmark the new link.');
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to regenerate admin link');
+    } finally {
+      setIsRegeneratingAdmin(false);
+    }
+  };
+
+  const handleValidateSetup = async () => {
+    if (!activeEvent) return;
+    try {
+      setIsValidatingSetup(true);
+      const res = await validateEventSetup(activeEvent._id);
+      setValidationResult(res);
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to validate setup');
+    } finally {
+      setIsValidatingSetup(false);
+    }
+  };
+
+  const handleStartEvent = async () => {
+    if (!activeEvent) return;
+    if (!window.confirm(`Start the event "${activeEvent.name}" and begin the live timer now? Contestants will immediately receive Round 1 challenges.`)) {
+      return;
+    }
+    try {
+      setIsStartingEvent(true);
+      await startEvent(activeEvent._id);
+      alert(`Event "${activeEvent.name}" is now LIVE!`);
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to start event');
+    } finally {
+      setIsStartingEvent(false);
+    }
   };
 
   const fetchData = async () => {
@@ -329,82 +396,172 @@ export const EventManager: React.FC = () => {
       {/* Active Event Dynamic Rounds Workspace */}
       {activeEvent && (
         <div className="space-y-6">
-          {/* Event Share & Test Hub Card */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-              <div className="space-y-2 max-w-xl">
+          {/* Event Access & Control Center */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-indigo-400" /> Assessment Access Hub
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-amber-400" /> Event Access &amp; Lifecycle Center
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
-                    Code: <strong className="text-amber-400">{activeEvent.code}</strong>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
+                    activeEvent.status === 'live'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : activeEvent.status === 'ready'
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    Status: {activeEvent.status}
                   </span>
                 </div>
-                <h3 className="text-lg font-black text-white tracking-tight">
-                  Participant Direct-Join &amp; Dry-Run Preview
+                <h3 className="text-xl font-black text-white tracking-tight">
+                  {activeEvent.name} ({activeEvent.code})
                 </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Contestants can directly access the proctored arena via the dedicated link or scannable projector QR code. Admins can test code against test cases in the dry-run sandbox without polluting the leaderboard.
-                </p>
               </div>
 
-              {/* Actions & Link Box */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-                {/* Direct Link Display & Copy */}
-                <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-2xl p-1.5 pl-3.5 gap-2 shadow-inner">
-                  <span className="text-xs font-mono text-indigo-300 truncate max-w-[220px] sm:max-w-[280px]">
-                    {`${window.location.origin}/join/${activeEvent.code}`}
-                  </span>
-                  <button
-                    onClick={() => handleCopyLink(`${window.location.origin}/join/${activeEvent.code}`)}
-                    className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 cursor-pointer shrink-0"
-                    title="Copy direct join link"
-                  >
-                    {copiedLink ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-300" />
-                        <span className="text-[11px]">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">Copy Link</span>
-                      </>
-                    )}
-                  </button>
-                  <a
-                    href={`/join/${activeEvent.code}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                    title="Open participant portal in new tab"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-
-                {/* Projector Mode (QR) Button */}
+              {/* Lifecycle Actions */}
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setIsProjectorModalOpen(true)}
-                  className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold font-mono flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
-                  title="Open Lab Projector Display Mode"
+                  onClick={handleValidateSetup}
+                  disabled={isValidatingSetup}
+                  className="px-3.5 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Validate rounds, questions, and scoring readiness"
                 >
-                  <QrCode className="w-4 h-4 text-cyan-400" />
-                  <span>Projector QR</span>
+                  <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isValidatingSetup ? 'animate-spin' : ''}`} />
+                  <span>{isValidatingSetup ? 'Validating...' : 'Pre-Event Checklist'}</span>
                 </button>
 
-                {/* Admin Sandbox Dry-Run Button */}
+                {activeEvent.status !== 'live' && activeEvent.status !== 'completed' && activeEvent.status !== 'finalized' && (
+                  <button
+                    onClick={handleStartEvent}
+                    disabled={isStartingEvent}
+                    className="px-4 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-black font-mono flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                    title="Start competition and begin live tournament timer"
+                  >
+                    <Play className="w-3.5 h-3.5 text-slate-950 fill-current" />
+                    <span>{isStartingEvent ? 'Starting Event...' : 'START EVENT (Go LIVE)'}</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setIsSandboxModalOpen(true)}
-                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black font-mono flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-500/20 cursor-pointer active:scale-95"
+                  className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black font-mono flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
                   title="Dry-run code and test cases without leaderboard pollution"
                 >
-                  <Sparkles className="w-4 h-4 text-slate-950" />
+                  <Sparkles className="w-3.5 h-3.5 text-slate-950" />
                   <span>Dry-Run Sandbox</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Validation Checklist Alert Banner */}
+            {validationResult && (
+              <div className={`p-4 rounded-2xl border text-xs font-mono space-y-2 ${
+                validationResult.isValid
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}>
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-1.5">
+                    {validationResult.isValid ? <Check className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-rose-400" />}
+                    <span>{validationResult.isValid ? 'Pre-Event Checklist Passed: Ready for Tournament' : 'Setup Incomplete / Action Required'}</span>
+                  </span>
+                  <span className="text-[11px]">Rounds: {validationResult.checklist?.roundsCount || 0} • Questions: {validationResult.checklist?.totalQuestions || 0}</span>
+                </div>
+                {validationResult.errors && validationResult.errors.length > 0 && (
+                  <ul className="list-disc pl-5 text-[11px] space-y-0.5 text-rose-200">
+                    {validationResult.errors.map((err: string, i: number) => <li key={i}>{err}</li>)}
+                  </ul>
+                )}
+                {validationResult.warnings && validationResult.warnings.length > 0 && (
+                  <ul className="list-disc pl-5 text-[11px] space-y-0.5 text-amber-300">
+                    {validationResult.warnings.map((warn: string, i: number) => <li key={i}>{warn}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Dual Link Cards Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Participant Join Link Card */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Participant Direct-Join Link</span>
+                  </span>
+                  <span className="text-[10px] font-mono bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded">
+                    Student Entry
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                  Share this link or project the full-screen QR code in your lab. Participants access the proctored test environment directly.
+                </p>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-indigo-300 truncate">
+                    {`${window.location.origin}${activeEvent.participantLink || `/join/${activeEvent.code}`}`}
+                  </div>
+                  <button
+                    onClick={() => handleCopyLink(`${window.location.origin}${activeEvent.participantLink || `/join/${activeEvent.code}`}`)}
+                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold transition-all shadow-md shadow-indigo-600/20 shrink-0 cursor-pointer"
+                  >
+                    {copiedLink ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button
+                    onClick={() => setIsProjectorModalOpen(true)}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white border border-slate-700 transition-all shrink-0 cursor-pointer"
+                    title="Display Lab Projector QR"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                  <a
+                    href={activeEvent.participantLink || `/join/${activeEvent.code}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-all shrink-0"
+                    title="Preview in new tab"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Private Admin Management Link Card */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Private Admin Link</span>
+                  </span>
+                  <span className="text-[10px] font-mono bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-bold">
+                    Private &amp; Confidential
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200/80 leading-relaxed font-sans">
+                  Never share with contestants. In case of link exposure, regenerate below to instantly revoke old admin access.
+                </p>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-amber-300 truncate">
+                    {`${window.location.origin}${activeEvent.adminLink || `/manage/${activeEvent._id}`}`}
+                  </div>
+                  <button
+                    onClick={() => handleCopyAdminLink(`${window.location.origin}${activeEvent.adminLink || `/manage/${activeEvent._id}`}`)}
+                    className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono text-xs font-bold transition-all shadow-md shadow-amber-500/20 shrink-0 cursor-pointer"
+                  >
+                    {copiedAdminLink ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button
+                    onClick={handleRegenerateAdmin}
+                    disabled={isRegeneratingAdmin}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 font-mono text-xs font-bold transition-all shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                    title="Regenerate Admin Link (Invalidates previous admin link)"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingAdmin ? 'animate-spin' : ''}`} />
+                    <span>Regenerate</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -682,6 +839,7 @@ export const EventManager: React.FC = () => {
             ? {
                 name: activeEvent.name,
                 code: activeEvent.code,
+                participantLink: activeEvent.participantLink,
                 collegeName:
                   typeof activeEvent.collegeId === 'object'
                     ? (activeEvent.collegeId as any)?.name

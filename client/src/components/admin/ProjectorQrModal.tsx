@@ -9,6 +9,7 @@ interface ProjectorQrModalProps {
     name: string;
     code: string;
     collegeName?: string;
+    participantLink?: string;
   } | null;
 }
 
@@ -22,7 +23,10 @@ export const ProjectorQrModal: React.FC<ProjectorQrModalProps> = ({
 
   if (!isOpen || !event) return null;
 
-  const joinUrl = `${window.location.origin}/join/${encodeURIComponent(event.code)}`;
+  // Invariant: QR code encodes ONLY the participant join link
+  const joinUrl = event.participantLink
+    ? (event.participantLink.startsWith('http') ? event.participantLink : `${window.location.origin}${event.participantLink}`)
+    : `${window.location.origin}/join/${encodeURIComponent(event.code)}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(joinUrl);

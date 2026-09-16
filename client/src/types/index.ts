@@ -40,11 +40,14 @@ export interface College {
 export interface Event {
   _id: string;
   collegeId: string | College;
+  ownerId?: string;
   name: string;
   code: string;
   description: string;
   bannerUrl?: string;
-  status: 'draft' | 'registration' | 'ready' | 'live' | 'frozen' | 'completed';
+  participantLink?: string;
+  adminLink?: string;
+  status: 'draft' | 'registration' | 'ready' | 'live' | 'frozen' | 'ended' | 'completed' | 'finalized' | 'archived';
   rules: string[];
   scoringConfig: {
     negativeMarking: boolean;

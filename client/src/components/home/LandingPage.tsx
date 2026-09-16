@@ -39,7 +39,6 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { AdminAuthModal } from '../auth/AdminAuthModal.js';
-import { JoinEventModal } from '../participant/JoinEventModal.js';
 import { FooterDetailModal, FooterTopicId } from './FooterDetailModal.js';
 import { ThemeToggle } from '../common/ThemeToggle.js';
 import { useTheme } from '../../context/ThemeContext.js';
@@ -47,9 +46,7 @@ import { useTheme } from '../../context/ThemeContext.js';
 export const LandingPage: React.FC = () => {
   const { isDark } = useTheme();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
-  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [enteredEventCode, setEnteredEventCode] = useState('');
   const [certLookupId, setCertLookupId] = useState('');
 
   // Footer Details Modal state
@@ -69,11 +66,6 @@ export const LandingPage: React.FC = () => {
 
   // FAQ Accordion State
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
-
-  const handleJoinWithCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsJoinModalOpen(true);
-  };
 
   const handleVerifyCert = (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,22 +255,13 @@ export const LandingPage: React.FC = () => {
             {/* Universal Theme Toggle */}
             <ThemeToggle />
 
-            {/* Organizer Portal */}
+            {/* Admin / Host Portal */}
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              className="hidden sm:inline-flex h-9 px-3.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 transition-all items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>Host College Event</span>
-            </button>
-
-            {/* Enter Competition Button */}
-            <button
-              onClick={() => setIsJoinModalOpen(true)}
               className="h-9 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/25 transition-all inline-flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
             >
-              <Trophy className="w-3.5 h-3.5 text-slate-950 shrink-0" />
-              <span>Join Competition</span>
+              <Shield className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+              <span>Admin Portal</span>
             </button>
 
             {/* Mobile Hamburger Menu */}
@@ -340,20 +323,10 @@ export const LandingPage: React.FC = () => {
                   setIsAdminModalOpen(true);
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 flex items-center justify-center gap-2"
-              >
-                <Shield className="w-4 h-4 text-amber-500" />
-                <span>Organizer Portal (Host Tournament)</span>
-              </button>
-              <button
-                onClick={() => {
-                  setIsJoinModalOpen(true);
-                  setIsMobileMenuOpen(false);
-                }}
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 flex items-center justify-center gap-2"
               >
-                <Trophy className="w-4 h-4 text-slate-950" />
-                <span>Enter Event Lobby</span>
+                <Shield className="w-4 h-4 text-slate-950" />
+                <span>Admin Portal (Host Tournament)</span>
               </button>
             </div>
           </div>
@@ -391,48 +364,30 @@ export const LandingPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Event Code Instant Entry Box */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-[#0d121f] border border-slate-200 dark:border-slate-800 shadow-md max-w-lg space-y-2.5">
-              <div className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center justify-between">
-                <span>Enter Your College Event Code:</span>
-                <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  <span>Lab Contests Ready</span>
+            {/* Event-Centric Architecture Notice */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/25 border border-amber-500/30 dark:border-amber-700/40 shadow-sm max-w-lg space-y-3">
+              <div className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Competition Access Invariant</span>
+                </span>
+                <span className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] text-amber-700 dark:text-amber-300 font-bold">
+                  Private &amp; Scoped
                 </span>
               </div>
-
-              <form onSubmit={handleJoinWithCode} className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={enteredEventCode}
-                    onChange={(e) => setEnteredEventCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. DEBUG26 or TECHFEST"
-                    maxLength={10}
-                    className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
+                <strong className="text-slate-900 dark:text-white font-semibold">Participants:</strong> Debug Arena events are private and tournament-scoped. Please access your competition using the unique <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono text-[11px] text-amber-800 dark:text-amber-200">/join/&lt;token&gt;</code> link or QR code provided directly by your college department.
+              </p>
+              <div className="pt-2 flex items-center justify-between border-t border-amber-500/20">
+                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">Convening an Event for Your College?</span>
                 <button
-                  type="submit"
-                  className="h-10 px-5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/25 transition-all inline-flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer whitespace-nowrap"
+                  onClick={() => setIsAdminModalOpen(true)}
+                  className="h-8 px-3 rounded-lg text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                 >
-                  <Trophy className="w-3.5 h-3.5 text-slate-950 shrink-0" />
-                  <span>Join Event Lobby</span>
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin Console</span>
                 </button>
-              </form>
-            </div>
-
-            {/* Organizer Fast Action */}
-            <div className="flex items-center gap-3 pt-0.5 font-mono text-xs">
-              <span className="text-slate-500 dark:text-slate-400">Convening an Event for Your College?</span>
-              <button
-                onClick={() => setIsAdminModalOpen(true)}
-                className="text-amber-600 dark:text-amber-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <span>Host Command Center</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              </div>
             </div>
 
             {/* 4 Core Features Chips */}
@@ -581,7 +536,13 @@ export const LandingPage: React.FC = () => {
                         <span>{isRunningTests ? 'Running...' : 'Run Test Cases'}</span>
                       </button>
                       <button
-                        onClick={() => setIsJoinModalOpen(true)}
+                        onClick={() => {
+                          if (isDefectFixed) {
+                            alert('Bug successfully resolved in the playground! In live events, submissions are evaluated in full-screen proctored kiosk mode.');
+                          } else {
+                            alert('Code still contains defects! Switch to Buggy Code tab and fix the loop condition before submitting.');
+                          }
+                        }}
                         className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/20 cursor-pointer active:scale-95"
                       >
                         <span>Submit Fix</span>
@@ -923,10 +884,10 @@ export const LandingPage: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setIsJoinModalOpen(true)}
+              onClick={() => scrollToSection('hero')}
               className="self-start sm:self-auto px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-400 text-amber-600 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer font-mono shadow-sm"
             >
-              Enter Event with Code &rarr;
+              Participant Access Info &rarr;
             </button>
           </div>
 
@@ -1183,14 +1144,14 @@ export const LandingPage: React.FC = () => {
               className="w-full sm:w-auto h-11 px-6 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 shadow-lg shadow-amber-500/25 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 font-sans"
             >
               <Shield className="w-4 h-4 text-slate-950" />
-              <span>Host College Event</span>
+              <span>Admin Portal / Host College Event</span>
             </button>
             <button
-              onClick={() => setIsJoinModalOpen(true)}
+              onClick={() => openTopic('anti-cheat-guidelines')}
               className="w-full sm:w-auto h-11 px-6 rounded-xl text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:border-amber-400 transition-all inline-flex items-center justify-center gap-2 cursor-pointer active:scale-95 font-sans"
             >
-              <Trophy className="w-4 h-4 text-amber-500" />
-              <span>Enter Competition with Code</span>
+              <ShieldCheck className="w-4 h-4 text-amber-500" />
+              <span>Competition Security Standards</span>
             </button>
           </div>
         </section>
@@ -1239,7 +1200,7 @@ export const LandingPage: React.FC = () => {
             <div className="space-y-2">
               <div className="font-bold text-slate-900 dark:text-white uppercase text-[11px] font-mono">Event Portals</div>
               <ul className="space-y-1 text-[11px]">
-                <li><button onClick={() => setIsJoinModalOpen(true)} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer text-amber-600 dark:text-amber-400 font-semibold">Join with Event Code &rarr;</button></li>
+                <li><button onClick={() => scrollToSection('hero')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer text-amber-600 dark:text-amber-400 font-semibold">Participant Link Access &rarr;</button></li>
                 <li><button onClick={() => setIsAdminModalOpen(true)} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Organizer Portal (Admins &amp; Faculty)</button></li>
                 <li><button onClick={() => openTopic('organizer-dispatch')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">Organizer Operations Guide</button></li>
                 <li><button onClick={() => scrollToSection('event-leaderboard')} className="hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer">View Event Leaderboard</button></li>
@@ -1278,19 +1239,14 @@ export const LandingPage: React.FC = () => {
         onClose={() => setIsFooterModalOpen(false)}
         onSelectTopic={(t) => setFooterTopic(t)}
         onAction={(type) => {
-          if (type === 'join') setIsJoinModalOpen(true);
+          if (type === 'join') scrollToSection('hero');
           if (type === 'admin') setIsAdminModalOpen(true);
           if (type === 'verify') scrollToSection('official-certificates');
         }}
       />
 
-      {/* Core Application Modals (Unchanged Business Logic) */}
+      {/* Admin Authentication Modal */}
       <AdminAuthModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} />
-      <JoinEventModal
-        isOpen={isJoinModalOpen}
-        onClose={() => setIsJoinModalOpen(false)}
-        defaultEventCode={enteredEventCode}
-      />
     </div>
   );
 };

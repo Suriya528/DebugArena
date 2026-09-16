@@ -57,6 +57,9 @@ export interface IQuestionTemplate extends Document {
     testCaseTemplates?: { inputTemplate: string; expectedFormula?: string }[];
   };
 
+  fingerprint?: string;
+  status: 'draft' | 'validated' | 'published' | 'archived';
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -146,9 +149,18 @@ const QuestionTemplateSchema = new Schema<IQuestionTemplate>(
           expectedFormula: { type: String }
         }
       ]
+    },
+    fingerprint: { type: String, index: true },
+    status: {
+      type: String,
+      enum: ['draft', 'validated', 'published', 'archived'],
+      default: 'published',
+      index: true
     }
   },
   { timestamps: true }
 );
+
+QuestionTemplateSchema.index({ topic: 1, difficulty: 1, type: 1 });
 
 export const QuestionTemplate = mongoose.model<IQuestionTemplate>('QuestionTemplate', QuestionTemplateSchema);

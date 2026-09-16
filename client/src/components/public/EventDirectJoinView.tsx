@@ -58,10 +58,15 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
       try {
         setLoading(true);
         setError(null);
-        const res = await api.get(`/participant/event-info/${encodeURIComponent(eventCode)}`);
+        let res;
+        try {
+          res = await api.get(`/participant/access/${encodeURIComponent(eventCode)}`);
+        } catch {
+          res = await api.get(`/participant/event-info/${encodeURIComponent(eventCode)}`);
+        }
         setEventData(res.data.event);
       } catch (err: any) {
-        setError(err.response?.data?.error || `Event with code "${eventCode}" could not be found.`);
+        setError(err.response?.data?.error || `Competition link is invalid, expired, or deactivated.`);
       } finally {
         setLoading(false);
       }
@@ -106,14 +111,33 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
 
       await requestKioskFullscreen();
 
-      const res = await joinEventByCode({
-        eventCode: eventCode.trim().toUpperCase(),
-        name: fullName.trim(),
-        regNo: regNo.trim().toUpperCase(),
-        department: department.trim(),
-        year: year.trim(),
-        password: password.trim()
-      });
+      let res: any;
+      try {
+        const tokenRes = await api.post('/participant/join-by-token', {
+          participantToken: eventCode.trim(),
+          name: fullName.trim(),
+          regNo: regNo.trim().toUpperCase(),
+          department: department.trim(),
+          year: year.trim(),
+          password: password.trim()
+        });
+        if (tokenRes.data.token) {
+          localStorage.setItem('debugarena_token', tokenRes.data.token);
+          if (tokenRes.data.event?._id) {
+            localStorage.setItem('debugarena_active_event_id', tokenRes.data.event._id);
+          }
+          res = tokenRes.data;
+        }
+      } catch {
+        res = await joinEventByCode({
+          eventCode: (eventData?.code || eventCode).trim().toUpperCase(),
+          name: fullName.trim(),
+          regNo: regNo.trim().toUpperCase(),
+          department: department.trim(),
+          year: year.trim(),
+          password: password.trim()
+        });
+      }
 
       try {
         localStorage.setItem(
@@ -122,7 +146,7 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
             name: fullName.trim(),
             regNo: regNo.trim().toUpperCase(),
             username: res?.user?.username || regNo.trim().toUpperCase(),
-            eventCode: eventCode.trim().toUpperCase()
+            eventCode: (eventData?.code || eventCode).trim().toUpperCase()
           })
         );
       } catch {}
@@ -149,16 +173,44 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
 
       await requestKioskFullscreen();
 
-      // Scoped username fallback if simple roll number used
-      const cleanReg = regNo.trim();
-      const loginUser = cleanReg.includes('_')
-        ? cleanReg
-        : `${eventCode.toLowerCase()}_${cleanReg.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      let res: any;
+      try {
+        const tokenRes = await api.post('/participant/join-by-token', {
+          participantToken: eventCode.trim(),
+          name: regNo.trim(),
+          regNo: regNo.trim().toUpperCase(),
+          password: password.trim()
+        });
+        if (tokenRes.data.token) {
+          localStorage.setItem('debugarena_token', tokenRes.data.token);
+          if (tokenRes.data.event?._id) {
+            localStorage.setItem('debugarena_active_event_id', tokenRes.data.event._id);
+          }
+          res = tokenRes.data;
+        }
+      } catch {
+        res = await joinEventByCode({
+          eventCode: (eventData?.code || eventCode).trim().toUpperCase(),
+          name: regNo.trim(),
+          regNo: regNo.trim().toUpperCase(),
+          password: password.trim()
+        });
+      }
 
-      await login(loginUser, password);
+      try {
+        localStorage.setItem(
+          'debugarena_participant_recovery',
+          JSON.stringify({
+            regNo: regNo.trim().toUpperCase(),
+            username: res?.user?.username || regNo.trim().toUpperCase(),
+            eventCode: (eventData?.code || eventCode).trim().toUpperCase()
+          })
+        );
+      } catch {}
+
       onJoinedSuccess();
     } catch (err: any) {
-      setSubmitError(err.response?.data?.error || 'Invalid credentials.');
+      setSubmitError(err.response?.data?.error || 'Invalid credentials or login failed.');
     } finally {
       setSubmitting(false);
     }

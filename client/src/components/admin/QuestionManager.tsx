@@ -27,12 +27,14 @@ import {
   X,
   FileCode,
   Eye,
-  EyeOff
+  EyeOff,
+  UploadCloud
 } from 'lucide-react';
 import { Question, Event, DynamicRound } from '../../types/index.js';
 import { api, getEvents, getEventDetails } from '../../services/api.js';
 import { VariantPreviewModal } from './VariantPreviewModal.js';
 import { AddQuestionModal } from './AddQuestionModal.js';
+import { QuestionImportModal } from './QuestionImportModal.js';
 import { useAuth } from '../../context/AuthContext.js';
 
 export const QuestionManager: React.FC = () => {
@@ -74,6 +76,7 @@ export const QuestionManager: React.FC = () => {
 
   // Modals & Notifications
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [previewTemplate, setPreviewTemplate] = useState<{ id: string; title: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -405,6 +408,18 @@ export const QuestionManager: React.FC = () => {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${seedingBank ? 'animate-spin' : ''}`} />
                 <span>{seedingBank ? 'Seeding...' : 'Seed Standard Library'}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setDirectRoundTarget(undefined);
+                  setIsImportModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+                title="Bulk import questions from CSV, XLSX, or JSON spreadsheet"
+              >
+                <UploadCloud className="w-4 h-4 text-slate-950" />
+                <span>Import (CSV/XLSX/JSON)</span>
               </button>
 
               <button
@@ -982,6 +997,18 @@ export const QuestionManager: React.FC = () => {
             <div className="flex items-center gap-2 self-end sm:self-center">
               <button
                 onClick={() => {
+                  setDirectRoundTarget(selectedRound);
+                  setIsImportModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+                title="Bulk import questions into this round from CSV, XLSX, or JSON"
+              >
+                <UploadCloud className="w-3.5 h-3.5 text-slate-950" />
+                <span>Import to Round</span>
+              </button>
+
+              <button
+                onClick={() => {
                   setEditingTemplate(null);
                   setDirectRoundTarget(selectedRound);
                   setIsAddModalOpen(true);
@@ -1171,6 +1198,19 @@ export const QuestionManager: React.FC = () => {
             showToast('New question created and added to Question Bank!');
           }
         }}
+      />
+
+      {/* Question Import Modal (Canonical Multi-Format Engine) */}
+      <QuestionImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportComplete={() => {
+          fetchQuestionBank();
+          fetchRoundQuestions();
+          showToast('Questions imported and committed successfully!');
+        }}
+        targetEventId={selectedEventId || undefined}
+        targetRoundNumber={directRoundTarget}
       />
 
       {/* Variant Preview Modal (USP) */}

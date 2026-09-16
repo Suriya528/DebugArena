@@ -22,6 +22,7 @@ import { broadcastToAdmins } from '../services/socketService.js';
 import { User } from '../models/User.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { generateQuestionVariant } from '../services/dnaService.js';
+import { hashToken } from '../utils/tokenUtils.js';
 
 export const participantRouter = Router();
 
@@ -30,6 +31,186 @@ const activeEvaluationLocks = new Set<string>();
 const recentViolationMap = new Map<string, { time: number; type: string; count: number }>();
 
 // -------------------- PUBLIC PARTICIPANT ACCESS --------------------
+
+// GET /api/participant/access/:participantToken
+// Resolves public event metadata for direct participant join link /join/:participantToken
+participantRouter.get('/access/:participantToken', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { participantToken } = req.params;
+    if (!participantToken) {
+      res.status(400).json({ error: 'Participant access token is required.' });
+      return;
+    }
+
+    const tokenHash = hashToken(participantToken);
+    const event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    if (!event) {
+      res.status(404).json({ error: 'Invalid, expired, or deactivated competition join link.' });
+      return;
+    }
+
+    let college: any = null;
+    if (event.collegeId) {
+      const { College } = await import('../models/College.js');
+      college = await College.findById(event.collegeId);
+    }
+
+    const rounds = await DynamicRound.find({ eventId: event._id })
+      .select('roundNumber title description type durationMinutes questionCount totalMarks passingMarks allowedLanguages status')
+      .sort({ roundNumber: 1 });
+
+    res.json({
+      success: true,
+      event: {
+        _id: event._id,
+        name: event.name,
+        code: event.code,
+        description: event.description,
+        bannerUrl: event.bannerUrl,
+        status: event.status,
+        rules: event.rules,
+        scoringConfig: event.scoringConfig,
+        branding: event.branding,
+        certificateConfig: {
+          enabled: event.certificateConfig?.enabled || false
+        },
+        college: college
+          ? {
+              _id: college._id,
+              name: college.name,
+              code: college.code,
+              primaryColor: college.primaryColor,
+              secondaryColor: college.secondaryColor
+            }
+          : null,
+        rounds
+      }
+    });
+  } catch (err: any) {
+    console.error('Failed to resolve participant access token:', err);
+    res.status(500).json({ error: 'Failed to access event details.' });
+  }
+});
+
+// POST /api/participant/join-by-token
+// Allows a participant to join an event using the secure participant token
+participantRouter.post('/join-by-token', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { participantToken, name, regNo, department, year, password } = req.body;
+
+    if (!participantToken || !name || !regNo || !password) {
+      res.status(400).json({ error: 'Participant access token, full name, roll number (regNo), and password are required.' });
+      return;
+    }
+
+    const tokenHash = hashToken(participantToken);
+    const event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    if (!event) {
+      res.status(404).json({ error: 'Invalid or expired competition join link.' });
+      return;
+    }
+
+    if (event.status !== 'registration' && event.status !== 'ready' && event.status !== 'live') {
+      res.status(403).json({
+        error: `Event '${event.name}' is currently ${event.status.toUpperCase()}. Registration is closed.`
+      });
+      return;
+    }
+
+    const cleanRegNo = regNo.trim().toUpperCase();
+    if (!cleanRegNo || cleanRegNo.replace(/[^A-Z0-9]/g, '').length === 0) {
+      res.status(400).json({ error: 'Roll number must contain alphanumeric characters' });
+      return;
+    }
+    const scopedUsername = `${event.code.toLowerCase()}_${cleanRegNo.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+
+    let user = await User.findOne({
+      eventId: event._id,
+      $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+    });
+
+    if (user) {
+      if (user.passwordHash) {
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!isMatch) {
+          res.status(401).json({
+            error: 'Invalid credentials. This roll number is already registered for this event with a different password.'
+          });
+          return;
+        }
+      }
+    } else {
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      try {
+        user = await User.create({
+          username: scopedUsername,
+          name: name.trim(),
+          passwordHash,
+          role: 'participant',
+          collegeId: event.collegeId,
+          eventId: event._id,
+          regNo: cleanRegNo,
+          department: (department || '').trim(),
+          year: (year || '').trim()
+        });
+      } catch (createErr: any) {
+        if (createErr.code === 11000) {
+          user = await User.findOne({
+            eventId: event._id,
+            $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+          });
+          if (!user) throw createErr;
+        } else {
+          throw createErr;
+        }
+      }
+    }
+
+    if (user.isDisqualified) {
+      res.status(403).json({
+        error: `Participant account is disqualified: ${user.disqualificationReason || 'Security policy violation'}`
+      });
+      return;
+    }
+
+    const payload: AuthPayload = {
+      userId: user._id.toString(),
+      username: user.username,
+      name: user.name,
+      role: 'participant',
+      collegeId: user.collegeId?.toString(),
+      eventId: event._id.toString()
+    };
+
+    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '12h' });
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        regNo: user.regNo,
+        department: user.department,
+        year: user.year,
+        eventId: event._id
+      },
+      event: {
+        _id: event._id,
+        name: event.name,
+        code: event.code,
+        status: event.status
+      }
+    });
+  } catch (err: any) {
+    console.error('Participant token join error:', err);
+    res.status(500).json({ error: 'Failed to authenticate participant for this event.' });
+  }
+});
 
 // GET /api/participant/event-info/:eventCode
 // Public endpoint for previewing an event's metadata before joining

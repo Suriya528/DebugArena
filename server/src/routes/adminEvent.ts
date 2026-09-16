@@ -19,6 +19,7 @@ import { TieBreak } from '../models/TieBreak.js';
 import { seedEventRoundQuestions } from '../services/defaultQuestions.js';
 import { executeCleanupJob } from '../services/cleanupEngine.js';
 import { runTestCases, executeSingleTestCase } from '../services/judgeService.js';
+import { generateSecureToken, hashToken, encryptToken, decryptToken } from '../utils/tokenUtils.js';
 
 export const adminEventRouter = Router();
 
@@ -144,7 +145,47 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
     }
 
     const events = await Event.find(filter).populate('collegeId', 'name code logoUrl primaryColor').sort({ createdAt: -1 });
-    res.json({ events });
+    const sanitizedEvents = await Promise.all(
+      events.map(async (ev) => {
+        let modified = false;
+        let participantToken = decryptToken(ev.participantTokenCipher);
+        let adminToken = decryptToken(ev.adminTokenCipher);
+
+        if (!participantToken || !ev.participantAccessTokenHash) {
+          participantToken = generateSecureToken(32);
+          ev.participantAccessTokenHash = hashToken(participantToken);
+          ev.participantTokenCipher = encryptToken(participantToken);
+          modified = true;
+        }
+        if (!adminToken || !ev.adminAccessTokenHash) {
+          adminToken = generateSecureToken(32);
+          ev.adminAccessTokenHash = hashToken(adminToken);
+          ev.adminTokenCipher = encryptToken(adminToken);
+          modified = true;
+        }
+        if (!ev.ownerId && req.user?.userId) {
+          ev.ownerId = req.user.userId as any;
+          modified = true;
+        }
+        if (modified) {
+          await ev.save();
+        }
+
+        const obj = ev.toObject();
+        delete (obj as any).participantAccessTokenHash;
+        delete (obj as any).adminAccessTokenHash;
+        delete (obj as any).participantTokenCipher;
+        delete (obj as any).adminTokenCipher;
+
+        return {
+          ...obj,
+          participantLink: `/join/${participantToken}`,
+          adminLink: `/manage/${adminToken}`
+        };
+      })
+    );
+
+    res.json({ events: sanitizedEvents });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch events' });
   }
@@ -165,11 +206,6 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       initialRounds
     } = req.body;
 
-    // Multi-Tenant Isolation & College Resolution:
-    // 1. Super admin can create event under any college
-    // 2. User can create event under a college they created (createdBy == req.user.userId)
-    // 3. User can create event under their assigned college (collegeId == req.user.collegeId)
-    // 4. Fallback to assigned college or provided collegeId
     let effectiveCollegeId = collegeId || req.user?.collegeId;
 
     if (req.user?.role !== 'super_admin' && collegeId && req.user?.collegeId && collegeId.toString() !== req.user.collegeId.toString()) {
@@ -199,12 +235,25 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
+    // Mint separate cryptographically secure tokens for participant & admin links
+    const participantToken = generateSecureToken(32);
+    const adminToken = generateSecureToken(32);
+    const participantAccessTokenHash = hashToken(participantToken);
+    const adminAccessTokenHash = hashToken(adminToken);
+    const participantTokenCipher = encryptToken(participantToken);
+    const adminTokenCipher = encryptToken(adminToken);
+
     const event = await Event.create({
       collegeId: effectiveCollegeId,
+      ownerId: req.user!.userId,
       name: name.trim(),
       code: cleanCode,
       description: description || '',
       bannerUrl: bannerUrl || '',
+      participantAccessTokenHash,
+      adminAccessTokenHash,
+      participantTokenCipher,
+      adminTokenCipher,
       status: 'ready',
       rules: rules || [
         'Full-screen proctoring is strictly enforced throughout the competition.',
@@ -312,10 +361,215 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
     );
 
     await recordAudit(req, 'EVENT_CREATED', 'Event', event._id.toString(), { name, code: cleanCode, roundsCount: createdRounds.length }, '', effectiveCollegeId, event._id);
-    res.status(201).json({ event, rounds: createdRounds });
+
+    const eventObj = event.toObject();
+    delete (eventObj as any).participantAccessTokenHash;
+    delete (eventObj as any).adminAccessTokenHash;
+    delete (eventObj as any).participantTokenCipher;
+    delete (eventObj as any).adminTokenCipher;
+
+    res.status(201).json({
+      event: eventObj,
+      rounds: createdRounds,
+      participantAccessToken: participantToken,
+      adminAccessToken: adminToken,
+      participantLink: `/join/${participantToken}`,
+      adminLink: `/manage/${adminToken}`
+    });
   } catch (err: any) {
     console.error('Error creating event:', err);
     res.status(500).json({ error: 'Failed to create dynamic event' });
+  }
+});
+
+// GET /api/admin/events/manage/:adminToken
+adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { adminToken } = req.params;
+    if (!adminToken) {
+      res.status(400).json({ error: 'Admin access token is required' });
+      return;
+    }
+    const tokenHash = hashToken(adminToken);
+    const event = await Event.findOne({ adminAccessTokenHash: tokenHash }).populate('collegeId', 'name code logoUrl primaryColor');
+    if (!event) {
+      res.status(404).json({ error: 'Invalid or expired admin management link' });
+      return;
+    }
+
+    // Authorization: User must be an administrator and the event owner or super_admin
+    const isOwner = event.ownerId && event.ownerId.toString() === req.user!.userId.toString();
+    const isSuper = req.user!.role === 'super_admin';
+    if (!isOwner && !isSuper) {
+      res.status(403).json({ error: 'You are not authorized to manage this event.' });
+      return;
+    }
+
+    const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    const participantToken = decryptToken(event.participantTokenCipher);
+
+    const eventObj = event.toObject();
+    delete (eventObj as any).participantAccessTokenHash;
+    delete (eventObj as any).adminAccessTokenHash;
+    delete (eventObj as any).participantTokenCipher;
+    delete (eventObj as any).adminTokenCipher;
+
+    res.json({
+      event: eventObj,
+      rounds,
+      participantLink: participantToken ? `/join/${participantToken}` : null,
+      adminLink: `/manage/${adminToken}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to access event management' });
+  }
+});
+
+// POST /api/admin/events/:eventId/regenerate-admin-link
+adminEventRouter.post('/:eventId/regenerate-admin-link', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const isOwner = event.ownerId && event.ownerId.toString() === req.user!.userId.toString();
+    const isSuper = req.user!.role === 'super_admin';
+    if (!isOwner && !isSuper) {
+      res.status(403).json({ error: 'Only the event owner or super admin can regenerate admin link' });
+      return;
+    }
+
+    const newAdminToken = generateSecureToken(32);
+    event.adminAccessTokenHash = hashToken(newAdminToken);
+    event.adminTokenCipher = encryptToken(newAdminToken);
+    await event.save();
+
+    await recordAudit(req, 'EVENT_ADMIN_LINK_REGENERATED', 'Event', event._id.toString(), {}, 'Old admin link invalidated, new token generated', event.collegeId, event._id);
+
+    res.json({
+      message: 'Admin management link regenerated successfully. Old link has been invalidated.',
+      adminAccessToken: newAdminToken,
+      adminLink: `/manage/${newAdminToken}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to regenerate admin link' });
+  }
+});
+
+// POST /api/admin/events/:eventId/validate
+adminEventRouter.post('/:eventId/validate', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    if (rounds.length === 0) {
+      errors.push('Event must have at least one competition round configured.');
+    }
+
+    let totalQuestions = 0;
+    for (const round of rounds) {
+      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: round.roundNumber });
+      totalQuestions += qCount;
+      if (qCount === 0) {
+        errors.push(`Round ${round.roundNumber} ("${round.title}") has 0 questions configured.`);
+      } else if (qCount < round.questionCount) {
+        warnings.push(`Round ${round.roundNumber} has ${qCount} questions, but target question count is ${round.questionCount}.`);
+      }
+      if (round.durationMinutes <= 0) {
+        errors.push(`Round ${round.roundNumber} duration must be greater than 0 minutes.`);
+      }
+    }
+
+    const participantCount = await User.countDocuments({ eventId: event._id, role: 'participant' });
+    if (participantCount === 0) {
+      warnings.push('No participants have registered or been added to this event yet.');
+    }
+
+    const isValid = errors.length === 0;
+    event.isSetupValid = isValid;
+    event.validationErrors = errors;
+    if (isValid && event.status === 'draft') {
+      event.status = 'ready';
+    }
+    await event.save();
+
+    res.json({
+      isValid,
+      status: event.status,
+      errors,
+      warnings,
+      checklist: {
+        roundsConfigured: rounds.length > 0,
+        roundsCount: rounds.length,
+        questionsConfigured: totalQuestions > 0,
+        totalQuestions,
+        participantsCount: participantCount,
+        scoringConfigured: Boolean(event.scoringConfig)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to validate event setup' });
+  }
+});
+
+// POST /api/admin/events/:eventId/publish
+adminEventRouter.post('/:eventId/publish', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+    event.status = 'ready';
+    event.publishedAt = new Date();
+    await event.save();
+
+    broadcastToAll('event:published', { eventId: event._id, name: event.name });
+    res.json({ message: 'Event published and ready for participants', event });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to publish event' });
+  }
+});
+
+// POST /api/admin/events/:eventId/start
+adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId } = req.params;
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+    const now = new Date();
+    event.status = 'live';
+    event.startedAt = now;
+    await event.save();
+
+    const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+    if (round1) {
+      round1.status = 'active';
+      round1.startedAt = now;
+      await round1.save();
+    }
+
+    broadcastToAll('event:started', { eventId: event._id, startedAt: now, currentRound: 1 });
+    await recordAudit(req, 'EVENT_STARTED', 'Event', event._id.toString(), { startedAt: now }, '', event.collegeId, event._id);
+
+    res.json({ message: 'Event is now LIVE!', event, startedAt: now });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to start event' });
   }
 });
 
