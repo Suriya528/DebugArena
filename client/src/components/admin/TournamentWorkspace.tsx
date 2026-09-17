@@ -25,11 +25,14 @@ import {
   Flame,
   Radio,
   Split,
-  Eye
+  Eye,
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
 import { Event, DynamicRound } from '../../types/index.js';
 import {
   getEventDetails,
+  getEvents,
   regenerateAdminLink,
   validateEventSetup,
   startEvent,
@@ -47,18 +50,27 @@ import { TieBreakManager } from './TieBreakManager.js';
 import { ProjectorQrModal } from './ProjectorQrModal.js';
 import { AdminTestSandboxModal } from './AdminTestSandboxModal.js';
 import { PreEventCheckModal } from './PreEventCheckModal.js';
+import { DeleteEventModal } from './DeleteEventModal.js';
 
 export type TournamentTab = 'overview' | 'participants' | 'questions' | 'control' | 'leaderboard';
 
 interface TournamentWorkspaceProps {
   eventId: string;
   onBack: () => void;
+  onSwitchEvent?: (newEventId: string) => void;
 }
 
-export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventId, onBack }) => {
+export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
+  eventId,
+  onBack,
+  onSwitchEvent
+}) => {
   const [activeTab, setActiveTab] = useState<TournamentTab>('overview');
   const [event, setEvent] = useState<Event | null>(null);
   const [rounds, setRounds] = useState<DynamicRound[]>([]);
+  const [allEvents, setAllEvents] = useState<Event[]>([]);
+  const [isEventSwitcherOpen, setIsEventSwitcherOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,11 +101,27 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
       const details = await getEventDetails(eventId);
       setEvent(details.event);
       setRounds(details.rounds || []);
+
+      // Also load all tournaments to power the event switcher
+      try {
+        const list = await getEvents();
+        setAllEvents(list || []);
+      } catch (e) {
+        console.warn('Could not load all tournaments for switcher:', e);
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load tournament data.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEventDeleted = (deletedId: string) => {
+    setIsDeleteModalOpen(false);
+    try {
+      localStorage.removeItem('debugarena_active_event_id');
+    } catch {}
+    onBack();
   };
 
   useEffect(() => {
@@ -278,8 +306,8 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl backdrop-blur-xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            {/* Breadcrumb back to all tournaments */}
-            <div className="flex items-center gap-2">
+            {/* Breadcrumb back to all tournaments & Switcher */}
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={onBack}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold font-mono transition-all cursor-pointer border border-slate-700/60"
@@ -287,6 +315,68 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>All Tournaments</span>
               </button>
+
+              {allEvents.length > 1 && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsEventSwitcherOpen(!isEventSwitcherOpen)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white text-xs font-bold font-mono transition-all cursor-pointer border border-indigo-500/30"
+                    title="Switch to another tournament"
+                  >
+                    <span>Switch Event ({allEvents.length})</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isEventSwitcherOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isEventSwitcherOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-2xl bg-[#0c1220] border border-slate-700 shadow-2xl p-2 z-50 space-y-1">
+                      <div className="px-3 py-2 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                        Previously Created Tournaments
+                      </div>
+                      {allEvents.map((ev) => (
+                        <button
+                          key={ev._id}
+                          type="button"
+                          onClick={() => {
+                            setIsEventSwitcherOpen(false);
+                            if (onSwitchEvent) {
+                              onSwitchEvent(ev._id);
+                            }
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                            ev._id === event._id
+                              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 font-bold'
+                              : 'hover:bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          <div className="truncate min-w-0">
+                            <div className="font-bold truncate">{ev.name}</div>
+                            <div className="text-[10px] font-mono text-slate-500">{ev.code}</div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${
+                            ev.status === 'live' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {ev.status}
+                          </span>
+                        </button>
+                      ))}
+                      <div className="pt-1 border-t border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEventSwitcherOpen(false);
+                            onBack();
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-mono font-bold text-center transition-all cursor-pointer"
+                        >
+                          ← View All Tournaments in Hub
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <span className="text-slate-600 font-mono text-xs">/</span>
               <span className="text-xs font-mono font-bold text-indigo-400">
                 {event.code}
@@ -330,8 +420,16 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
               className="px-3.5 py-2 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               title="Dry-run questions and test cases safely"
             >
-              <Flame className="w-3.5 h-3.5 text-amber-400" />
+              <Flame className="w-4 h-4 text-amber-400" />
               <span>Dry-Run Sandbox</span>
+            </button>
+
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="p-2 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer shadow-sm"
+              title="Delete this tournament"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
 
             {event.status !== 'live' && event.status !== 'completed' && event.status !== 'finalized' && (
@@ -580,6 +678,29 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
               </div>
             </div>
           )}
+
+          {/* Danger Zone: Permanent Tournament Deletion */}
+          <div className="p-6 rounded-3xl bg-rose-950/20 border border-rose-500/30 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                  <Trash2 className="w-4 h-4" />
+                  <span>Danger Zone: Delete Tournament</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Permanently delete <strong className="text-white">{event.name}</strong> ({event.code}), including all registered candidates, questions, submissions, and live telemetry. This action is irreversible.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-lg shadow-rose-600/30"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete Tournament</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -800,6 +921,14 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({ eventI
           </div>
         </div>
       )}
+
+      {/* Delete Event Confirmation Modal */}
+      <DeleteEventModal
+        isOpen={isDeleteModalOpen}
+        event={event}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onDeleted={handleEventDeleted}
+      />
     </div>
   );
 };

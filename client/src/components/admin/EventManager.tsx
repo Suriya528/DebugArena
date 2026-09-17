@@ -21,7 +21,8 @@ import {
   Shield,
   ShieldCheck,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import { College, Event, DynamicRound, AuditLog } from '../../types/index.js';
 import {
@@ -57,6 +58,10 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [showAuditLogs, setShowAuditLogs] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Search & Status filters for tournament hub
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'ready' | 'draft' | 'completed'>('all');
 
   // Modals
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -280,6 +285,16 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
     }
   };
 
+  const filteredEvents = events.filter(ev => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesQuery = !q ||
+      ev.name.toLowerCase().includes(q) ||
+      ev.code.toLowerCase().includes(q) ||
+      (ev.description || '').toLowerCase().includes(q);
+    const matchesStatus = statusFilter === 'all' || ev.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
+
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-in fade-in duration-200 text-left">
       {/* Top Banner & Multi-College Selector */}
@@ -291,19 +306,19 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                Institutional Championship Platform
+                {onSelectEvent ? 'Tournaments Hub' : 'Institutional Championship Platform'}
               </span>
-              {activeEvent?.status === 'frozen' && (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1">
-                  <Lock className="w-2.5 h-2.5" /> Event Frozen
-                </span>
-              )}
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
+                {events.length} {events.length === 1 ? 'Tournament' : 'Tournaments'}
+              </span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight">
-              {activeEvent?.name || 'Institutional Championship & Events'}
+              {onSelectEvent ? 'All Tournaments & Events' : (activeEvent?.name || 'Institutional Championship & Events')}
             </h1>
             <p className="text-xs text-slate-400">
-              Host institutional hackathons with dynamic round sequences and audit control
+              {onSelectEvent
+                ? 'Select any previously created tournament below to open its workspace, or create a new competition.'
+                : 'Host institutional hackathons with dynamic round sequences and audit control'}
             </p>
           </div>
         </div>
@@ -342,100 +357,166 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
         </div>
       </div>
 
+      {/* Search & Status Filters Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search previous tournaments by name or code (e.g. Stanford or DEBUG26)..."
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
+          {(['all', 'live', 'ready', 'draft', 'completed'] as const).map((st) => {
+            const count = st === 'all' ? events.length : events.filter(e => e.status === st).length;
+            return (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setStatusFilter(st)}
+                className={`px-3 py-1 rounded-lg capitalize transition-all cursor-pointer ${
+                  statusFilter === st
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {st} ({count})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Events Selector Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {events.map(ev => {
-          return (
-            <div
-              key={ev._id}
-              onClick={() => {
-                if (onSelectEvent) {
-                  onSelectEvent(ev._id);
-                } else {
-                  handleSelectEvent(ev._id);
-                }
-              }}
-              className="p-6 rounded-3xl border bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:shadow-xl hover:shadow-indigo-950/20 transition-all cursor-pointer flex flex-col justify-between space-y-4 text-left"
-            >
-              <div className="space-y-2">
-                <div className="flex justify-between items-start">
-                  <span className="font-mono text-xs font-bold text-indigo-400">{ev.code}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        ev.status === 'live'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
-                          : ev.status === 'ready'
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                          : ev.status === 'frozen'
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}
+      {filteredEvents.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredEvents.map(ev => {
+            return (
+              <div
+                key={ev._id}
+                onClick={() => {
+                  if (onSelectEvent) {
+                    onSelectEvent(ev._id);
+                  } else {
+                    handleSelectEvent(ev._id);
+                  }
+                }}
+                className="p-6 rounded-3xl border bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:shadow-xl hover:shadow-indigo-950/20 transition-all cursor-pointer flex flex-col justify-between space-y-4 text-left"
+              >
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <span className="font-mono text-xs font-bold text-indigo-400">{ev.code}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          ev.status === 'live'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
+                            : ev.status === 'ready'
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                            : ev.status === 'frozen'
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {ev.status}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEventToDelete(ev);
+                        }}
+                        className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="Delete Event"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <h3 className="font-bold text-white text-base truncate">{ev.name}</h3>
+                  <p className="text-xs text-slate-400 line-clamp-2">{ev.description || 'Institutional competition'}</p>
+                </div>
+
+                <div className="space-y-3 pt-3 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                    <span>Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
+                    {ev.certificateConfig?.enabled ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
+                        <Award className="w-3 h-3 text-amber-400" /> Certs Active
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 font-sans">Certs Off</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onSelectEvent) {
+                          onSelectEvent(ev._id);
+                        } else {
+                          handleSelectEvent(ev._id);
+                        }
+                      }}
+                      className="flex-1 py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                     >
-                      {ev.status}
-                    </span>
+                      <span>Open Workspace</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const joinUrl = `${window.location.origin}/join/${ev.participantToken || ev.code}`;
+                        navigator.clipboard.writeText(joinUrl);
+                        alert('Tournament join link copied to clipboard!');
+                      }}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer"
+                      title="Copy Participant Join Link"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setEventToDelete(ev);
                       }}
-                      className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      title="Delete Event"
+                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:border-rose-500/50 transition-all cursor-pointer"
+                      title={`Delete ${ev.name}`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
-                <h3 className="font-bold text-white text-base truncate">{ev.name}</h3>
-                <p className="text-xs text-slate-400 line-clamp-2">{ev.description || 'Institutional competition'}</p>
               </div>
-
-              <div className="space-y-3 pt-3 border-t border-slate-800/80">
-                <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                  <span>Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
-                  {ev.certificateConfig?.enabled ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
-                      <Award className="w-3 h-3 text-amber-400" /> Certs Active
-                    </span>
-                  ) : (
-                    <span className="text-slate-500 font-sans">Certs Off</span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onSelectEvent) {
-                        onSelectEvent(ev._id);
-                      } else {
-                        handleSelectEvent(ev._id);
-                      }
-                    }}
-                    className="flex-1 py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
-                  >
-                    <span>Open Workspace</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const joinUrl = `${window.location.origin}/join/${ev.participantToken || ev.code}`;
-                      navigator.clipboard.writeText(joinUrl);
-                      alert('Tournament join link copied to clipboard!');
-                    }}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer"
-                    title="Copy Participant Join Link"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-slate-800/80 space-y-3">
+          <AlertCircle className="w-8 h-8 text-slate-500 mx-auto" />
+          <h3 className="text-base font-bold text-white">No Tournaments Found</h3>
+          <p className="text-xs text-slate-400 font-mono max-w-sm mx-auto">
+            {events.length === 0
+              ? 'No tournaments have been created yet. Click "+ Create Event" to get started.'
+              : 'No tournaments match your filter criteria. Try adjusting your search query.'}
+          </p>
+          {events.length === 0 && (
+            <button
+              onClick={() => setIsEventModalOpen(true)}
+              className="mt-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono transition-all inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create First Tournament</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Active Event Dynamic Rounds Workspace (Shown when standalone) */}
       {!onSelectEvent && activeEvent && (

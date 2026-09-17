@@ -21,7 +21,6 @@ import {
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { ThemeToggle } from '../common/ThemeToggle.js';
-import { AdminTestSandboxModal } from '../admin/AdminTestSandboxModal.js';
 
 interface EventDirectJoinViewProps {
   eventCode: string;
@@ -34,13 +33,10 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
   onJoinedSuccess,
   onBackToHome
 }) => {
-  const { user, joinEventByCode, login } = useAuth();
+  const { user, joinEventByCode, login, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eventData, setEventData] = useState<any>(null);
-
-  // Admin Sandbox Modal State
-  const [isAdminSandboxOpen, setIsAdminSandboxOpen] = useState(false);
 
   // Participant Form State
   const [activeTab, setActiveTab] = useState<'register' | 'login'>('login');
@@ -50,6 +46,7 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
   const [year, setYear] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [agreedHonorCode, setAgreedHonorCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -258,62 +255,33 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0a0e17] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
-      {/* Header Bar */}
+      {/* Header Bar - Official Assessment Environment */}
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0d121f]/95 backdrop-blur-xl px-4 sm:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={onBackToHome}>
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20">
             <Trophy className="w-4 h-4 text-slate-950" />
           </div>
-          <span className="font-black text-lg text-slate-900 dark:text-white tracking-tight">
-            DebugArena
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-mono font-bold uppercase border border-amber-500/30">
-            Direct Join
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-black text-lg text-slate-900 dark:text-white tracking-tight">
+              DebugArena
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 text-[10px] font-mono font-bold uppercase border border-indigo-500/25">
+              Assessment Portal
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Proctoring Engine Online</span>
+          </div>
           <ThemeToggle />
-          <button
-            onClick={onBackToHome}
-            className="text-xs font-mono text-slate-500 hover:text-slate-900 dark:hover:text-white"
-          >
-            &larr; Return Home
-          </button>
         </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4 sm:p-8 space-y-8">
-        {/* Admin Warning/Quick Action Banner if already logged in as Admin */}
-        {user && user.role !== 'participant' && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1 text-xs">
-              <div className="font-bold flex items-center gap-2">
-                <Shield className="w-4 h-4 text-amber-500" />
-                <span>Host Administrator Session Active</span>
-              </div>
-              <p className="text-amber-800 dark:text-amber-300">
-                You are currently signed in as an event host. Use the Candidate Dry-Run Sandbox to test questions without countdown timers, kiosk lock, or leaderboard contamination.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setIsAdminSandboxOpen(true)}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold font-mono transition-all shadow-md shadow-amber-500/20 cursor-pointer"
-              >
-                Dry-Run Sandbox Preview
-              </button>
-              <button
-                onClick={onBackToHome}
-                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold font-mono transition-all cursor-pointer"
-              >
-                Admin Control Room
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Event Header & Specs */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -577,11 +545,24 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                     </div>
                   </div>
 
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="candidateHonorCodeReg"
+                      checked={agreedHonorCode}
+                      onChange={(e) => setAgreedHonorCode(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-amber-500 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+                    />
+                    <label htmlFor="candidateHonorCodeReg" className="cursor-pointer select-none leading-relaxed text-[11px] font-mono">
+                      I agree to the assessment guidelines, affirm that I am taking this test honestly under fullscreen kiosk lockdown, and agree that suspicious activity or tab switching will be flagged.
+                    </label>
+                  </div>
+
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50"
+                      disabled={submitting || !agreedHonorCode}
+                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Maximize2 className="w-4 h-4 text-slate-950" />
                       <span>{submitting ? 'Entering Lobby...' : 'Enter Fullscreen Assessment'}</span>
@@ -631,11 +612,24 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                     </div>
                   </div>
 
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="candidateHonorCode"
+                      checked={agreedHonorCode}
+                      onChange={(e) => setAgreedHonorCode(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded border-amber-500 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+                    />
+                    <label htmlFor="candidateHonorCode" className="cursor-pointer select-none leading-relaxed text-[11px] font-mono">
+                      I agree to the assessment guidelines, affirm that I am taking this test honestly under fullscreen kiosk lockdown, and agree that suspicious activity or tab switching will be flagged.
+                    </label>
+                  </div>
+
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50"
+                      disabled={submitting || !agreedHonorCode || !regNo.trim() || !password.trim()}
+                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Maximize2 className="w-4 h-4 text-slate-950" />
                       <span>{submitting ? 'Authenticating Candidate...' : 'Sign In & Enter Assessment'}</span>
@@ -652,13 +646,6 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
           </div>
         </div>
       </main>
-
-      {/* Admin Sandbox Modal (if Admin previews this event) */}
-      <AdminTestSandboxModal
-        isOpen={isAdminSandboxOpen}
-        onClose={() => setIsAdminSandboxOpen(false)}
-        eventId={eventData._id}
-      />
     </div>
   );
 };
