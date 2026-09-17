@@ -696,23 +696,6 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
             </div>
           </div>
 
-          {/* Admin warning banner (if an organizer/superadmin is already logged in on this browser) */}
-          {user && user.role !== 'participant' && (
-            <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-xs font-mono text-indigo-300 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 truncate">
-                <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span className="truncate">Admin Session: <strong>{user.username}</strong></span>
-              </div>
-              <button
-                type="button"
-                onClick={() => logout()}
-                className="px-2 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 text-[10px] font-bold uppercase transition cursor-pointer shrink-0"
-              >
-                Sign Out
-              </button>
-            </div>
-          )}
-
           {/* Centered Amazon OA Login Card */}
           <div className="p-6 sm:p-8 rounded-3xl bg-[#0d1424] border border-slate-800 shadow-2xl space-y-5 relative overflow-hidden">
             {/* Ambient subtle glow accent */}

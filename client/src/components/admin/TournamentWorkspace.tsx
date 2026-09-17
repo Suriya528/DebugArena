@@ -27,13 +27,15 @@ import {
   Split,
   Eye,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Layers,
+  Clock,
+  Code2
 } from 'lucide-react';
 import { Event, DynamicRound } from '../../types/index.js';
 import {
   getEventDetails,
   getEvents,
-  regenerateAdminLink,
   validateEventSetup,
   startEvent,
   freezeEvent,
@@ -76,13 +78,11 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
   // Link copy states
   const [copiedParticipantLink, setCopiedParticipantLink] = useState(false);
-  const [copiedAdminLink, setCopiedAdminLink] = useState(false);
 
   // Modals
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isSandboxModalOpen, setIsSandboxModalOpen] = useState(false);
   const [isPreCheckModalOpen, setIsPreCheckModalOpen] = useState(false);
-  const [isRegeneratingAdmin, setIsRegeneratingAdmin] = useState(false);
   const [isValidatingSetup, setIsValidatingSetup] = useState(false);
   const [validationResult, setValidationResult] = useState<any | null>(null);
   const [isStartingEvent, setIsStartingEvent] = useState(false);
@@ -134,44 +134,11 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
     ? `${window.location.origin}/join/${event.participantToken || event.code}`
     : '';
 
-  const adminManageUrl = event?.adminLink
-    ? `${window.location.origin}${event.adminLink}`
-    : '';
-
   const handleCopyParticipantLink = () => {
     if (!participantJoinUrl) return;
     navigator.clipboard.writeText(participantJoinUrl);
     setCopiedParticipantLink(true);
     setTimeout(() => setCopiedParticipantLink(false), 2500);
-  };
-
-  const handleCopyAdminLink = () => {
-    if (!adminManageUrl) return;
-    navigator.clipboard.writeText(adminManageUrl);
-    setCopiedAdminLink(true);
-    setTimeout(() => setCopiedAdminLink(false), 2500);
-  };
-
-  const handleRegenerateAdmin = async () => {
-    if (!event) return;
-    if (
-      !window.confirm(
-        'Revoke and regenerate the private Admin Management Link? Any administrators using the previous admin link will need the new link. Participant links will remain unchanged.'
-      )
-    ) {
-      return;
-    }
-    try {
-      setIsRegeneratingAdmin(true);
-      const res = await regenerateAdminLink(event._id);
-      setEvent(prev => (prev ? { ...prev, adminLink: res.adminLink } : prev));
-      alert('Admin management link successfully regenerated! Please copy and bookmark the new link.');
-      fetchWorkspaceData();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to regenerate admin link');
-    } finally {
-      setIsRegeneratingAdmin(false);
-    }
   };
 
   const handleValidateSetup = async () => {
@@ -490,6 +457,91 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
           </div>
         </div>
 
+        {/* Persistent Event Rounds & Stages Showcase Bar (Visible across every tab) */}
+        <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800/90 shadow-inner">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-800/60">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="p-1 rounded-lg bg-indigo-500/20 text-indigo-400">
+                <Layers className="w-4 h-4" />
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                Event Assessment Rounds ({rounds.length})
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono">
+                • Total Assessment Time: <strong className="text-indigo-300">{rounds.reduce((acc, r) => acc + (r.durationMinutes || 0), 0)} mins</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" /> Active
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> Pending
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-slate-500" /> Completed
+              </span>
+            </div>
+          </div>
+
+          {rounds.length === 0 ? (
+            <div className="text-xs text-slate-500 py-1.5 font-mono flex items-center justify-between">
+              <span>No dynamic rounds configured for this assessment yet.</span>
+              <button
+                onClick={() => setActiveTab('questions')}
+                className="text-xs text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer"
+              >
+                Configure Questions & Rounds →
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {rounds.map(r => (
+                <div
+                  key={r._id || r.roundNumber}
+                  className={`p-2.5 rounded-xl border transition-all ${
+                    r.status === 'active'
+                      ? 'bg-emerald-950/30 border-emerald-500/50 shadow-sm shadow-emerald-900/20'
+                      : r.status === 'completed'
+                      ? 'bg-slate-900/40 border-slate-800/80 opacity-75'
+                      : 'bg-slate-900/80 border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold uppercase">
+                      Round {r.roundNumber}
+                    </span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                      r.status === 'active'
+                        ? 'bg-emerald-500/20 text-emerald-300 animate-pulse'
+                        : r.status === 'completed'
+                        ? 'bg-slate-700/50 text-slate-400'
+                        : 'bg-amber-500/10 text-amber-400'
+                    }`}>
+                      {r.status || 'pending'}
+                    </span>
+                  </div>
+                  <div className="font-bold text-xs text-white truncate" title={r.title}>
+                    {r.title}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-2 text-[11px] text-slate-400 font-mono">
+                    <span className="capitalize px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">
+                      {r.type}
+                    </span>
+                    <span className="flex items-center gap-1 text-slate-300">
+                      <Clock className="w-3 h-3 text-cyan-400" />
+                      {r.durationMinutes}m
+                    </span>
+                    <span className="text-slate-400">
+                      {r.questionCount > 0 ? `${r.questionCount} Qs` : '0 Qs'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* 5 Focused Navigation Tabs Inside the Event */}
         <div className="flex space-x-2 overflow-x-auto scrollbar-none pt-2 border-t border-slate-800/80">
           {navTabs.map(t => {
@@ -558,40 +610,80 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
           {/* Access Links & Pre-Event Diagnostics */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Private Admin Management Token */}
+            {/* Event Assessment Rounds & Structure */}
             <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-indigo-400" />
-                  <h3 className="text-sm font-bold text-white">Private Admin Management Link</h3>
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-sm font-bold text-white">Event Assessment Rounds & Structure</h3>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
-                  Organizers Only
-                </span>
+                <button
+                  onClick={() => setActiveTab('questions')}
+                  className="text-[10px] px-2.5 py-1 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-mono font-bold transition-all cursor-pointer"
+                >
+                  Manage Rounds & Questions →
+                </button>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                This link grants administrative control to this tournament. Bookmark this URL or regenerate if leaked.
+                Candidates must progress sequentially through each round. Each stage enforces individual timer constraints and scoring parameters.
               </p>
-              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300 truncate select-all">
-                {adminManageUrl || 'Admin link generated'}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleCopyAdminLink}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
-                >
-                  {copiedAdminLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedAdminLink ? 'Admin Link Copied' : 'Copy Admin Link'}</span>
-                </button>
-                <button
-                  onClick={handleRegenerateAdmin}
-                  disabled={isRegeneratingAdmin}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRegeneratingAdmin ? 'animate-spin' : ''}`} />
-                  <span>Regenerate Admin Link</span>
-                </button>
-              </div>
+
+              {rounds.length === 0 ? (
+                <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-3">
+                  <p className="text-xs text-slate-400">No rounds created for this event yet.</p>
+                  <button
+                    onClick={() => setActiveTab('questions')}
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-bold transition-all cursor-pointer"
+                  >
+                    Add Assessment Rounds
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5 font-mono text-xs max-h-64 overflow-y-auto pr-1">
+                  {rounds.map(r => (
+                    <div
+                      key={r._id || r.roundNumber}
+                      className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-[11px] flex items-center justify-center shrink-0">
+                          {r.roundNumber}
+                        </span>
+                        <div className="truncate">
+                          <div className="text-white font-bold text-xs truncate">{r.title}</div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                            <span className="capitalize text-slate-300 font-semibold">{r.type}</span>
+                            <span>•</span>
+                            <span>{r.durationMinutes} mins</span>
+                            {r.questionCount > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>{r.questionCount} Questions</span>
+                              </>
+                            )}
+                            {r.totalMarks > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>{r.totalMarks} Marks</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                        r.status === 'active'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : r.status === 'completed'
+                          ? 'bg-slate-800 text-slate-400'
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}>
+                        {r.status || 'pending'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Pre-Event Diagnostics Checklist */}

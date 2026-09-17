@@ -74,6 +74,7 @@ export interface Event {
     issuerTitle?: string;
     includeQrVerification?: boolean;
   };
+  rounds?: DynamicRound[];
   createdAt: string;
 }
 

@@ -440,17 +440,51 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
                   <p className="text-xs text-slate-400 line-clamp-2">{ev.description || 'Institutional competition'}</p>
                 </div>
 
-                <div className="space-y-3 pt-3 border-t border-slate-800/80">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-                    <span>Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
-                    {ev.certificateConfig?.enabled ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
-                        <Award className="w-3 h-3 text-amber-400" /> Certs Active
+                {/* Properly Mention Event Rounds */}
+                <div className="space-y-1.5 pt-3 border-t border-slate-800/80 font-mono text-xs">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-400 uppercase tracking-wider">
+                      Rounds ({(ev.rounds || []).length}):
+                    </span>
+                    {(ev.rounds && ev.rounds.length > 0) ? (
+                      <span className="text-amber-400 font-semibold">
+                        {ev.rounds.reduce((s: number, r: any) => s + (Number(r.durationMinutes) || 0), 0)} Mins Total
                       </span>
-                    ) : (
-                      <span className="text-slate-500 font-sans">Certs Off</span>
-                    )}
+                    ) : null}
                   </div>
+
+                  {(!ev.rounds || ev.rounds.length === 0) ? (
+                    <div className="text-[11px] text-slate-500 italic py-1">
+                      No stages configured yet
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {ev.rounds.slice(0, 3).map((r: any, rIdx: number) => (
+                        <div
+                          key={rIdx}
+                          className="flex items-center justify-between p-1.5 px-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px]"
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-bold text-indigo-400">Stage {r.roundNumber || rIdx + 1}:</span>
+                            <span className="text-slate-200 truncate">{r.title}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-400">
+                            <span className={`uppercase font-bold ${r.type === 'coding' ? 'text-amber-400' : 'text-cyan-400'}`}>
+                              {r.type}
+                            </span>
+                            <span>•</span>
+                            <span>{r.durationMinutes}m</span>
+                          </div>
+                        </div>
+                      ))}
+                      {ev.rounds.length > 3 && (
+                        <div className="text-[10px] text-slate-500 text-right pt-0.5">
+                          +{ev.rounds.length - 3} more stages
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                   <div className="flex items-center gap-2">
                     <button
@@ -493,7 +527,6 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
                     </button>
                   </div>
                 </div>
-              </div>
             );
           })}
         </div>

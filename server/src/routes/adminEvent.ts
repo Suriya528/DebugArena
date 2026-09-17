@@ -145,6 +145,19 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
     }
 
     const events = await Event.find(filter).populate('collegeId', 'name code logoUrl primaryColor').sort({ createdAt: -1 });
+
+    const eventIds = events.map(e => e._id);
+    const allRounds = await DynamicRound.find({ eventId: { $in: eventIds } })
+      .select('eventId roundNumber title type durationMinutes questionCount totalMarks status')
+      .sort({ roundNumber: 1 });
+
+    const roundsByEventId: Record<string, any[]> = {};
+    for (const r of allRounds) {
+      const eid = r.eventId.toString();
+      if (!roundsByEventId[eid]) roundsByEventId[eid] = [];
+      roundsByEventId[eid].push(r);
+    }
+
     const sanitizedEvents = await Promise.all(
       events.map(async (ev) => {
         let modified = false;
@@ -179,6 +192,7 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
 
         return {
           ...obj,
+          rounds: roundsByEventId[ev._id.toString()] || [],
           participantLink: `/join/${participantToken}`,
           adminLink: `/manage/${adminToken}`
         };
