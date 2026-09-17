@@ -180,7 +180,7 @@ participantRouter.post('/join-by-token', async (req: Request, res: Response): Pr
         }
       } else {
         res.status(404).json({
-          error: `Participant '${rawIdentifier}' was not found in this tournament. Please check your username/roll number or register.`
+          error: `Participant '${rawIdentifier}' was not enrolled in this assessment. Please contact your event administrator or check your credentials.`
         });
         return;
       }
@@ -372,7 +372,7 @@ participantRouter.post('/join-by-code', async (req: Request, res: Response): Pro
         }
       } else {
         res.status(404).json({
-          error: `Participant '${rawIdentifier}' was not found in this tournament. Please check your username/roll number or register.`
+          error: `Participant '${rawIdentifier}' was not enrolled in this assessment. Please contact your event administrator or check your credentials.`
         });
         return;
       }
