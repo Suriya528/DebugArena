@@ -940,11 +940,15 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
           </div>
 
           {leaderboardSubView === 'standings' && (
-            <LeaderboardView eventId={eventId} />
+            <LeaderboardView eventId={eventId} rounds={rounds} />
           )}
 
           {leaderboardSubView === 'advance' && (
-            <RoundResultsView eventId={eventId} />
+            <RoundResultsView
+              eventId={eventId}
+              rounds={rounds}
+              onNavigateToStandings={() => setLeaderboardSubView('standings')}
+            />
           )}
 
           {leaderboardSubView === 'tiebreak' && (

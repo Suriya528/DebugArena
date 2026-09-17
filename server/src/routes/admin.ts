@@ -238,13 +238,25 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
     const roundNumber = parseInt(req.params.roundNumber, 10);
     const userFilter: any = { role: 'participant' };
     if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
-    if (req.query.eventId) {
-      userFilter.eventId = req.query.eventId;
-    } else if (req.user?.eventId) {
-      userFilter.eventId = req.user.eventId;
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+    if (eventId) {
+      userFilter.eventId = eventId;
     }
     const tenantParticipants = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantParticipants.map(u => u._id);
+
+    let roundMeta: any = null;
+    let eventRounds: any[] = [];
+    if (eventId) {
+      roundMeta = await DynamicRound.findOne({ eventId, roundNumber });
+      eventRounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+    }
+    if (!roundMeta) {
+      roundMeta = await Round.findOne({ roundNumber });
+    }
+    if (eventRounds.length === 0) {
+      eventRounds = await Round.find().sort({ roundNumber: 1 });
+    }
 
     const progressRecords = await RoundProgress.find({
       roundNumber,
@@ -263,7 +275,7 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
       violationCount: p.violationCount
     }));
 
-    res.json({ roundNumber, results });
+    res.json({ roundNumber, roundMeta, rounds: eventRounds, results });
   } catch (err) {
     console.error('Get round results error:', err);
     res.status(500).json({ error: 'Failed to fetch round results' });
@@ -317,9 +329,17 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
       advancedUserIds: participantIds
     });
 
+    let nextRoundMeta: any = null;
+    if (eventId) {
+      nextRoundMeta = await DynamicRound.findOne({ eventId, roundNumber: roundNumber + 1 });
+    }
+    const nextStageName = nextRoundMeta?.title
+      ? `Stage ${roundNumber + 1} (${nextRoundMeta.title})`
+      : `Round ${roundNumber + 1}`;
+
     res.json({
       success: true,
-      message: `Advanced ${participantIds.length} participants to Round ${roundNumber + 1}`
+      message: `Advanced ${participantIds.length} participants to ${nextStageName}`
     });
   } catch (err) {
     console.error('Advance error:', err);
@@ -337,10 +357,17 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     const eventId = bodyEventId || req.user?.eventId;
 
     // Check if next round is already active
-    const nextRound = await Round.findOne({ roundNumber: roundNumber + 1 });
+    let nextRound: any = null;
+    if (eventId) {
+      nextRound = await DynamicRound.findOne({ eventId, roundNumber: roundNumber + 1 });
+    }
+    if (!nextRound) {
+      nextRound = await Round.findOne({ roundNumber: roundNumber + 1 });
+    }
     if (nextRound && nextRound.status === 'active' && !forceOverride) {
+      const nextTitle = nextRound.title ? `Stage ${roundNumber + 1} (${nextRound.title})` : `Round ${roundNumber + 1}`;
       res.status(400).json({
-        error: `Round ${roundNumber + 1} is already active! Re-advancement requires emergency forceOverride confirmation.`
+        error: `${nextTitle} is already active! Re-advancement requires emergency forceOverride confirmation.`
       });
       return;
     }
@@ -488,9 +515,10 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
       console.warn('Could not write audit log for auto-advancement:', auditErr);
     }
 
+    const nextStageName = nextRound?.title ? `Stage ${roundNumber + 1} (${nextRound.title})` : `Round ${roundNumber + 1}`;
     res.json({
       success: true,
-      message: `Auto-advanced ${advancedUserIds.length} participants into Round ${roundNumber + 1}`,
+      message: `Auto-advanced ${advancedUserIds.length} participants into ${nextStageName}`,
       advancedCount: advancedUserIds.length,
       cutoffTieDetected,
       expanded: selectedProgress.length > quota,
@@ -998,15 +1026,33 @@ adminRouter.post('/tiebreak/resolve', async (req: AuthenticatedRequest, res: Res
 });
 
 // GET /api/admin/leaderboard
-// Comprehensive leaderboard (post-Round 3) sorted by score, time, and tiebreak reordering
+// Comprehensive leaderboard based on the event's configured rounds with scores, time, and tiebreak reordering
 adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userFilter: any = { role: 'participant' };
     if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
-    if (req.query.eventId) {
-      userFilter.eventId = req.query.eventId;
-    } else if (req.user?.eventId) {
-      userFilter.eventId = req.user.eventId;
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+    if (eventId) {
+      userFilter.eventId = eventId;
+    }
+
+    // Fetch the actual rounds for this event
+    let eventRounds: any[] = [];
+    if (eventId) {
+      eventRounds = await DynamicRound.find({ eventId })
+        .select('roundNumber title type durationMinutes totalMarks passingMarks status')
+        .sort({ roundNumber: 1 });
+    }
+    if (!eventRounds || eventRounds.length === 0) {
+      const fallbackRounds = await Round.find().select('roundNumber title type durationMinutes status').sort({ roundNumber: 1 });
+      eventRounds = fallbackRounds.map(r => ({
+        roundNumber: r.roundNumber,
+        title: r.title,
+        type: r.type,
+        durationMinutes: r.durationMinutes,
+        totalMarks: r.roundNumber === 1 ? 100 : r.roundNumber === 2 ? 150 : 200,
+        status: r.status
+      }));
     }
 
     const participants = await User.find(userFilter);
@@ -1016,15 +1062,39 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
 
     const rows = participants.map(p => {
       const userProg = allProgress.filter(pr => pr.userId.toString() === p._id.toString());
-      const r1 = userProg.find(pr => pr.roundNumber === 1);
-      const r2 = userProg.find(pr => pr.roundNumber === 2);
-      const r3 = userProg.find(pr => pr.roundNumber === 3);
 
-      const r1Score = r1?.totalScore || 0;
-      const r2Score = r2?.totalScore || 0;
-      const r3Score = r3?.totalScore || 0;
+      // Map scores and metrics for every configured round
+      const roundBreakdown: Record<number, any> = {};
+      const roundScores: Record<number, number> = {};
+      const roundTimes: Record<number, number> = {};
 
-      // Dynamic total score & time across all rounds (excluding tie-break round 99)
+      for (const er of eventRounds) {
+        const prog = userProg.find(pr => pr.roundNumber === er.roundNumber);
+        const score = prog?.totalScore || 0;
+        const timeSec = prog?.timeTakenSeconds || 0;
+        const status = prog?.status || 'not_started';
+        roundScores[er.roundNumber] = score;
+        roundTimes[er.roundNumber] = timeSec;
+        roundBreakdown[er.roundNumber] = {
+          roundNumber: er.roundNumber,
+          title: er.title,
+          type: er.type,
+          score,
+          timeSeconds: timeSec,
+          status,
+          violationCount: prog?.violationCount || 0
+        };
+      }
+
+      // Legacy fallback fields (r1Score, r2Score, r3Score)
+      const r1Score = roundScores[1] || 0;
+      const r2Score = roundScores[2] || 0;
+      const r3Score = roundScores[3] || 0;
+      const r1Time = roundTimes[1] || 0;
+      const r2Time = roundTimes[2] || 0;
+      const r3Time = roundTimes[3] || 0;
+
+      // Dynamic total score & time across all regular rounds
       const regularProg = userProg.filter(pr => pr.roundNumber !== 99);
       const totalScore = regularProg.reduce((acc, curr) => acc + (curr.totalScore || 0), 0);
       const totalTimeSeconds = regularProg.reduce((acc, curr) => acc + (curr.timeTakenSeconds || 0), 0);
@@ -1049,10 +1119,13 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
         r1Score,
         r2Score,
         r3Score,
+        roundScores,
+        roundTimes,
+        roundBreakdown,
         totalScore,
-        r1Time: r1?.timeTakenSeconds || 0,
-        r2Time: r2?.timeTakenSeconds || 0,
-        r3Time: r3?.timeTakenSeconds || 0,
+        r1Time,
+        r2Time,
+        r3Time,
         totalTimeSeconds,
         tieBreakRankOffset,
         lastStatus
@@ -1075,7 +1148,10 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
       ...r
     }));
 
-    res.json({ leaderboard: rankedRows });
+    res.json({
+      rounds: eventRounds,
+      leaderboard: rankedRows
+    });
   } catch (err) {
     console.error('Leaderboard error:', err);
     res.status(500).json({ error: 'Failed to generate leaderboard' });

@@ -213,11 +213,21 @@ export interface LeaderboardRow {
   username: string;
   name: string;
   isDisqualified: boolean;
-  r1Score: number;
-  r2Score: number;
-  r3Score: number;
+  r1Score?: number;
+  r2Score?: number;
+  r3Score?: number;
+  roundScores?: Record<number, number>;
+  roundBreakdown?: Record<number, {
+    roundNumber: number;
+    title: string;
+    type: string;
+    score: number;
+    timeSeconds: number;
+    status: string;
+    violationCount?: number;
+  }>;
   totalScore: number;
-  totalTimeTaken: number;
+  totalTimeTaken?: number;
   totalTimeSeconds: number;
   lastStatus: string;
   tieBreakRank?: number;
