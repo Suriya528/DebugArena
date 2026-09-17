@@ -3,7 +3,11 @@ import { Split, AlertTriangle, Play, CheckCircle2, Trophy, Clock } from 'lucide-
 import { api } from '../../services/api.js';
 import { Question } from '../../types/index.js';
 
-export const TieBreakManager: React.FC = () => {
+interface TieBreakManagerProps {
+  eventId?: string;
+}
+
+export const TieBreakManager: React.FC<TieBreakManagerProps> = ({ eventId }) => {
   const [hasTies, setHasTies] = useState<boolean>(false);
   const [tiedGroups, setTiedGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -15,8 +19,8 @@ export const TieBreakManager: React.FC = () => {
     try {
       setLoading(true);
       const [tieRes, qRes] = await Promise.all([
-        api.get('/admin/tiebreak/check'),
-        api.get('/admin/questions', { params: { roundNumber: 99 } })
+        api.get(eventId ? `/admin/tiebreak/check?eventId=${encodeURIComponent(eventId)}` : '/admin/tiebreak/check'),
+        api.get('/admin/questions', { params: { roundNumber: 99, ...(eventId ? { eventId } : {}) } })
       ]);
       setHasTies(tieRes.data.hasTies);
       setTiedGroups(tieRes.data.tiedGroups || []);
@@ -34,7 +38,7 @@ export const TieBreakManager: React.FC = () => {
 
   useEffect(() => {
     checkTies();
-  }, []);
+  }, [eventId]);
 
   const handleTriggerTieBreak = async (group: any[]) => {
     if (!selectedQuestionId) {

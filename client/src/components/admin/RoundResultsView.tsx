@@ -48,12 +48,15 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'advanced' | 'eliminated' | 'submitted'>('all');
 
-  // Keep eventRounds in sync with props
+  // Keep eventRounds in sync with props and clamp selectedRound
   useEffect(() => {
     if (propRounds && propRounds.length > 0) {
       setEventRounds(propRounds);
+      if (!propRounds.some(r => r.roundNumber === selectedRound)) {
+        setSelectedRound(propRounds[0].roundNumber || 1);
+      }
     }
-  }, [propRounds]);
+  }, [propRounds, eventId]);
 
   const fetchResults = async (targetRound = selectedRound) => {
     try {
@@ -67,6 +70,9 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
 
       if (res.data.rounds && res.data.rounds.length > 0) {
         setEventRounds(res.data.rounds);
+        if (!res.data.rounds.some((r: any) => r.roundNumber === targetRound)) {
+          setSelectedRound(res.data.rounds[0].roundNumber || 1);
+        }
       }
 
       // Pre-select already advanced users if any
@@ -101,7 +107,7 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
 
     setAdvancementSummary(null);
     fetchResults(selectedRound);
-  }, [selectedRound, eventRounds.length]);
+  }, [selectedRound, eventId, eventRounds.length]);
 
   // Round Navigation metadata
   const currentRound = eventRounds.find(r => r.roundNumber === selectedRound) || roundMeta;
@@ -303,11 +309,15 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
   // Build rounds list for tabs
   const displayRounds = eventRounds.length > 0
     ? eventRounds
-    : [
-        { roundNumber: 1, title: 'Round 1 (MCQ)', type: 'mcq' },
-        { roundNumber: 2, title: 'Round 2 (Code)', type: 'coding' },
-        { roundNumber: 3, title: 'Round 3 (Final)', type: 'coding' }
-      ];
+    : (propRounds && propRounds.length > 0)
+    ? propRounds
+    : (!eventId
+        ? [
+            { roundNumber: 1, title: 'Round 1 (MCQ)', type: 'mcq' },
+            { roundNumber: 2, title: 'Round 2 (Code)', type: 'coding' },
+            { roundNumber: 3, title: 'Round 3 (Final)', type: 'coding' }
+          ]
+        : []);
 
   const currentTypeBadge = getRoundTypeBadge(currentRound?.type);
   const CurrentTypeIcon = currentTypeBadge.icon;
@@ -317,38 +327,45 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
       {/* Dynamic Stage Selector Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 p-2.5 rounded-3xl border border-slate-800 shadow-xl backdrop-blur-xl">
         <div className="flex flex-wrap items-center gap-2">
-          {displayRounds.map((r: any) => {
-            const isSelected = selectedRound === r.roundNumber;
-            const badge = getRoundTypeBadge(r.type);
-            const isFinal = eventRounds.length > 0
-              ? r.roundNumber === eventRounds.length
-              : r.roundNumber === 3;
+          {displayRounds.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-slate-400 font-mono flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+              <span>Loading tournament stages...</span>
+            </div>
+          ) : (
+            displayRounds.map((r: any) => {
+              const isSelected = selectedRound === r.roundNumber;
+              const badge = getRoundTypeBadge(r.type);
+              const isFinal = eventRounds.length > 0
+                ? r.roundNumber === eventRounds.length
+                : r.roundNumber === 3;
 
-            return (
-              <button
-                key={r.roundNumber}
-                onClick={() => setSelectedRound(r.roundNumber)}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30 font-extrabold'
-                    : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <span className="font-mono">Stage {r.roundNumber}</span>
-                <span className="hidden sm:inline font-sans text-[11px] opacity-90 max-w-[140px] truncate">
-                  {r.title || `Round ${r.roundNumber}`}
-                </span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-mono font-bold ${badge.color}`}>
-                  {r.type || 'Stage'}
-                </span>
-                {isFinal && (
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                    Final
+              return (
+                <button
+                  key={r.roundNumber}
+                  onClick={() => setSelectedRound(r.roundNumber)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30 font-extrabold'
+                      : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-mono">Stage {r.roundNumber}</span>
+                  <span className="hidden sm:inline font-sans text-[11px] opacity-90 max-w-[140px] truncate">
+                    {r.title || `Round ${r.roundNumber}`}
                   </span>
-                )}
-              </button>
-            );
-          })}
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-mono font-bold ${badge.color}`}>
+                    {r.type || 'Stage'}
+                  </span>
+                  {isFinal && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Final
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
 
         <div className="flex items-center gap-2">

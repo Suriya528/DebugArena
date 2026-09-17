@@ -962,7 +962,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
           )}
 
           {leaderboardSubView === 'tiebreak' && (
-            <TieBreakManager />
+            <TieBreakManager eventId={eventId} />
           )}
         </div>
       )}

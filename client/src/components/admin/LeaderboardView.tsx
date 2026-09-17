@@ -28,8 +28,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
   const fetchLeaderboard = async (targetEventId?: string) => {
     try {
       setLoading(true);
-      const evId = targetEventId || propEventId || activeEvent?._id || localStorage.getItem('debugarena_active_event_id');
-      const url = evId ? `/admin/leaderboard?eventId=${evId}` : '/admin/leaderboard';
+      const evId = propEventId || targetEventId || activeEvent?._id;
+      const url = evId ? `/admin/leaderboard?eventId=${encodeURIComponent(evId)}` : '/admin/leaderboard';
       const res = await api.get(url);
       setRows(res.data.leaderboard || []);
       if (res.data.rounds && res.data.rounds.length > 0) {
@@ -46,25 +46,46 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
     async function loadMetaAndLeaderboard() {
       try {
         setLoading(true);
-        const colRes = await api.get('/admin/events/colleges');
-        if (colRes.data.colleges && colRes.data.colleges.length > 0) {
-          setActiveCollege(colRes.data.colleges[0]);
-        }
+        if (propEventId) {
+          // Strictly lock to propEventId
+          const [evRes, lbRes] = await Promise.all([
+            api.get(`/admin/events/${propEventId}`).catch(() => null),
+            api.get(`/admin/leaderboard?eventId=${encodeURIComponent(propEventId)}`)
+          ]);
+          if (evRes?.data?.event) {
+            setActiveEvent(evRes.data.event);
+            if (evRes.data.rounds && evRes.data.rounds.length > 0) {
+              setEventRounds(evRes.data.rounds);
+            }
+          } else if (propRounds && propRounds.length > 0) {
+            setEventRounds(propRounds);
+          }
+          setRows(lbRes?.data?.leaderboard || []);
+          if (lbRes?.data?.rounds && lbRes.data.rounds.length > 0) {
+            setEventRounds(lbRes.data.rounds);
+          }
+        } else {
+          // Standalone / fallback mode
+          const colRes = await api.get('/admin/events/colleges');
+          if (colRes.data.colleges && colRes.data.colleges.length > 0) {
+            setActiveCollege(colRes.data.colleges[0]);
+          }
 
-        const evRes = await api.get('/admin/events');
-        const evList = evRes.data.events || [];
-        setEventsList(evList);
+          const evRes = await api.get('/admin/events');
+          const evList = evRes.data.events || [];
+          setEventsList(evList);
 
-        const savedEventId = propEventId || localStorage.getItem('debugarena_active_event_id');
-        const matched = evList.find((e: any) => e._id === savedEventId) || (propEventId ? { _id: propEventId } : evList[0]) || null;
-        setActiveEvent(matched);
+          const savedEventId = localStorage.getItem('debugarena_active_event_id');
+          const matched = evList.find((e: any) => e._id === savedEventId) || evList[0] || null;
+          setActiveEvent(matched);
 
-        const effectiveId = propEventId || matched?._id;
-        const url = effectiveId ? `/admin/leaderboard?eventId=${effectiveId}` : '/admin/leaderboard';
-        const lbRes = await api.get(url);
-        setRows(lbRes.data.leaderboard || []);
-        if (lbRes.data.rounds && lbRes.data.rounds.length > 0) {
-          setEventRounds(lbRes.data.rounds);
+          const effectiveId = matched?._id;
+          const url = effectiveId ? `/admin/leaderboard?eventId=${effectiveId}` : '/admin/leaderboard';
+          const lbRes = await api.get(url);
+          setRows(lbRes.data.leaderboard || []);
+          if (lbRes.data.rounds && lbRes.data.rounds.length > 0) {
+            setEventRounds(lbRes.data.rounds);
+          }
         }
       } catch (e) {
         console.warn('Could not load college/event meta', e);

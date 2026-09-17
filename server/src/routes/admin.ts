@@ -237,42 +237,108 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
   try {
     const roundNumber = parseInt(req.params.roundNumber, 10);
     const userFilter: any = { role: 'participant' };
-    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
     const eventId = (req.query.eventId as string) || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
+
     if (eventId) {
-      userFilter.eventId = eventId;
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
     }
-    const tenantParticipants = await User.find(userFilter).select('_id');
+
+    const tenantParticipants = await User.find(userFilter).select('_id username name isDisqualified disqualificationReason');
     const tenantUserIds = tenantParticipants.map(u => u._id);
 
     let roundMeta: any = null;
     let eventRounds: any[] = [];
     if (eventId) {
-      roundMeta = await DynamicRound.findOne({ eventId, roundNumber });
-      eventRounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+      roundMeta = await DynamicRound.findOne({ eventId: eventCondition, roundNumber });
+      eventRounds = await DynamicRound.find({ eventId: eventCondition }).sort({ roundNumber: 1 });
     }
-    if (!roundMeta) {
-      roundMeta = await Round.findOne({ roundNumber });
-    }
-    if (eventRounds.length === 0) {
-      eventRounds = await Round.find().sort({ roundNumber: 1 });
+    if (!eventId) {
+      if (!roundMeta) {
+        roundMeta = await Round.findOne({ roundNumber });
+      }
+      if (eventRounds.length === 0) {
+        eventRounds = await Round.find().sort({ roundNumber: 1 });
+      }
     }
 
     const progressRecords = await RoundProgress.find({
       roundNumber,
       userId: { $in: tenantUserIds }
-    })
-      .populate('userId', 'username name isDisqualified disqualificationReason')
-      .sort({ totalScore: -1, timeTakenSeconds: 1 });
+    });
 
-    const results = progressRecords.map((p, idx) => ({
+    const progressMap = new Map<string, any>();
+    for (const pr of progressRecords) {
+      progressMap.set(pr.userId.toString(), pr);
+    }
+
+    // For round > 1, check previous round's progress to know who was advanced
+    let prevRoundProgressMap = new Map<string, any>();
+    if (roundNumber > 1) {
+      const prevProgress = await RoundProgress.find({
+        roundNumber: roundNumber - 1,
+        userId: { $in: tenantUserIds }
+      });
+      for (const pr of prevProgress) {
+        prevRoundProgressMap.set(pr.userId.toString(), pr);
+      }
+    }
+
+    // Determine candidates for this stage:
+    // - For Round 1: all enrolled participants in this event
+    // - For Round > 1: participants who have progress in this round OR who were advanced in roundNumber - 1
+    const stageCandidates = tenantParticipants.filter(p => {
+      const uid = p._id.toString();
+      if (progressMap.has(uid)) return true;
+      if (roundNumber === 1) return true;
+      const prevProg = prevRoundProgressMap.get(uid);
+      return prevProg && prevProg.status === 'advanced';
+    });
+
+    const candidateRows = stageCandidates.map(p => {
+      const uid = p._id.toString();
+      const prog = progressMap.get(uid);
+      const totalScore = prog?.totalScore || 0;
+      const timeTakenSeconds = prog?.timeTakenSeconds || 0;
+      const status = prog?.status || 'not_started';
+      const submittedAt = prog?.submittedAt || null;
+      const violationCount = prog?.violationCount || 0;
+
+      return {
+        userId: {
+          _id: p._id,
+          username: p.username,
+          name: p.name,
+          isDisqualified: p.isDisqualified,
+          disqualificationReason: p.disqualificationReason
+        },
+        totalScore,
+        timeTakenSeconds,
+        status,
+        submittedAt,
+        violationCount
+      };
+    });
+
+    // Sort: disqualified at bottom, then totalScore DESC, timeTakenSeconds ASC, submittedAt ASC
+    candidateRows.sort((a, b) => {
+      const aDisq = a.userId?.isDisqualified;
+      const bDisq = b.userId?.isDisqualified;
+      if (aDisq && !bDisq) return 1;
+      if (!aDisq && bDisq) return -1;
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      if (a.timeTakenSeconds !== b.timeTakenSeconds) return a.timeTakenSeconds - b.timeTakenSeconds;
+      const aTime = a.submittedAt ? new Date(a.submittedAt).getTime() : Infinity;
+      const bTime = b.submittedAt ? new Date(b.submittedAt).getTime() : Infinity;
+      return aTime - bTime;
+    });
+
+    const results = candidateRows.map((r, idx) => ({
       rank: idx + 1,
-      userId: p.userId,
-      totalScore: p.totalScore,
-      timeTakenSeconds: p.timeTakenSeconds,
-      status: p.status,
-      submittedAt: p.submittedAt,
-      violationCount: p.violationCount
+      ...r
     }));
 
     res.json({ roundNumber, roundMeta, rounds: eventRounds, results });
@@ -287,19 +353,22 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
 adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt(req.params.roundNumber, 10);
-    const { participantIds, eventId } = req.body; // Array of user ID strings
+    const { participantIds, eventId: bodyEventId } = req.body; // Array of user ID strings
 
     if (!Array.isArray(participantIds)) {
       res.status(400).json({ error: 'participantIds array is required' });
       return;
     }
 
+    const eventId = bodyEventId || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
+
     const userFilter: any = { role: 'participant' };
-    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
     if (eventId) {
-      userFilter.eventId = eventId;
-    } else if (req.user?.eventId) {
-      userFilter.eventId = req.user.eventId;
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
     }
     const tenantUsers = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantUsers.map(u => u._id);
@@ -313,11 +382,16 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
       );
     }
 
-    // Mark non-selected participants of this tenant who took this round as 'eliminated'
-    await RoundProgress.updateMany(
-      { roundNumber, userId: { $in: tenantUserIds, $nin: participantIds } },
-      { $set: { status: 'eliminated' } }
-    );
+    // Mark non-selected participants of this event who took or were eligible for this round as 'eliminated'
+    const participantIdStrings = new Set(participantIds.map(id => id.toString()));
+    const nonSelectedIds = tenantUserIds.filter(id => !participantIdStrings.has(id.toString()));
+    for (const pId of nonSelectedIds) {
+      await RoundProgress.findOneAndUpdate(
+        { roundNumber, userId: pId },
+        { $set: { status: 'eliminated' } },
+        { upsert: true }
+      );
+    }
 
     broadcastToAdmins('admin:participants_advanced', {
       roundNumber,
@@ -331,7 +405,7 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
 
     let nextRoundMeta: any = null;
     if (eventId) {
-      nextRoundMeta = await DynamicRound.findOne({ eventId, roundNumber: roundNumber + 1 });
+      nextRoundMeta = await DynamicRound.findOne({ eventId: eventCondition, roundNumber: roundNumber + 1 });
     }
     const nextStageName = nextRoundMeta?.title
       ? `Stage ${roundNumber + 1} (${nextRoundMeta.title})`
@@ -355,13 +429,15 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     const { quota: bodyQuota, eventId: bodyEventId, tieStrategy = 'expand', forceOverride = false } = req.body;
 
     const eventId = bodyEventId || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
 
     // Check if next round is already active
     let nextRound: any = null;
     if (eventId) {
-      nextRound = await DynamicRound.findOne({ eventId, roundNumber: roundNumber + 1 });
+      nextRound = await DynamicRound.findOne({ eventId: eventCondition, roundNumber: roundNumber + 1 });
     }
-    if (!nextRound) {
+    if (!eventId && !nextRound) {
       nextRound = await Round.findOne({ roundNumber: roundNumber + 1 });
     }
     if (nextRound && nextRound.status === 'active' && !forceOverride) {
@@ -376,7 +452,7 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     let effectiveQuota = bodyQuota;
     let effectiveTieStrategy = tieStrategy;
     if (eventId) {
-      const dynRound = await DynamicRound.findOne({ eventId, roundNumber });
+      const dynRound = await DynamicRound.findOne({ eventId: eventCondition, roundNumber });
       if (dynRound) {
         if (!effectiveQuota && dynRound.advancementQuota > 0) {
           effectiveQuota = dynRound.advancementQuota;
@@ -392,13 +468,10 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
 
     // Fetch all eligible (non-disqualified) participants in this event
     const userFilter: any = { role: 'participant', isDisqualified: false };
-    if (req.user?.collegeId) {
-      userFilter.collegeId = req.user.collegeId;
-    }
     if (eventId) {
-      userFilter.eventId = mongoose.Types.ObjectId.isValid(eventId)
-        ? new mongoose.Types.ObjectId(eventId)
-        : eventId;
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
     }
     const eligibleParticipants = await User.find(userFilter);
     const eligibleUserIds = eligibleParticipants.map(u => u._id);
@@ -467,16 +540,23 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     const advancedIdStrings = advancedUserIds.map(id => id.toString());
 
     // Mark selected as advanced
-    await RoundProgress.updateMany(
-      { roundNumber, userId: { $in: advancedUserIds } },
-      { $set: { status: 'advanced' } }
-    );
+    for (const uId of advancedUserIds) {
+      await RoundProgress.findOneAndUpdate(
+        { roundNumber, userId: uId },
+        { $set: { status: 'advanced' } },
+        { upsert: true }
+      );
+    }
 
     // Mark non-selected participants for this round as eliminated
-    await RoundProgress.updateMany(
-      { roundNumber, userId: { $in: eligibleUserIds, $nin: advancedUserIds } },
-      { $set: { status: 'eliminated' } }
-    );
+    const nonSelectedEligible = eligibleUserIds.filter(id => !advancedIdStrings.includes(id.toString()));
+    for (const uId of nonSelectedEligible) {
+      await RoundProgress.findOneAndUpdate(
+        { roundNumber, userId: uId },
+        { $set: { status: 'eliminated' } },
+        { upsert: true }
+      );
+    }
 
     // Socket Notifications
     broadcastToAdmins('admin:participants_advanced', {
@@ -903,17 +983,28 @@ adminRouter.delete('/questions/:id', async (req: AuthenticatedRequest, res: Resp
 adminRouter.get('/tiebreak/check', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userFilter: any = { role: 'participant' };
-    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
-    if (req.query.eventId) {
-      userFilter.eventId = req.query.eventId;
-    } else if (req.user?.eventId) {
-      userFilter.eventId = req.user.eventId;
+    const eventId = (req.query.eventId as string) || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
+
+    if (eventId) {
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
     }
     const tenantParticipants = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantParticipants.map(u => u._id);
 
-    // Get all Round 3 participants for tenant
-    const round3Progress = await RoundProgress.find({ roundNumber: 3, userId: { $in: tenantUserIds } })
+    let finalRoundNumber = 3;
+    if (eventId) {
+      const highestRound = await DynamicRound.findOne({ eventId: eventCondition }).sort({ roundNumber: -1 });
+      if (highestRound) {
+        finalRoundNumber = highestRound.roundNumber;
+      }
+    }
+
+    // Get all final stage participants for tenant
+    const round3Progress = await RoundProgress.find({ roundNumber: finalRoundNumber, userId: { $in: tenantUserIds } })
       .populate('userId', 'username name');
 
     // Aggregate total score and total time across all rounds
@@ -945,7 +1036,7 @@ adminRouter.get('/tiebreak/check', async (req: AuthenticatedRequest, res: Respon
 
       existing.totalScore += pr.totalScore;
       existing.totalTimeSeconds += pr.timeTakenSeconds;
-      if (pr.roundNumber === 3) existing.r3Score = pr.totalScore;
+      if (pr.roundNumber === finalRoundNumber) existing.r3Score = pr.totalScore;
       participantTotals.set(uid, existing);
     }
 
@@ -1030,20 +1121,24 @@ adminRouter.post('/tiebreak/resolve', async (req: AuthenticatedRequest, res: Res
 adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userFilter: any = { role: 'participant' };
-    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
     const eventId = (req.query.eventId as string) || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
+
     if (eventId) {
-      userFilter.eventId = eventId;
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
     }
 
     // Fetch the actual rounds for this event
     let eventRounds: any[] = [];
     if (eventId) {
-      eventRounds = await DynamicRound.find({ eventId })
+      eventRounds = await DynamicRound.find({ eventId: eventCondition })
         .select('roundNumber title type durationMinutes totalMarks passingMarks status')
         .sort({ roundNumber: 1 });
     }
-    if (!eventRounds || eventRounds.length === 0) {
+    if (!eventId && (!eventRounds || eventRounds.length === 0)) {
       const fallbackRounds = await Round.find().select('roundNumber title type durationMinutes status').sort({ roundNumber: 1 });
       eventRounds = fallbackRounds.map(r => ({
         roundNumber: r.roundNumber,
@@ -1059,6 +1154,8 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
     const participantIds = participants.map(p => p._id);
     const allProgress = await RoundProgress.find({ userId: { $in: participantIds } });
     const tieBreaks = await TieBreak.find({ status: 'completed', tiedUserIds: { $in: participantIds } });
+
+    const eventRoundNums = new Set(eventRounds.map(er => er.roundNumber));
 
     const rows = participants.map(p => {
       const userProg = allProgress.filter(pr => pr.userId.toString() === p._id.toString());
@@ -1094,8 +1191,10 @@ adminRouter.get('/leaderboard', async (req: AuthenticatedRequest, res: Response)
       const r2Time = roundTimes[2] || 0;
       const r3Time = roundTimes[3] || 0;
 
-      // Dynamic total score & time across all regular rounds
-      const regularProg = userProg.filter(pr => pr.roundNumber !== 99);
+      // Dynamic total score & time strictly across this event's configured rounds
+      const regularProg = eventRoundNums.size > 0
+        ? userProg.filter(pr => eventRoundNums.has(pr.roundNumber))
+        : userProg.filter(pr => pr.roundNumber !== 99);
       const totalScore = regularProg.reduce((acc, curr) => acc + (curr.totalScore || 0), 0);
       const totalTimeSeconds = regularProg.reduce((acc, curr) => acc + (curr.timeTakenSeconds || 0), 0);
 
