@@ -17,22 +17,36 @@ import {
   Download,
   Calendar,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { SuspicionEvidenceModal } from './SuspicionEvidenceModal.js';
 import { JourneyReplayModal } from './JourneyReplayModal.js';
 import { SkillRadarModal } from './SkillRadarModal.js';
 
-export const ParticipantManager: React.FC = () => {
+interface ParticipantManagerProps {
+  eventId?: string;
+}
+
+export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId: propEventId }) => {
   const [participants, setParticipants] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>(() => {
-    return localStorage.getItem('debugarena_active_event_id') || '';
+    return propEventId || localStorage.getItem('debugarena_active_event_id') || '';
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (propEventId) {
+      setSelectedEventId(propEventId);
+      setFormData(prev => ({ ...prev, eventId: propEventId }));
+      setBulkEventId(propEventId);
+      fetchParticipants(propEventId);
+    }
+  }, [propEventId]);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
@@ -303,23 +317,25 @@ alex,secret456`;
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Tournament Selector Dropdown */}
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-300">
-            <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-[11px] text-slate-500 font-semibold">Tournament:</span>
-            <select
-              value={selectedEventId}
-              onChange={e => setSelectedEventId(e.target.value)}
-              className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer"
-            >
-              <option value="" className="bg-slate-900 text-slate-300">All Tournaments</option>
-              {events.map((ev: any) => (
-                <option key={ev._id} value={ev._id} className="bg-slate-900 text-white">
-                  {ev.name} ({ev.code})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Tournament Selector Dropdown (Shown only if not scoped to a specific event) */}
+          {!propEventId && (
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-300">
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[11px] text-slate-500 font-semibold">Tournament:</span>
+              <select
+                value={selectedEventId}
+                onChange={e => setSelectedEventId(e.target.value)}
+                className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-900 text-slate-300">All Tournaments</option>
+                {events.map((ev: any) => (
+                  <option key={ev._id} value={ev._id} className="bg-slate-900 text-white">
+                    {ev.name} ({ev.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="relative">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
@@ -360,6 +376,44 @@ alex,secret456`;
           </button>
         </div>
       </div>
+
+      {/* Contestant Join Information Banner */}
+      {selectedEventId && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 font-bold">
+              <Key className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="font-bold text-white flex items-center gap-2">
+                <span>Contestant Login Instructions</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono">
+                  Username &amp; Password
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px] mt-0.5">
+                Participants sign in using their assigned username and password at{' '}
+                <strong className="text-amber-400 font-mono">
+                  {window.location.origin}/join/{events.find((e: any) => e._id === selectedEventId)?.code || ''}
+                </strong>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              const ev = events.find((e: any) => e._id === selectedEventId);
+              const joinTarget = ev?.participantToken || ev?.code || selectedEventId;
+              const joinUrl = `${window.location.origin}/join/${joinTarget}`;
+              navigator.clipboard.writeText(joinUrl);
+              showToast('Tournament participant join link copied to clipboard!');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>Copy Join URL</span>
+          </button>
+        </div>
+      )}
 
       {/* Participants Table */}
       <div className="rounded-2xl bg-slate-900 border border-slate-800 shadow-xl overflow-hidden">

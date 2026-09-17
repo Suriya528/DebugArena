@@ -18,6 +18,7 @@ import { QuestionManager } from './components/admin/QuestionManager.js';
 import { TieBreakManager } from './components/admin/TieBreakManager.js';
 import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
+import { TournamentWorkspace } from './components/admin/TournamentWorkspace.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
 import { EventDirectJoinView } from './components/public/EventDirectJoinView.js';
@@ -50,7 +51,10 @@ export const App: React.FC = () => {
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   // Admin Dashboard State
-  const [adminTab, setAdminTab] = useState<AdminTab>('monitor');
+  const [adminTab, setAdminTab] = useState<AdminTab>('events');
+  const [activeEventId, setActiveEventId] = useState<string | null>(() => {
+    return localStorage.getItem('debugarena_active_event_id');
+  });
 
   // Private Admin Management Route State (/manage/:adminToken)
   const isManageRoute = currentPath.startsWith('/manage/');
@@ -69,6 +73,7 @@ export const App: React.FC = () => {
           if (!isMounted) return;
           if (data.event && data.event._id) {
             localStorage.setItem('debugarena_active_event_id', data.event._id);
+            setActiveEventId(data.event._id);
           }
           setAdminTab('events');
           window.history.pushState({}, '', '/');
@@ -596,18 +601,25 @@ export const App: React.FC = () => {
   if (user.role !== 'participant') {
     const isNeedsOnboarding = Boolean(user.needsOnboarding || !user.collegeId);
     return (
-      <div className="min-h-screen bg-[#090d16] flex flex-col relative">
+      <div className="min-h-screen bg-[#090d16] flex flex-col relative text-slate-100">
         <Navbar />
-        <AdminNav activeTab={adminTab} onTabChange={setAdminTab} />
         <main className="flex-1">
-          {adminTab === 'events' && <EventManager />}
-          {adminTab === 'monitor' && <LiveMonitor />}
-          {adminTab === 'control' && <CompetitionControl />}
-          {adminTab === 'results' && <RoundResultsView />}
-          {adminTab === 'participants' && <ParticipantManager />}
-          {adminTab === 'questions' && <QuestionManager />}
-          {adminTab === 'tiebreak' && <TieBreakManager />}
-          {adminTab === 'leaderboard' && <LeaderboardView />}
+          {activeEventId ? (
+            <TournamentWorkspace
+              eventId={activeEventId}
+              onBack={() => {
+                setActiveEventId(null);
+                localStorage.removeItem('debugarena_active_event_id');
+              }}
+            />
+          ) : (
+            <EventManager
+              onSelectEvent={(eventId) => {
+                setActiveEventId(eventId);
+                localStorage.setItem('debugarena_active_event_id', eventId);
+              }}
+            />
+          )}
         </main>
 
         {/* Persistent Onboarding Modal for Admins without assigned College/University */}

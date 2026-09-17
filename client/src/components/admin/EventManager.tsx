@@ -43,7 +43,11 @@ import { DeleteEventModal } from './DeleteEventModal.js';
 import { ProjectorQrModal } from './ProjectorQrModal.js';
 import { AdminTestSandboxModal } from './AdminTestSandboxModal.js';
 
-export const EventManager: React.FC = () => {
+interface EventManagerProps {
+  onSelectEvent?: (eventId: string) => void;
+}
+
+export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => {
   const [colleges, setColleges] = useState<College[]>([]);
   const [selectedCollegeId, setSelectedCollegeId] = useState<string>('');
   const [events, setEvents] = useState<Event[]>([]);
@@ -185,6 +189,10 @@ export const EventManager: React.FC = () => {
       setEvents(fetchedEvents);
       const targetId = createdEvent?._id || fetchedEvents[0]?._id;
       if (targetId) {
+        if (onSelectEvent) {
+          onSelectEvent(targetId);
+          return;
+        }
         await handleSelectEvent(targetId);
       }
     } catch (err) {
@@ -335,66 +343,102 @@ export const EventManager: React.FC = () => {
       </div>
 
       {/* Events Selector Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {events.map(ev => {
-          const isSelected = ev._id === activeEvent?._id;
           return (
             <div
               key={ev._id}
-              onClick={() => handleSelectEvent(ev._id)}
-              className={`p-5 rounded-3xl border transition-all cursor-pointer ${
-                isSelected
-                  ? 'bg-slate-900 border-indigo-500 shadow-xl shadow-indigo-950/40'
-                  : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-              }`}
+              onClick={() => {
+                if (onSelectEvent) {
+                  onSelectEvent(ev._id);
+                } else {
+                  handleSelectEvent(ev._id);
+                }
+              }}
+              className="p-6 rounded-3xl border bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:shadow-xl hover:shadow-indigo-950/20 transition-all cursor-pointer flex flex-col justify-between space-y-4 text-left"
             >
-              <div className="flex justify-between items-start mb-2">
-                <span className="font-mono text-xs font-bold text-indigo-400">{ev.code}</span>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      ev.status === 'live'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : ev.status === 'frozen'
-                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                        : 'bg-slate-800 text-slate-300'
-                    }`}
-                  >
-                    {ev.status}
-                  </span>
+              <div className="space-y-2">
+                <div className="flex justify-between items-start">
+                  <span className="font-mono text-xs font-bold text-indigo-400">{ev.code}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        ev.status === 'live'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse'
+                          : ev.status === 'ready'
+                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                          : ev.status === 'frozen'
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {ev.status}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEventToDelete(ev);
+                      }}
+                      className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      title="Delete Event"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <h3 className="font-bold text-white text-base truncate">{ev.name}</h3>
+                <p className="text-xs text-slate-400 line-clamp-2">{ev.description || 'Institutional competition'}</p>
+              </div>
+
+              <div className="space-y-3 pt-3 border-t border-slate-800/80">
+                <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                  <span>Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
+                  {ev.certificateConfig?.enabled ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
+                      <Award className="w-3 h-3 text-amber-400" /> Certs Active
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 font-sans">Certs Off</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setEventToDelete(ev);
+                      if (onSelectEvent) {
+                        onSelectEvent(ev._id);
+                      } else {
+                        handleSelectEvent(ev._id);
+                      }
                     }}
-                    className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                    title="Delete Event"
+                    className="flex-1 py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Open Workspace</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const joinUrl = `${window.location.origin}/join/${ev.participantToken || ev.code}`;
+                      navigator.clipboard.writeText(joinUrl);
+                      alert('Tournament join link copied to clipboard!');
+                    }}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer"
+                    title="Copy Participant Join Link"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-              <h3 className="font-bold text-white text-sm mb-1 truncate">{ev.name}</h3>
-              <p className="text-xs text-slate-400 line-clamp-1 mb-3">{ev.description || 'No description'}</p>
-              <div className="flex items-center justify-between text-[11px] font-mono mt-3 pt-2 border-t border-slate-800/80">
-                <span className="text-slate-500">Strikes: {ev.scoringConfig?.violationLimit || 3}</span>
-                {ev.certificateConfig?.enabled ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 font-sans">
-                    <Award className="w-3 h-3 text-amber-400" /> Certs On
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 font-sans">
-                    Certs Off
-                  </span>
-                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Active Event Dynamic Rounds Workspace */}
-      {activeEvent && (
+      {/* Active Event Dynamic Rounds Workspace (Shown when standalone) */}
+      {!onSelectEvent && activeEvent && (
         <div className="space-y-6">
           {/* Event Access & Control Center */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">

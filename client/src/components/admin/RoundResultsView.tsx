@@ -3,7 +3,11 @@ import { Award, CheckSquare, Square, ArrowRight, UserCheck, ShieldAlert, Clock, 
 import { RoundResultRow } from '../../types/index.js';
 import { api, autoAdvanceParticipants } from '../../services/api.js';
 
-export const RoundResultsView: React.FC = () => {
+interface RoundResultsViewProps {
+  eventId?: string;
+}
+
+export const RoundResultsView: React.FC<RoundResultsViewProps> = ({ eventId }) => {
   const [selectedRound, setSelectedRound] = useState<number>(1);
   const [results, setResults] = useState<RoundResultRow[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
@@ -16,7 +20,10 @@ export const RoundResultsView: React.FC = () => {
   const fetchResults = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/admin/rounds/${selectedRound}/results`);
+      const url = eventId
+        ? `/admin/rounds/${selectedRound}/results?eventId=${encodeURIComponent(eventId)}`
+        : `/admin/rounds/${selectedRound}/results`;
+      const res = await api.get(url);
       setResults(res.data.results || []);
 
       // Pre-select already advanced users if any
@@ -84,7 +91,8 @@ export const RoundResultsView: React.FC = () => {
     try {
       const data = await autoAdvanceParticipants(selectedRound, {
         quota,
-        tieStrategy
+        tieStrategy,
+        eventId
       });
       setAdvancementSummary(data.message);
       alert(data.message || 'Auto-advancement successfully applied!');
@@ -114,7 +122,8 @@ export const RoundResultsView: React.FC = () => {
     setIsAdvancing(true);
     try {
       const res = await api.post(`/admin/rounds/${selectedRound}/advance`, {
-        participantIds: Array.from(selectedUserIds)
+        participantIds: Array.from(selectedUserIds),
+        eventId
       });
       alert(res.data.message || 'Advancement completed!');
       await fetchResults();

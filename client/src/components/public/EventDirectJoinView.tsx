@@ -43,7 +43,7 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
   const [isAdminSandboxOpen, setIsAdminSandboxOpen] = useState(false);
 
   // Participant Form State
-  const [activeTab, setActiveTab] = useState<'register' | 'login'>('register');
+  const [activeTab, setActiveTab] = useState<'register' | 'login'>('login');
   const [fullName, setFullName] = useState('');
   const [regNo, setRegNo] = useState('');
   const [department, setDepartment] = useState('');
@@ -165,8 +165,9 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
       setSubmitting(true);
       setSubmitError(null);
 
-      if (!regNo.trim() || !password.trim()) {
-        setSubmitError('Please enter your Roll Number / Username and Password.');
+      const rawIdentifier = regNo.trim();
+      if (!rawIdentifier || !password.trim()) {
+        setSubmitError('Please enter your Username / Roll Number and Password.');
         setSubmitting(false);
         return;
       }
@@ -177,8 +178,8 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
       try {
         const tokenRes = await api.post('/participant/join-by-token', {
           participantToken: eventCode.trim(),
-          name: regNo.trim(),
-          regNo: regNo.trim().toUpperCase(),
+          username: rawIdentifier,
+          regNo: rawIdentifier,
           password: password.trim()
         });
         if (tokenRes.data.token) {
@@ -188,21 +189,29 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
           }
           res = tokenRes.data;
         }
-      } catch {
-        res = await joinEventByCode({
+      } catch (tokenErr: any) {
+        // Fallback to join-by-code if participantToken lookup failed or eventCode was provided
+        const codeRes = await api.post('/participant/join-by-code', {
           eventCode: (eventData?.code || eventCode).trim().toUpperCase(),
-          name: regNo.trim(),
-          regNo: regNo.trim().toUpperCase(),
+          username: rawIdentifier,
+          regNo: rawIdentifier,
           password: password.trim()
         });
+        if (codeRes.data.token) {
+          localStorage.setItem('debugarena_token', codeRes.data.token);
+          if (codeRes.data.event?._id) {
+            localStorage.setItem('debugarena_active_event_id', codeRes.data.event._id);
+          }
+          res = codeRes.data;
+        }
       }
 
       try {
         localStorage.setItem(
           'debugarena_participant_recovery',
           JSON.stringify({
-            regNo: regNo.trim().toUpperCase(),
-            username: res?.user?.username || regNo.trim().toUpperCase(),
+            regNo: rawIdentifier,
+            username: res?.user?.username || rawIdentifier,
             eventCode: (eventData?.code || eventCode).trim().toUpperCase()
           })
         );
@@ -210,7 +219,7 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
 
       onJoinedSuccess();
     } catch (err: any) {
-      setSubmitError(err.response?.data?.error || 'Invalid credentials or login failed.');
+      setSubmitError(err.response?.data?.error || 'Invalid credentials or login failed. Please check your username and password.');
     } finally {
       setSubmitting(false);
     }
@@ -411,25 +420,25 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl text-xs font-mono">
                     <button
                       type="button"
-                      onClick={() => setActiveTab('register')}
-                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                        activeTab === 'register'
-                          ? 'bg-amber-500 text-slate-950 font-bold'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Register
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setActiveTab('login')}
                       className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                         activeTab === 'login'
-                          ? 'bg-amber-500 text-slate-950 font-bold'
+                          ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Resume
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('register')}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                        activeTab === 'register'
+                          ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Self-Register
                     </button>
                   </div>
                 )}
@@ -583,25 +592,25 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                   </div>
                 </form>
               ) : (
-                /* Resume Mode */
+                /* Sign In Mode (Primary) */
                 <form onSubmit={handleDirectLogin} className="space-y-3.5">
                   <div>
                     <label className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      Roll Number / Username *
+                      Username / Roll Number *
                     </label>
                     <input
                       type="text"
                       required
                       value={regNo}
-                      onChange={(e) => setRegNo(e.target.value.toUpperCase())}
-                      placeholder="e.g. 22CS041"
-                      className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      onChange={(e) => setRegNo(e.target.value)}
+                      placeholder="e.g. suriya or 22CS041"
+                      className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                     />
                   </div>
 
                   <div>
                     <label className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      Password / PIN *
+                      Password / Security PIN *
                     </label>
                     <div className="relative">
                       <input
@@ -609,7 +618,7 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Your chosen PIN"
+                        placeholder="Your password (e.g. Debug#xyz)"
                         className="w-full h-10 pl-3.5 pr-10 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                       />
                       <button
@@ -626,11 +635,14 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50"
+                      className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-95 disabled:opacity-50"
                     >
                       <Maximize2 className="w-4 h-4 text-slate-950" />
-                      <span>{submitting ? 'Resuming Session...' : 'Resume Assessment'}</span>
+                      <span>{submitting ? 'Authenticating Candidate...' : 'Sign In & Enter Assessment'}</span>
                     </button>
+                    <p className="text-[10px] text-center text-slate-500 mt-2 font-mono">
+                      Engages proctored fullscreen lockdown upon entry.
+                    </p>
                   </div>
                 </form>
               )}

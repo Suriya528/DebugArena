@@ -48,6 +48,15 @@ export const LandingPage: React.FC = () => {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [certLookupId, setCertLookupId] = useState('');
+  const [eventCodeInput, setEventCodeInput] = useState('');
+
+  const handleJoinByCodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = eventCodeInput.trim().toUpperCase();
+    if (clean) {
+      window.location.href = `/join/${encodeURIComponent(clean)}`;
+    }
+  };
 
   // Footer Details Modal state
   const [footerTopic, setFooterTopic] = useState<FooterTopicId | null>(null);
@@ -364,21 +373,42 @@ export const LandingPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Event-Centric Architecture Notice */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/25 border border-amber-500/30 dark:border-amber-700/40 shadow-sm max-w-lg space-y-3">
-              <div className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Competition Access Invariant</span>
-                </span>
-                <span className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] text-amber-700 dark:text-amber-300 font-bold">
-                  Private &amp; Scoped
-                </span>
+            {/* Event Access Portal */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl max-w-lg space-y-4">
+              {/* Participant Quick Join by Code Form */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Participant Tournament Entry</span>
+                  </span>
+                  <span className="bg-amber-500/10 px-2 py-0.5 rounded text-[10px] text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20">
+                    Proctored Kiosk
+                  </span>
+                </div>
+                <form onSubmit={handleJoinByCodeSubmit} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={eventCodeInput}
+                    onChange={(e) => setEventCodeInput(e.target.value)}
+                    placeholder="Enter Event Code (e.g. DEBUG26)"
+                    className="flex-1 h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder:normal-case placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="submit"
+                    className="h-10 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 transition-all shrink-0 flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
+                  >
+                    <span>Join Event</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
+                  Or click the private <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">/join/&lt;token&gt;</code> link provided by your college host.
+                </p>
               </div>
-              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
-                <strong className="text-slate-900 dark:text-white font-semibold">Participants:</strong> Debug Arena events are private and tournament-scoped. Please access your competition using the unique <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono text-[11px] text-amber-800 dark:text-amber-200">/join/&lt;token&gt;</code> link or QR code provided directly by your college department.
-              </p>
-              <div className="pt-2 flex items-center justify-between border-t border-amber-500/20">
+
+              {/* Host / Admin Console Divider */}
+              <div className="pt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80">
                 <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">Convening an Event for Your College?</span>
                 <button
                   onClick={() => setIsAdminModalOpen(true)}

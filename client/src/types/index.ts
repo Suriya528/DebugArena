@@ -47,6 +47,8 @@ export interface Event {
   bannerUrl?: string;
   participantLink?: string;
   adminLink?: string;
+  participantToken?: string;
+  adminToken?: string;
   status: 'draft' | 'registration' | 'ready' | 'live' | 'frozen' | 'ended' | 'completed' | 'finalized' | 'archived';
   rules: string[];
   scoringConfig: {

@@ -37,13 +37,23 @@ import { AddQuestionModal } from './AddQuestionModal.js';
 import { QuestionImportModal } from './QuestionImportModal.js';
 import { useAuth } from '../../context/AuthContext.js';
 
-export const QuestionManager: React.FC = () => {
+interface QuestionManagerProps {
+  eventId?: string;
+  defaultView?: 'round_questions' | 'question_bank';
+}
+
+export const QuestionManager: React.FC<QuestionManagerProps> = ({
+  eventId: propEventId,
+  defaultView = 'round_questions'
+}) => {
   const { user } = useAuth();
-  const [activeView, setActiveView] = useState<'round_questions' | 'question_bank'>('question_bank');
+  const [activeView, setActiveView] = useState<'round_questions' | 'question_bank'>(propEventId ? defaultView : 'question_bank');
 
   // Event Selection & Multi-Round State
   const [events, setEvents] = useState<Event[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [selectedEventId, setSelectedEventId] = useState<string>(() => {
+    return propEventId || localStorage.getItem('debugarena_active_event_id') || '';
+  });
   const [dynamicRounds, setDynamicRounds] = useState<DynamicRound[]>([]);
   const [roundQuestionCounts, setRoundQuestionCounts] = useState<Record<number, number>>({});
 
@@ -149,13 +159,19 @@ export const QuestionManager: React.FC = () => {
       const fetchedEvents = await getEvents();
       setEvents(fetchedEvents || []);
       if (fetchedEvents && fetchedEvents.length > 0) {
-        const initialId = selectedEventId || user?.eventId || fetchedEvents[0]._id;
+        const initialId = propEventId || selectedEventId || user?.eventId || fetchedEvents[0]._id;
         setSelectedEventId(initialId);
       }
     } catch (err) {
       console.error('Failed to fetch events:', err);
     }
   };
+
+  useEffect(() => {
+    if (propEventId) {
+      setSelectedEventId(propEventId);
+    }
+  }, [propEventId]);
 
   useEffect(() => {
     fetchEventsList();
@@ -924,8 +940,12 @@ export const QuestionManager: React.FC = () => {
                 <Calendar className="w-5 h-5" />
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deploy To Event</span>
-                {events.length > 0 ? (
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tournament Scope</span>
+                {propEventId ? (
+                  <span className="text-xs font-bold text-white mt-0.5">
+                    {events.find(ev => ev._id === propEventId)?.name || 'Active Tournament'} ({events.find(ev => ev._id === propEventId)?.code || ''})
+                  </span>
+                ) : events.length > 0 ? (
                   <select
                     value={selectedEventId}
                     onChange={e => setSelectedEventId(e.target.value)}

@@ -96,10 +96,11 @@ participantRouter.get('/access/:participantToken', async (req: Request, res: Res
 // Allows a participant to join an event using the secure participant token
 participantRouter.post('/join-by-token', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { participantToken, name, regNo, department, year, password } = req.body;
+    const { participantToken, username, regNo, identifier, password, name, department, year, mode } = req.body;
+    const rawIdentifier = (username || regNo || identifier || '').trim();
 
-    if (!participantToken || !name || !regNo || !password) {
-      res.status(400).json({ error: 'Participant access token, full name, roll number (regNo), and password are required.' });
+    if (!participantToken || !rawIdentifier || !password) {
+      res.status(400).json({ error: 'Participant access token, username/roll number, and password are required.' });
       return;
     }
 
@@ -117,16 +118,20 @@ participantRouter.post('/join-by-token', async (req: Request, res: Response): Pr
       return;
     }
 
-    const cleanRegNo = regNo.trim().toUpperCase();
-    if (!cleanRegNo || cleanRegNo.replace(/[^A-Z0-9]/g, '').length === 0) {
-      res.status(400).json({ error: 'Roll number must contain alphanumeric characters' });
-      return;
-    }
-    const scopedUsername = `${event.code.toLowerCase()}_${cleanRegNo.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const cleanUpper = rawIdentifier.toUpperCase();
+    const cleanLower = rawIdentifier.toLowerCase();
+    const alphanumericOnly = rawIdentifier.replace(/[^a-zA-Z0-9]/g, '');
+    const scopedUsername = `${event.code.toLowerCase()}_${alphanumericOnly.toLowerCase()}`;
 
     let user = await User.findOne({
       eventId: event._id,
-      $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+      $or: [
+        { username: cleanLower },
+        { regNo: cleanUpper },
+        { username: rawIdentifier },
+        { regNo: rawIdentifier },
+        { username: scopedUsername }
+      ]
     });
 
     if (user) {
@@ -134,37 +139,50 @@ participantRouter.post('/join-by-token', async (req: Request, res: Response): Pr
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
           res.status(401).json({
-            error: 'Invalid credentials. This roll number is already registered for this event with a different password.'
+            error: 'Invalid password. Please check your credentials and try again.'
           });
           return;
         }
       }
     } else {
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(password, salt);
+      // If user is trying to register explicitly
+      if (mode === 'register' || Boolean(name && name.trim())) {
+        const cleanReg = cleanUpper || cleanLower;
+        const effectiveName = (name && name.trim()) ? name.trim() : rawIdentifier;
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
 
-      try {
-        user = await User.create({
-          username: scopedUsername,
-          name: name.trim(),
-          passwordHash,
-          role: 'participant',
-          collegeId: event.collegeId,
-          eventId: event._id,
-          regNo: cleanRegNo,
-          department: (department || '').trim(),
-          year: (year || '').trim()
-        });
-      } catch (createErr: any) {
-        if (createErr.code === 11000) {
-          user = await User.findOne({
+        try {
+          user = await User.create({
+            username: cleanLower,
+            name: effectiveName,
+            passwordHash,
+            role: 'participant',
+            collegeId: event.collegeId,
             eventId: event._id,
-            $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+            regNo: cleanReg,
+            department: (department || '').trim() || 'CSE',
+            year: (year || '').trim() || 'III'
           });
-          if (!user) throw createErr;
-        } else {
-          throw createErr;
+        } catch (createErr: any) {
+          if (createErr.code === 11000) {
+            user = await User.findOne({
+              eventId: event._id,
+              $or: [
+                { username: cleanLower },
+                { regNo: cleanUpper }
+              ]
+            });
+            if (!user) throw createErr;
+          } else {
+            throw createErr;
+          }
         }
+      } else {
+        res.status(404).json({
+          error: `Participant '${rawIdentifier}' was not found in this tournament. Please check your username/roll number or register.`
+        });
+        return;
       }
     }
 
@@ -267,10 +285,11 @@ participantRouter.get('/event-info/:eventCode', async (req: Request, res: Respon
 // Allows a participant to join an active event using an event code, supporting idempotent reconnection
 participantRouter.post('/join-by-code', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { eventCode, name, regNo, department, year, password } = req.body;
+    const { eventCode, username, regNo, identifier, password, name, department, year, mode } = req.body;
+    const rawIdentifier = (username || regNo || identifier || '').trim();
 
-    if (!eventCode || !name || !regNo || !password) {
-      res.status(400).json({ error: 'Event code, full name, roll number (regNo), and password are required' });
+    if (!eventCode || !rawIdentifier || !password) {
+      res.status(400).json({ error: 'Event code, username/roll number, and password are required' });
       return;
     }
 
@@ -289,17 +308,21 @@ participantRouter.post('/join-by-code', async (req: Request, res: Response): Pro
       return;
     }
 
-    const cleanRegNo = regNo.trim().toUpperCase();
-    if (!cleanRegNo || cleanRegNo.replace(/[^A-Z0-9]/g, '').length === 0) {
-      res.status(400).json({ error: 'Roll number must contain alphanumeric characters' });
-      return;
-    }
-    const scopedUsername = `${cleanCode.toLowerCase()}_${cleanRegNo.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const cleanUpper = rawIdentifier.toUpperCase();
+    const cleanLower = rawIdentifier.toLowerCase();
+    const alphanumericOnly = rawIdentifier.replace(/[^a-zA-Z0-9]/g, '');
+    const scopedUsername = `${cleanCode.toLowerCase()}_${alphanumericOnly.toLowerCase()}`;
 
     // Reconnect Idempotency: Check if student already registered in this event
     let user = await User.findOne({
       eventId: event._id,
-      $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+      $or: [
+        { username: cleanLower },
+        { regNo: cleanUpper },
+        { username: rawIdentifier },
+        { regNo: rawIdentifier },
+        { username: scopedUsername }
+      ]
     });
 
     if (user) {
@@ -308,38 +331,50 @@ participantRouter.post('/join-by-code', async (req: Request, res: Response): Pro
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
           res.status(401).json({
-            error: 'Invalid credentials. This roll number is already registered for this event with a different password.'
+            error: 'Invalid password. Please check your credentials and try again.'
           });
           return;
         }
       }
     } else {
-      // New Student Registration
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(password, salt);
+      // New Student Registration (if explicitly registering)
+      if (mode === 'register' || Boolean(name && name.trim())) {
+        const cleanReg = cleanUpper || cleanLower;
+        const effectiveName = (name && name.trim()) ? name.trim() : rawIdentifier;
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
 
-      try {
-        user = await User.create({
-          username: scopedUsername,
-          name: name.trim(),
-          passwordHash,
-          role: 'participant',
-          collegeId: event.collegeId,
-          eventId: event._id,
-          regNo: cleanRegNo,
-          department: (department || '').trim(),
-          year: (year || '').trim()
-        });
-      } catch (createErr: any) {
-        if (createErr.code === 11000) {
-          user = await User.findOne({
+        try {
+          user = await User.create({
+            username: cleanLower,
+            name: effectiveName,
+            passwordHash,
+            role: 'participant',
+            collegeId: event.collegeId,
             eventId: event._id,
-            $or: [{ username: scopedUsername }, { regNo: cleanRegNo }]
+            regNo: cleanReg,
+            department: (department || '').trim() || 'CSE',
+            year: (year || '').trim() || 'III'
           });
-          if (!user) throw createErr;
-        } else {
-          throw createErr;
+        } catch (createErr: any) {
+          if (createErr.code === 11000) {
+            user = await User.findOne({
+              eventId: event._id,
+              $or: [
+                { username: cleanLower },
+                { regNo: cleanUpper }
+              ]
+            });
+            if (!user) throw createErr;
+          } else {
+            throw createErr;
+          }
         }
+      } else {
+        res.status(404).json({
+          error: `Participant '${rawIdentifier}' was not found in this tournament. Please check your username/roll number or register.`
+        });
+        return;
       }
     }
 

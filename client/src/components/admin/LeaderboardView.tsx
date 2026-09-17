@@ -4,7 +4,11 @@ import { LeaderboardRow } from '../../types/index.js';
 import { api } from '../../services/api.js';
 import { CertificateModal } from './CertificateModal.js';
 
-export const LeaderboardView: React.FC = () => {
+interface LeaderboardViewProps {
+  eventId?: string;
+}
+
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propEventId }) => {
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedCertRow, setSelectedCertRow] = useState<LeaderboardRow | null>(null);
@@ -15,7 +19,7 @@ export const LeaderboardView: React.FC = () => {
   const fetchLeaderboard = async (targetEventId?: string) => {
     try {
       setLoading(true);
-      const evId = targetEventId || activeEvent?._id || localStorage.getItem('debugarena_active_event_id');
+      const evId = targetEventId || propEventId || activeEvent?._id || localStorage.getItem('debugarena_active_event_id');
       const url = evId ? `/admin/leaderboard?eventId=${evId}` : '/admin/leaderboard';
       const res = await api.get(url);
       setRows(res.data.leaderboard || []);
@@ -39,11 +43,12 @@ export const LeaderboardView: React.FC = () => {
         const evList = evRes.data.events || [];
         setEventsList(evList);
 
-        const savedEventId = localStorage.getItem('debugarena_active_event_id');
-        const matched = evList.find((e: any) => e._id === savedEventId) || evList[0] || null;
+        const savedEventId = propEventId || localStorage.getItem('debugarena_active_event_id');
+        const matched = evList.find((e: any) => e._id === savedEventId) || (propEventId ? { _id: propEventId } : evList[0]) || null;
         setActiveEvent(matched);
 
-        const url = matched?._id ? `/admin/leaderboard?eventId=${matched._id}` : '/admin/leaderboard';
+        const effectiveId = propEventId || matched?._id;
+        const url = effectiveId ? `/admin/leaderboard?eventId=${effectiveId}` : '/admin/leaderboard';
         const lbRes = await api.get(url);
         setRows(lbRes.data.leaderboard || []);
       } catch (e) {
@@ -53,7 +58,7 @@ export const LeaderboardView: React.FC = () => {
       }
     }
     loadMetaAndLeaderboard();
-  }, []);
+  }, [propEventId]);
 
   const handleEventChange = async (evId: string) => {
     const selected = eventsList.find(e => e._id === evId);
@@ -139,7 +144,7 @@ export const LeaderboardView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {eventsList.length > 1 && (
+          {!propEventId && eventsList.length > 1 && (
             <select
               value={activeEvent?._id || ''}
               onChange={e => handleEventChange(e.target.value)}
