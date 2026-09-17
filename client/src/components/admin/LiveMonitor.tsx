@@ -4,17 +4,9 @@ import {
   Users,
   ShieldAlert,
   CheckCircle2,
-  Play,
-  Send,
-  Zap,
   Server,
-  AlertTriangle,
   Stethoscope,
-  Sparkles,
-  RefreshCw,
-  Award,
-  AlertOctagon,
-  Scale
+  RefreshCw
 } from 'lucide-react';
 import { useRealtime } from '../../context/SocketContext.js';
 import { api } from '../../services/api.js';
@@ -29,48 +21,34 @@ interface LiveEvent {
   statusColor?: string;
 }
 
-interface FairnessMetric {
-  questionId: string;
-  orderIndex: number;
-  title: string;
-  marks: number;
-  type: string;
-  totalAttempts: number;
-  passCount: number;
-  passRate: number;
-  avgSolveTimeSeconds: number;
-  health: 'normal' | 'review' | 'critical';
-  anomalyReason?: string;
+interface LiveMonitorProps {
+  eventId?: string;
 }
 
-export const LiveMonitor: React.FC = () => {
+export const LiveMonitor: React.FC<LiveMonitorProps> = ({ eventId }) => {
   const { socket } = useRealtime();
   const [onlineParticipants, setOnlineParticipants] = useState<any[]>([]);
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [pulse, setPulse] = useState<any>(null);
-  const [fairnessMetrics, setFairnessMetrics] = useState<FairnessMetric[]>([]);
-  const [selectedRound, setSelectedRound] = useState<number>(1);
+  const [selectedRound] = useState<number>(1);
   const [isPreCheckOpen, setIsPreCheckOpen] = useState<boolean>(false);
-  const [actionLoading, setActionLoading] = useState<boolean>(false);
 
-  const fetchPulseAndFairness = async () => {
+  const fetchPulse = async () => {
     try {
-      const [pulseRes, fairnessRes] = await Promise.all([
-        api.get('/admin/control-room/pulse', { params: { roundNumber: selectedRound } }),
-        api.get('/admin/control-room/fairness', { params: { roundNumber: selectedRound } })
-      ]);
+      const pulseRes = await api.get('/admin/control-room/pulse', {
+        params: { eventId, roundNumber: selectedRound }
+      });
       setPulse(pulseRes.data);
-      setFairnessMetrics(fairnessRes.data.metrics || []);
     } catch (err) {
       console.error('Failed to fetch control room pulse:', err);
     }
   };
 
   useEffect(() => {
-    fetchPulseAndFairness();
-    const interval = setInterval(fetchPulseAndFairness, 5000);
+    fetchPulse();
+    const interval = setInterval(fetchPulse, 5000);
     return () => clearInterval(interval);
-  }, [selectedRound]);
+  }, [eventId, selectedRound]);
 
   useEffect(() => {
     if (!socket) return;
@@ -117,7 +95,7 @@ export const LiveMonitor: React.FC = () => {
         badge: `+${data.score} pts`,
         statusColor: 'text-emerald-400'
       });
-      fetchPulseAndFairness();
+      fetchPulse();
     });
 
     socket.on('admin:violation_logged', (data: any) => {
@@ -127,7 +105,7 @@ export const LiveMonitor: React.FC = () => {
         badge: `Strike ${data.violationCount}`,
         statusColor: 'text-rose-400'
       });
-      fetchPulseAndFairness();
+      fetchPulse();
     });
 
     socket.on('admin:participant_submitted', (data: any) => {
@@ -137,17 +115,7 @@ export const LiveMonitor: React.FC = () => {
         badge: `${data.totalScore} pts`,
         statusColor: 'text-amber-400'
       });
-      fetchPulseAndFairness();
-    });
-
-    socket.on('admin:anomaly_resolved', (data: any) => {
-      addEvent({
-        type: 'round',
-        message: `⚖️ ANOMALY ACTION APPLIED: ${data.action} on "${data.questionTitle}" (affected ${data.affectedCount} candidates)`,
-        badge: 'RESOLVED',
-        statusColor: 'text-purple-400'
-      });
-      fetchPulseAndFairness();
+      fetchPulse();
     });
 
     return () => {
@@ -158,7 +126,6 @@ export const LiveMonitor: React.FC = () => {
       socket.off('admin:submit_code');
       socket.off('admin:violation_logged');
       socket.off('admin:participant_submitted');
-      socket.off('admin:anomaly_resolved');
     };
   }, [socket]);
 
@@ -170,29 +137,6 @@ export const LiveMonitor: React.FC = () => {
     };
     setEvents(prev => [newEvent, ...prev.slice(0, 99)]);
   };
-
-  const handleAnomalyAction = async (questionId: string, action: 'give_full_marks' | 'disable_question' | 'recalculate_scores') => {
-    const reason = prompt('Please enter administrative rationale for this score action:', 'Statistical outlier anomaly detected during live monitoring');
-    if (!reason) return;
-
-    setActionLoading(true);
-    try {
-      const res = await api.post('/admin/control-room/anomaly-action', {
-        roundNumber: selectedRound,
-        questionId,
-        action,
-        reason
-      });
-      alert(res.data.message);
-      fetchPulseAndFairness();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to apply action');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const criticalAnomaliesCount = fairnessMetrics.filter(m => m.health === 'critical').length;
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6 text-left">
@@ -207,17 +151,12 @@ export const LiveMonitor: React.FC = () => {
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" /> Live Control Room
               </span>
-              {criticalAnomaliesCount > 0 && (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1 animate-pulse">
-                  <AlertOctagon className="w-2.5 h-2.5" /> {criticalAnomaliesCount} Anomaly
-                </span>
-              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               Telemetry & Live Competition Control Room
             </h1>
             <p className="text-xs text-slate-400">
-              Real-time participant pulse, question fairness health, and automated anomaly recalculation
+              Real-time participant pulse, active submission stream, and proctoring telemetry
             </p>
           </div>
         </div>
@@ -234,7 +173,7 @@ export const LiveMonitor: React.FC = () => {
 
           {/* Refresh Button */}
           <button
-            onClick={fetchPulseAndFairness}
+            onClick={fetchPulse}
             className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer shrink-0"
             title="Refresh Metrics"
           >
@@ -252,7 +191,7 @@ export const LiveMonitor: React.FC = () => {
           <div className="min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 truncate">Active Taking Test</div>
             <div className="text-xl sm:text-2xl font-black text-white font-mono">{pulse?.counts?.activeParticipants ?? onlineParticipants.length}</div>
-            <div className="text-[10px] text-slate-500 font-mono truncate">Of {pulse?.counts?.totalParticipants ?? 6} registered</div>
+            <div className="text-[10px] text-slate-500 font-mono truncate">Of {pulse?.counts?.totalParticipants ?? onlineParticipants.length} registered</div>
           </div>
         </div>
 
@@ -290,130 +229,7 @@ export const LiveMonitor: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. QUESTION FAIRNESS & LIVE ANOMALY DETECTION ENGINE */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-800">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                Statistical Fairness Engine
-              </span>
-            </div>
-            <h2 className="text-lg font-black text-white flex items-center gap-2">
-              <Scale className="w-5 h-5 text-indigo-400" /> Live Question Anomaly Detection & Recalculation
-            </h2>
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-            {[1, 2, 3].map(r => (
-              <button
-                key={r}
-                onClick={() => setSelectedRound(r)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedRound === r
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Round {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Fairness Cards List */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {fairnessMetrics.length === 0 ? (
-            <div className="col-span-2 text-center py-10 text-slate-500 text-xs">
-              No questions found or evaluated in this round yet.
-            </div>
-          ) : (
-            fairnessMetrics.map(qm => (
-              <div
-                key={qm.questionId}
-                className={`p-5 rounded-2xl border transition-all ${
-                  qm.health === 'critical'
-                    ? 'bg-rose-950/20 border-rose-500/50 shadow-lg shadow-rose-950/40'
-                    : qm.health === 'review'
-                    ? 'bg-amber-950/20 border-amber-500/40'
-                    : 'bg-slate-950 border-slate-800/90'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-black text-indigo-400">Q{qm.orderIndex}</span>
-                    <span className="font-bold text-white text-xs truncate max-w-[200px]">{qm.title}</span>
-                  </div>
-
-                  {/* Health Pill */}
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      qm.health === 'critical'
-                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse'
-                        : qm.health === 'review'
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                    }`}
-                  >
-                    {qm.health === 'critical' ? '🔴 Critical Anomaly' : qm.health === 'review' ? '🟡 Review' : '🟢 Normal'}
-                  </span>
-                </div>
-
-                {/* Progress Pass Rate */}
-                <div className="space-y-1 mb-3">
-                  <div className="flex justify-between text-[11px] font-mono">
-                    <span className="text-slate-400">Success Rate:</span>
-                    <span className={`font-bold ${qm.health === 'critical' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {qm.passRate}% ({qm.passCount}/{qm.totalAttempts} passed)
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        qm.health === 'critical' ? 'bg-rose-500' : qm.health === 'review' ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${qm.passRate}%` }}
-                    />
-                  </div>
-                </div>
-
-                {qm.anomalyReason && (
-                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-300 mb-3 leading-relaxed">
-                    {qm.anomalyReason}
-                  </div>
-                )}
-
-                {/* Anomaly Action Console */}
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
-                  <button
-                    onClick={() => handleAnomalyAction(qm.questionId, 'give_full_marks')}
-                    disabled={actionLoading}
-                    className="py-1.5 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <Award className="w-3 h-3" /> Give Full Marks (All)
-                  </button>
-                  <button
-                    onClick={() => handleAnomalyAction(qm.questionId, 'disable_question')}
-                    disabled={actionLoading}
-                    className="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    Disable (Exempt)
-                  </button>
-                  <button
-                    onClick={() => handleAnomalyAction(qm.questionId, 'recalculate_scores')}
-                    disabled={actionLoading}
-                    className="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    Recalculate
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* 4. Real-Time Telemetry Event Stream & Online Candidates */}
+      {/* 3. Real-Time Telemetry Event Stream & Online Candidates */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Live Event Stream */}
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">

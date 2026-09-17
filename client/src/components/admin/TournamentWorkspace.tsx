@@ -898,7 +898,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
           </div>
 
           {/* Embedded Real-Time Candidate Proctoring Monitor */}
-          <LiveMonitor />
+          <LiveMonitor eventId={eventId} />
         </div>
       )}
 
