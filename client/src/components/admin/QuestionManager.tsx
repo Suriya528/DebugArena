@@ -525,7 +525,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Add Question to Bank</span>
+                <span>Add Question to Bank</span>
               </button>
             </div>
           </div>
@@ -655,7 +655,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
                     <span>
-                      Filtered for <strong>Stage {selectedStageNumber}: {dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.title}</strong> ({dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.type.toUpperCase()}). Showing compatible questions. Use <strong>&quot;+ Deploy to Stage {selectedStageNumber}&quot;</strong> on any question card below to add it.
+                      Filtered for <strong>Stage {selectedStageNumber}: {dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.title}</strong> ({dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.type.toUpperCase()}). Showing compatible questions. Use <strong>&quot;Deploy to Stage {selectedStageNumber}&quot;</strong> on any question card below to add it.
                     </span>
                   </div>
                 </div>
@@ -787,7 +787,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 border border-slate-700 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Add Question</span>
+                  <span>Add Question</span>
                 </button>
               </div>
             </div>
@@ -1298,7 +1298,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Add Question</span>
+                <span>Add Question</span>
               </button>
 
               <button
@@ -1396,7 +1396,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                     }}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer"
                   >
-                    + Create Custom Question
+                    Create Custom Question
                   </button>
                 </div>
               </div>
