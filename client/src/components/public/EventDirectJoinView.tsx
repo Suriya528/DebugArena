@@ -687,10 +687,15 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                 <span>{eventData.college.name} ({eventData.college.code})</span>
               </div>
             )}
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
               {eventData.name}
             </h1>
-            <div className="flex items-center justify-center gap-2 font-mono text-xs">
+            {eventData.description && (
+              <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed pt-1">
+                {eventData.description}
+              </p>
+            )}
+            <div className="flex items-center justify-center gap-2 font-mono text-xs pt-1">
               <span className="text-slate-500 uppercase text-[10px]">Assessment Code:</span>
               <span className="font-bold text-amber-400 tracking-wider">{eventData.code}</span>
             </div>

@@ -13,8 +13,6 @@ interface NavbarProps {
   proctoringMode?: boolean;
   violationCount?: number;
   violationLimit?: number;
-  onViewAllTournaments?: () => void;
-  activeEventId?: string | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,9 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isTimerUrgent,
   proctoringMode,
   violationCount = 0,
-  violationLimit = 3,
-  onViewAllTournaments,
-  activeEventId
+  violationLimit = 3
 }) => {
   const { user, logout } = useAuth();
   const [isPasskeyModalOpen, setIsPasskeyModalOpen] = useState(false);
@@ -48,18 +44,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
         </div>
-
-        {user && user.role !== 'participant' && activeEventId && onViewAllTournaments && (
-          <div className="hidden sm:flex items-center pl-3 border-l border-slate-700/60">
-            <button
-              onClick={onViewAllTournaments}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-indigo-300 hover:text-white border border-slate-700 text-xs font-mono font-bold transition-all cursor-pointer shadow-sm"
-              title="Return to Tournaments Hub to view and manage all events"
-            >
-              <span>← All Tournaments Hub</span>
-            </button>
-          </div>
-        )}
 
         {roundTitle && (
           <div className="hidden md:flex items-center gap-2 pl-4 border-l border-slate-800 text-sm">

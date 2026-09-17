@@ -93,8 +93,8 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
               {event.status}
             </span>
           </div>
-          <h3 className="text-sm font-bold text-white mb-1">{event.name}</h3>
-          <p className="text-xs text-slate-400 line-clamp-1">{event.description || 'No description provided'}</p>
+          <h3 className="text-sm font-bold bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent mb-1">{event.name}</h3>
+          <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">{event.description || 'No description provided'}</p>
         </div>
 
         {/* GitHub-style Danger Banner */}

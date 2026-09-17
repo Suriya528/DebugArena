@@ -602,15 +602,7 @@ export const App: React.FC = () => {
     const isNeedsOnboarding = Boolean(user.needsOnboarding || !user.collegeId);
     return (
       <div className="min-h-screen bg-[#090d16] flex flex-col relative text-slate-100">
-        <Navbar
-          activeEventId={activeEventId}
-          onViewAllTournaments={() => {
-            setActiveEventId(null);
-            try {
-              localStorage.removeItem('debugarena_active_event_id');
-            } catch {}
-          }}
-        />
+        <Navbar />
         <main className="flex-1">
           {activeEventId ? (
             <TournamentWorkspace

@@ -313,7 +313,7 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
               </span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight">
-              {onSelectEvent ? 'All Tournaments & Events' : (activeEvent?.name || 'Institutional Championship & Events')}
+              {onSelectEvent ? 'All Tournaments' : (activeEvent?.name || 'Institutional Championship & Events')}
             </h1>
             <p className="text-xs text-slate-400">
               {onSelectEvent
@@ -436,8 +436,12 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
                       </button>
                     </div>
                   </div>
-                  <h3 className="font-bold text-white text-base truncate">{ev.name}</h3>
-                  <p className="text-xs text-slate-400 line-clamp-2">{ev.description || 'Institutional competition'}</p>
+                  <h3 className="font-extrabold text-base tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent truncate">
+                    {ev.name}
+                  </h3>
+                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                    {ev.description || 'Institutional competition'}
+                  </p>
                 </div>
 
                 {/* Properly Mention Event Rounds */}

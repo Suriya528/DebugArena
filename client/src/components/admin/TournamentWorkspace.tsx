@@ -317,7 +317,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                           }`}
                         >
                           <div className="truncate min-w-0">
-                            <div className="font-bold truncate">{ev.name}</div>
+                            <div className="font-bold truncate text-cyan-300">{ev.name}</div>
                             <div className="text-[10px] font-mono text-slate-500">{ev.code}</div>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${
@@ -336,7 +336,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                           }}
                           className="w-full py-2 px-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-mono font-bold text-center transition-all cursor-pointer"
                         >
-                          ← View All Tournaments in Hub
+                          ← All Tournaments
                         </button>
                       </div>
                     </div>
@@ -345,7 +345,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
               )}
 
               <span className="text-slate-600 font-mono text-xs">/</span>
-              <span className="text-xs font-mono font-bold text-indigo-400">
+              <span className="px-2 py-0.5 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-xs font-mono font-bold text-indigo-300">
                 {event.code}
               </span>
               <span
@@ -363,12 +363,22 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
               </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {event.name}
-            </h1>
-            <p className="text-xs text-slate-400 line-clamp-1">
-              {event.description || 'Institutional competition workspace'}
-            </p>
+            <div className="pt-1 space-y-2">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(56,189,248,0.2)]">
+                {event.name}
+              </h1>
+              {event.description ? (
+                <div className="max-w-3xl pt-0.5">
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal bg-slate-950/60 border border-slate-800/80 rounded-2xl px-4 py-2.5 shadow-inner">
+                    {event.description}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic pt-0.5">
+                  Institutional competition workspace • No description set
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Quick Actions Bar */}
