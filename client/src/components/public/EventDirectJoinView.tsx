@@ -25,8 +25,7 @@ import {
   ChevronRight,
   RefreshCw,
   Calendar,
-  Sparkles,
-  Info
+  Sparkles
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -673,12 +672,6 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
             <span>{liveTime}</span>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="hidden sm:inline">Secure 256-Bit SSL Protected</span>
-            <span className="sm:hidden">SSL Secure</span>
-          </div>
-
           <ThemeToggle />
         </div>
       </header>
@@ -811,30 +804,6 @@ export const EventDirectJoinView: React.FC<EventDirectJoinViewProps> = ({
                 </button>
               </div>
             </form>
-
-            {/* Assessment Integrity Notice (No self-registration) */}
-            <div className="p-3.5 rounded-2xl bg-slate-900/70 border border-slate-800 text-[11px] font-mono text-slate-400 space-y-1.5 leading-relaxed">
-              <div className="flex items-center gap-1.5 text-slate-300 font-bold">
-                <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Notice to Candidates</span>
-              </div>
-              <p>
-                Self-registration is disabled. Your test credentials must be issued directly by your event coordinator or institution administrator.
-              </p>
-            </div>
-          </div>
-
-          {/* Footer Security Badges */}
-          <div className="flex items-center justify-center gap-4 text-slate-500 text-xs font-mono">
-            <div className="flex items-center gap-1">
-              <Shield className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Fullscreen Lockdown Enforced</span>
-            </div>
-            <span>•</span>
-            <div className="flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5 text-slate-500" />
-              <span>Proctored Environment</span>
-            </div>
           </div>
         </div>
       </main>

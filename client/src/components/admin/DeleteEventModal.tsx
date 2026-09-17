@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Trash2, X, ShieldAlert } from 'lucide-react';
 import { Event } from '../../types/index.js';
 import { deleteEvent } from '../../services/api.js';
@@ -16,13 +16,24 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
   onClose,
   onDeleted
 }) => {
-  const [confirmCode, setConfirmCode] = useState('');
+  const [confirmName, setConfirmName] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setConfirmName('');
+      setError(null);
+    }
+  }, [isOpen, event]);
+
   if (!isOpen || !event) return null;
 
-  const isMatch = confirmCode.trim().toUpperCase() === event.code.trim().toUpperCase();
+  const cleanTargetName = (event.name || '').trim();
+  const cleanInput = confirmName.trim();
+  const isMatch =
+    cleanInput.length > 0 &&
+    (cleanInput === cleanTargetName || cleanInput.toLowerCase() === cleanTargetName.toLowerCase());
 
   const handleDelete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,37 +97,32 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
           <p className="text-xs text-slate-400 line-clamp-1">{event.description || 'No description provided'}</p>
         </div>
 
-        {/* Cascade Impact Warning */}
-        <div className="space-y-2 mb-6 p-4 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-xs text-slate-300">
-          <div className="flex items-center gap-2 text-rose-400 font-bold mb-1">
-            <ShieldAlert className="w-4 h-4" />
-            <span>Warning: Cascade Deletion Scope</span>
+        {/* GitHub-style Danger Banner */}
+        <div className="space-y-3 mb-6 p-4 rounded-2xl bg-rose-950/25 border border-rose-500/40 text-xs text-rose-200">
+          <div className="flex items-center gap-2 text-rose-400 font-bold">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>This action cannot be undone.</span>
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Deleting this event will permanently purge all of its child data:
+          <p className="text-xs text-slate-300 leading-relaxed">
+            This will permanently delete the <strong className="text-white font-semibold">"{event.name}"</strong> (<span className="font-mono text-amber-400">{event.code}</span>) tournament, along with all of its stages, question sets, participant scores, submissions, code milestones, and anti-cheat audit logs.
           </p>
-          <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-400 pl-1 font-mono">
-            <li>All dynamic rounds & configured tournament rules</li>
-            <li>All round-specific questions & test cases</li>
-            <li>All participant submissions, code milestones & attempts</li>
-            <li>All anti-cheat violation logs & issued certificates</li>
-          </ul>
         </div>
 
         {/* Confirmation Form */}
         <form onSubmit={handleDelete} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-              To confirm, please type the event code <span className="font-mono font-bold text-rose-400 select-all">{event.code}</span> below:
+            <label className="text-xs font-semibold text-slate-300 block mb-2 leading-relaxed">
+              Please type <strong className="font-mono font-bold text-white bg-slate-900 border border-slate-700 px-2 py-0.5 rounded select-all">{event.name}</strong> to confirm:
             </label>
             <input
               type="text"
               required
+              autoFocus
               disabled={isDeleting}
-              value={confirmCode}
-              onChange={e => setConfirmCode(e.target.value)}
-              placeholder={`Type "${event.code}" to confirm`}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-rose-500 transition-colors"
+              value={confirmName}
+              onChange={e => setConfirmName(e.target.value)}
+              placeholder={`Type "${event.name}" to confirm`}
+              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-colors"
             />
           </div>
 
@@ -134,12 +140,12 @@ export const DeleteEventModal: React.FC<DeleteEventModalProps> = ({
               disabled={!isMatch || isDeleting}
               className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all cursor-pointer ${
                 isMatch && !isDeleting
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30 active:scale-95'
+                  : 'bg-slate-800/80 text-slate-500 border border-slate-800 cursor-not-allowed'
               }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>{isDeleting ? 'Purging Event...' : 'Delete Event Permanently'}</span>
+              <span>{isDeleting ? 'Deleting Event...' : 'I understand the consequences, delete this event'}</span>
             </button>
           </div>
         </form>
