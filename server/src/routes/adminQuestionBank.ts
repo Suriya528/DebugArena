@@ -1,9 +1,11 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
+import mongoose from 'mongoose';
 import { authenticate, requireAnyAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { Question } from '../models/Question.js';
 import { Event } from '../models/Event.js';
+import { DynamicRound } from '../models/DynamicRound.js';
 import { previewVariants } from '../services/dnaService.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { seedDefaultQuestionTemplates } from '../services/defaultQuestions.js';
@@ -32,7 +34,7 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       await seedDefaultQuestionTemplates();
     }
 
-    const { topic, language, difficulty, type, search } = req.query;
+    const { topic, language, difficulty, type, search, eventId } = req.query;
     const filter: Record<string, any> = {};
 
     if (topic) filter.topic = topic;
@@ -63,7 +65,45 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
 
     const grandTotal = await QuestionTemplate.countDocuments();
 
-    res.json({ questions, topics, languages, types, countsByType, totalCount: grandTotal });
+    // Event-scoped deployment mapping
+    let roundCounts: Record<number, number> = {};
+    const deployedMap: Record<string, number[]> = {};
+
+    if (eventId) {
+      const cleanEventId = mongoose.Types.ObjectId.isValid(eventId as string)
+        ? new mongoose.Types.ObjectId(eventId as string)
+        : eventId;
+      const deployedQuestions = await Question.find(
+        { eventId: { $in: [eventId, cleanEventId] } },
+        'title roundNumber orderIndex'
+      );
+      for (const dq of deployedQuestions) {
+        roundCounts[dq.roundNumber] = (roundCounts[dq.roundNumber] || 0) + 1;
+        if (!deployedMap[dq.title]) {
+          deployedMap[dq.title] = [];
+        }
+        if (!deployedMap[dq.title].includes(dq.roundNumber)) {
+          deployedMap[dq.title].push(dq.roundNumber);
+        }
+      }
+    }
+
+    const enrichedQuestions = questions.map(q => {
+      const obj: any = q.toObject();
+      obj.deployedInRounds = deployedMap[q.title] || [];
+      return obj;
+    });
+
+    res.json({
+      questions: enrichedQuestions,
+      topics,
+      languages,
+      types,
+      countsByType,
+      totalCount: grandTotal,
+      roundCounts,
+      deployedMap
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch question bank' });
   }
@@ -181,6 +221,104 @@ adminQuestionBankRouter.post('/:templateId/preview-variants', async (req: Authen
   }
 });
 
+// POST /api/admin/questions/bank/populate-stage
+adminQuestionBankRouter.post('/populate-stage', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId, roundNumber } = req.body;
+    if (!eventId || !roundNumber) {
+      res.status(400).json({ error: 'eventId and roundNumber are required' });
+      return;
+    }
+
+    const cleanEventId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : eventId;
+    const targetRoundNumber = parseInt(roundNumber, 10);
+
+    const event = await Event.findById(cleanEventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const dr = await DynamicRound.findOne({ eventId: cleanEventId, roundNumber: targetRoundNumber });
+    const targetCount = dr ? dr.questionCount : (targetRoundNumber === 1 ? 10 : targetRoundNumber === 99 ? 1 : 3);
+    const roundType = dr ? dr.type : (targetRoundNumber === 1 ? 'mcq' : 'coding');
+
+    // Find existing questions deployed for this event & round
+    const existing = await Question.find({ eventId: { $in: [eventId, cleanEventId] }, roundNumber: targetRoundNumber });
+    const existingTitles = new Set(existing.map(q => q.title));
+    const needed = Math.max(0, targetCount - existing.length);
+
+    if (needed === 0) {
+      res.json({
+        success: true,
+        message: `Stage ${targetRoundNumber} already has ${existing.length} questions (target quota: ${targetCount}).`,
+        count: 0,
+        totalCount: existing.length
+      });
+      return;
+    }
+
+    // Determine compatible types for QuestionTemplate
+    let templateTypeQuery: any = roundType;
+    if (roundType === 'mcq' || roundType === 'aptitude') {
+      templateTypeQuery = { $in: ['mcq', 'aptitude'] };
+    } else if (roundType === 'coding' || roundType === 'debugging') {
+      templateTypeQuery = { $in: ['coding', 'debugging'] };
+    } else if (roundType === 'sql') {
+      templateTypeQuery = 'sql';
+    }
+
+    // Query candidate templates
+    const candidateTemplates = await QuestionTemplate.find({
+      type: templateTypeQuery,
+      title: { $nin: Array.from(existingTitles) }
+    }).limit(needed * 2);
+
+    const templatesToDeploy = candidateTemplates.slice(0, needed);
+
+    let maxOrder = existing.reduce((max, q) => Math.max(max, q.orderIndex || 0), 0);
+    const createdDocs = [];
+
+    for (const tmpl of templatesToDeploy) {
+      maxOrder += 1;
+      const isMcq = tmpl.type === 'mcq' || (tmpl.type === 'aptitude' && tmpl.options && tmpl.options.length > 0);
+      const newQ = await Question.create({
+        roundNumber: targetRoundNumber,
+        orderIndex: maxOrder,
+        eventId: cleanEventId,
+        collegeId: event.collegeId,
+        type: isMcq ? 'mcq' : 'coding',
+        title: tmpl.title,
+        prompt: tmpl.prompt,
+        marks: tmpl.marks || (isMcq ? 10 : 25),
+        options: tmpl.options?.map(o => o.text) || [],
+        correctOptionIndex: tmpl.options?.findIndex(o => o.isCorrect) ?? 0,
+        explanation: tmpl.explanation,
+        allowedLanguages: tmpl.allowedLanguages || (dr?.allowedLanguages || ['python', 'cpp', 'java']),
+        starterCode: tmpl.starterCode instanceof Map ? Object.fromEntries(tmpl.starterCode) : tmpl.starterCode,
+        testCases: (tmpl.testCases || []).map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.output,
+          isHidden: tc.isHidden,
+          weight: tc.weight
+        }))
+      });
+      createdDocs.push(newQ);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully populated ${createdDocs.length} questions for Stage ${targetRoundNumber}!`,
+      count: createdDocs.length,
+      totalCount: existing.length + createdDocs.length,
+      questions: createdDocs
+    });
+  } catch (err: any) {
+    console.error('Error populating stage:', err);
+    res.status(500).json({ error: 'Failed to populate stage questions' });
+  }
+});
+
 // POST /api/admin/questions/bank/:templateId/deploy-to-round
 adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -226,7 +364,7 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
       explanation: template.explanation,
       allowedLanguages: template.allowedLanguages,
       starterCode: template.starterCode instanceof Map ? Object.fromEntries(template.starterCode) : template.starterCode,
-      testCases: template.testCases.map(tc => ({
+      testCases: (template.testCases || []).map(tc => ({
         input: tc.input,
         expectedOutput: tc.output,
         isHidden: tc.isHidden,

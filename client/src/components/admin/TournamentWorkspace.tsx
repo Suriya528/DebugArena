@@ -359,7 +359,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                     : 'bg-slate-800 text-slate-300'
                 }`}
               >
-                {event.status}
+                {event.status === 'live' ? '● LIVE' : event.status}
               </span>
             </div>
 
@@ -813,7 +813,12 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
       {/* Tab 3: Rounds & Questions (Scoped to this tournament) */}
       {activeTab === 'questions' && (
-        <QuestionManager eventId={eventId} defaultView="round_questions" />
+        <QuestionManager
+          eventId={eventId}
+          defaultView="round_questions"
+          rounds={rounds}
+          event={event}
+        />
       )}
 
       {/* Tab 4: Live Control Room (Merged live round management + proctoring stream) */}

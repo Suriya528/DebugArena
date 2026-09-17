@@ -40,11 +40,15 @@ import { useAuth } from '../../context/AuthContext.js';
 interface QuestionManagerProps {
   eventId?: string;
   defaultView?: 'round_questions' | 'question_bank';
+  rounds?: DynamicRound[];
+  event?: Event | any;
 }
 
 export const QuestionManager: React.FC<QuestionManagerProps> = ({
   eventId: propEventId,
-  defaultView = 'round_questions'
+  defaultView = 'round_questions',
+  rounds: propRounds,
+  event: propEvent
 }) => {
   const { user } = useAuth();
   const [activeView, setActiveView] = useState<'round_questions' | 'question_bank'>(propEventId ? defaultView : 'question_bank');
@@ -54,8 +58,12 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
   const [selectedEventId, setSelectedEventId] = useState<string>(() => {
     return propEventId || localStorage.getItem('debugarena_active_event_id') || '';
   });
-  const [dynamicRounds, setDynamicRounds] = useState<DynamicRound[]>([]);
+  const [dynamicRounds, setDynamicRounds] = useState<DynamicRound[]>(propRounds || []);
   const [roundQuestionCounts, setRoundQuestionCounts] = useState<Record<number, number>>({});
+
+  // Dynamic stage filter in Question Bank
+  const [selectedStageNumber, setSelectedStageNumber] = useState<number | null>(null);
+  const [populatingStage, setPopulatingStage] = useState<number | null>(null);
 
   // Round questions state
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -177,19 +185,51 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     fetchEventsList();
   }, []);
 
+  useEffect(() => {
+    if (propRounds && propRounds.length > 0) {
+      setDynamicRounds(propRounds);
+      if (!propRounds.some(r => r.roundNumber === selectedRound) && selectedRound !== 99) {
+        setSelectedRound(propRounds[0].roundNumber);
+      }
+    }
+  }, [propRounds]);
+
+  const fetchAllRoundCounts = async () => {
+    if (!selectedEventId) return;
+    try {
+      const res = await api.get('/admin/questions', { params: { eventId: selectedEventId } });
+      const allQ: Question[] = res.data.questions || [];
+      const counts: Record<number, number> = {};
+      for (const q of allQ) {
+        counts[q.roundNumber] = (counts[q.roundNumber] || 0) + 1;
+      }
+      setRoundQuestionCounts(counts);
+    } catch (e) {
+      console.warn('Could not fetch all round question counts:', e);
+    }
+  };
+
   // 2. Fetch Event Details & Dynamic Rounds when selectedEventId changes
   useEffect(() => {
     if (!selectedEventId) return;
-    const fetchDetails = async () => {
-      try {
-        const details = await getEventDetails(selectedEventId);
-        setDynamicRounds(details.rounds || []);
-      } catch (err) {
-        console.error('Failed to load event details:', err);
-      }
-    };
-    fetchDetails();
-  }, [selectedEventId]);
+    fetchAllRoundCounts();
+    if (!propRounds || propRounds.length === 0) {
+      const fetchDetails = async () => {
+        try {
+          const details = await getEventDetails(selectedEventId);
+          if (details.rounds && details.rounds.length > 0) {
+            setDynamicRounds(details.rounds);
+            if (!details.rounds.some((r: any) => r.roundNumber === selectedRound) && selectedRound !== 99) {
+              setSelectedRound(details.rounds[0].roundNumber);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load event details:', err);
+        }
+      };
+      fetchDetails();
+    }
+  }, [selectedEventId, propRounds]);
 
   // 3. Fetch Round Questions
   const fetchRoundQuestions = async () => {
@@ -224,6 +264,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
       if (selectedType) params.type = selectedType;
       if (selectedLanguage) params.language = selectedLanguage;
       if (debouncedSearch) params.search = debouncedSearch;
+      if (selectedEventId) params.eventId = selectedEventId;
 
       const res = await api.get('/admin/questions/bank', { params });
       setBankQuestions(res.data.questions || []);
@@ -231,6 +272,9 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
       if (res.data.languages) setAvailableLanguages(res.data.languages || []);
       if (res.data.countsByType) setCountsByType(res.data.countsByType || {});
       if (res.data.totalCount !== undefined) setTotalBankCount(res.data.totalCount);
+      if (res.data.roundCounts) {
+        setRoundQuestionCounts(prev => ({ ...prev, ...res.data.roundCounts }));
+      }
     } catch (err) {
       console.error('Failed to load question bank:', err);
     } finally {
@@ -255,8 +299,9 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
         roundNumber: roundNum,
         eventId: selectedEventId || undefined
       });
-      showToast(`Successfully seeded ${res.data.count || 0} questions for Round ${roundNum === 99 ? 'Tie-Breaker' : roundNum}!`);
+      showToast(`Successfully seeded ${res.data.count || 0} questions for Stage ${roundNum === 99 ? 'Tie-Breaker' : roundNum}!`);
       await fetchRoundQuestions();
+      fetchAllRoundCounts();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to seed round questions', 'error');
     } finally {
@@ -264,7 +309,32 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     }
   };
 
-  // Auto-populate entire event (All 4 rounds)
+  // Auto-populate specific stage from Question Bank
+  const handlePopulateStage = async (roundNum: number) => {
+    if (!selectedEventId) {
+      showToast('Please select an event first', 'error');
+      return;
+    }
+    try {
+      setPopulatingStage(roundNum);
+      const res = await api.post('/admin/questions/bank/populate-stage', {
+        eventId: selectedEventId,
+        roundNumber: roundNum
+      });
+      showToast(res.data.message || `Stage ${roundNum} questions populated!`);
+      await fetchQuestionBank();
+      await fetchAllRoundCounts();
+      if (activeView === 'round_questions') {
+        await fetchRoundQuestions();
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to populate stage questions', 'error');
+    } finally {
+      setPopulatingStage(null);
+    }
+  };
+
+  // Auto-populate entire event (All rounds)
   const handlePopulateEntireEvent = async () => {
     if (!selectedEventId) {
       showToast('Please select an event first', 'error');
@@ -275,6 +345,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
       const res = await api.post(`/admin/events/${selectedEventId}/populate-round-questions`);
       showToast(res.data.message || 'All round questions successfully populated!');
       await fetchRoundQuestions();
+      fetchAllRoundCounts();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to populate event questions', 'error');
     } finally {
@@ -305,7 +376,12 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     try {
       await api.delete(`/admin/questions/${id}`);
       setQuestions(prev => prev.filter(q => q._id !== id));
+      setRoundQuestionCounts(prev => ({
+        ...prev,
+        [selectedRound]: Math.max(0, (prev[selectedRound] || 1) - 1)
+      }));
       showToast('Question deleted successfully');
+      fetchAllRoundCounts();
     } catch (err) {
       showToast('Failed to delete question', 'error');
     }
@@ -317,7 +393,13 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
         roundNumber,
         eventId: selectedEventId || undefined
       });
-      showToast(`Question successfully deployed to Round ${roundNumber === 99 ? 'Tie-Breaker' : roundNumber}!`);
+      showToast(`Question successfully deployed to Stage ${roundNumber === 99 ? 'Tie-Breaker' : roundNumber}!`);
+      setRoundQuestionCounts(prev => ({
+        ...prev,
+        [roundNumber]: (prev[roundNumber] || 0) + 1
+      }));
+      await fetchQuestionBank();
+      fetchAllRoundCounts();
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Failed to deploy question', 'error');
     }
@@ -447,6 +529,139 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Dynamic Tournament Stages & Quota Tracking Strip */}
+          {dynamicRounds && dynamicRounds.length > 0 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/20 shadow-lg space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Tournament Stages & Quota Tracking
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    — Filter question bank or auto-fill challenges tailored to each stage
+                  </span>
+                </div>
+                {selectedStageNumber && (
+                  <button
+                    onClick={() => {
+                      setSelectedStageNumber(null);
+                      setSelectedType('');
+                    }}
+                    className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear Stage Filter
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {dynamicRounds.map(dr => {
+                  const isStageSelected = selectedStageNumber === dr.roundNumber;
+                  const currentCount = roundQuestionCounts[dr.roundNumber] || 0;
+                  const targetCount = dr.questionCount || (dr.type === 'mcq' ? 10 : 3);
+                  const isFull = currentCount >= targetCount;
+                  const isPopulatingThis = populatingStage === dr.roundNumber;
+
+                  return (
+                    <div
+                      key={dr.roundNumber}
+                      onClick={() => {
+                        if (selectedStageNumber === dr.roundNumber) {
+                          setSelectedStageNumber(null);
+                          setSelectedType('');
+                        } else {
+                          setSelectedStageNumber(dr.roundNumber);
+                          if (dr.type === 'mcq' || dr.type === 'aptitude') {
+                            setSelectedType(dr.type);
+                          } else if (dr.type === 'sql') {
+                            setSelectedType('sql');
+                          } else if (dr.type === 'debugging') {
+                            setSelectedType('debugging');
+                          } else if (dr.type === 'coding') {
+                            setSelectedType('coding');
+                          } else {
+                            setSelectedType('');
+                          }
+                        }
+                      }}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        isStageSelected
+                          ? 'bg-indigo-600/20 border-indigo-500 shadow-md shadow-indigo-600/20 ring-1 ring-indigo-500'
+                          : 'bg-slate-950/60 hover:bg-slate-900 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-black text-xs text-indigo-400">
+                              Stage {dr.roundNumber}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase font-mono bg-slate-800 text-cyan-300 border border-slate-700">
+                              {dr.type}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-white truncate mt-0.5" title={dr.title}>
+                            {dr.title}
+                          </h4>
+                        </div>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                            isFull
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}
+                        >
+                          {currentCount}/{targetCount} Qs
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {isFull ? (
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Quota Met
+                            </span>
+                          ) : (
+                            <span className="text-amber-400 font-semibold">
+                              Needs {targetCount - currentCount} more
+                            </span>
+                          )}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            handlePopulateStage(dr.roundNumber);
+                          }}
+                          disabled={isPopulatingThis}
+                          className="px-2 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white text-[10px] font-bold border border-indigo-500/40 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                          title={`Auto-fill questions from bank to fulfill Stage ${dr.roundNumber} quota`}
+                        >
+                          <Sparkles className={`w-3 h-3 ${isPopulatingThis ? 'animate-spin text-cyan-300' : 'text-amber-400'}`} />
+                          <span>{isPopulatingThis ? 'Filling...' : 'Auto-Fill'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {selectedStageNumber && (
+                <div className="px-3 py-2 rounded-xl bg-indigo-950/70 border border-indigo-500/30 flex items-center justify-between text-xs text-indigo-200">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>
+                      Filtered for <strong>Stage {selectedStageNumber}: {dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.title}</strong> ({dynamicRounds.find(r => r.roundNumber === selectedStageNumber)?.type.toUpperCase()}). Showing compatible questions. Use <strong>&quot;+ Deploy to Stage {selectedStageNumber}&quot;</strong> on any question card below to add it.
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Category Navigation Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-slate-800">
@@ -648,6 +863,22 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
                               <AlertOctagon className="w-2.5 h-2.5" /> Bug: {item.dnaConfig.bugCategory.replace(/_/g, ' ')}
                             </span>
+                          )}
+
+                          {item.deployedInRounds && item.deployedInRounds.length > 0 && (
+                            item.deployedInRounds.map((rNum: number) => {
+                              const rInfo = dynamicRounds.find(dr => dr.roundNumber === rNum);
+                              return (
+                                <span
+                                  key={rNum}
+                                  className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 font-mono shadow-sm"
+                                  title={`Deployed to Stage ${rNum}: ${rInfo?.title || `Round ${rNum}`}`}
+                                >
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span>In Stage {rNum}</span>
+                                </span>
+                              );
+                            })
                           )}
                         </div>
 
@@ -896,6 +1127,18 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                           </button>
                         )}
 
+                        {/* Direct Deploy to Selected Stage Button */}
+                        {selectedStageNumber && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeployToRound(item._id, selectedStageNumber)}
+                            className="py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Deploy to Stage {selectedStageNumber}</span>
+                          </button>
+                        )}
+
                         {/* Deploy to Round Dropdown */}
                         <select
                           onChange={e => {
@@ -904,23 +1147,26 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                               e.target.value = '';
                             }
                           }}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-2 px-3 rounded-xl cursor-pointer focus:outline-none transition-all shadow-sm"
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 px-3 rounded-xl cursor-pointer focus:outline-none border border-slate-700 transition-all shadow-sm"
                         >
-                          <option value="">Deploy to Round ▼</option>
+                          <option value="">Deploy to Stage ▼</option>
                           {dynamicRounds.length > 0 ? (
                             dynamicRounds.map(dr => (
                               <option key={dr.roundNumber} value={dr.roundNumber}>
-                                Round {dr.roundNumber}: {dr.title} ({dr.type.toUpperCase()})
+                                Stage {dr.roundNumber}: {dr.title} ({dr.type.toUpperCase()}) — {roundQuestionCounts[dr.roundNumber] || 0}/{dr.questionCount || (dr.type === 'mcq' ? 10 : 3)} Qs
                               </option>
                             ))
                           ) : (
                             <>
-                              <option value="1">Round 1 (MCQ)</option>
-                              <option value="2">Round 2 (Bug Hunting)</option>
-                              <option value="3">Round 3 (Advanced Coding)</option>
-                              <option value="99">Round 99 (Tie-Breaker)</option>
+                              <option value="1">Stage 1 (MCQ)</option>
+                              <option value="2">Stage 2 (Bug Hunting)</option>
+                              <option value="3">Stage 3 (Advanced Coding)</option>
+                              <option value="99">Stage 99 (Tie-Breaker)</option>
                             </>
                           )}
+                          <option value="99">
+                            Stage 99: Sudden Death Tie-Breaker ({roundQuestionCounts[99] || 0} Qs)
+                          </option>
                         </select>
                       </div>
                     </div>
@@ -969,62 +1215,78 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 onClick={handlePopulateEntireEvent}
                 disabled={populatingAll || !selectedEventId}
                 className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer disabled:opacity-50"
-                title="Populates standard questions across all 4 rounds in one click"
+                title="Populates standard questions across all event rounds in one click"
               >
                 <Sparkles className={`w-3.5 h-3.5 ${populatingAll ? 'animate-spin' : ''}`} />
-                <span>{populatingAll ? 'Deploying Questions...' : '⚡ Auto-Populate All 4 Rounds'}</span>
+                <span>{populatingAll ? 'Deploying Questions...' : '⚡ Auto-Populate All Event Stages'}</span>
               </button>
             </div>
           </div>
 
-          {/* Round Selector Tabs */}
+          {/* Dynamic Stage Selector Tabs */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
             <div className="flex flex-wrap items-center gap-2">
-              {[
-                { roundNumber: 1, label: 'Round 1: MCQs', type: 'mcq' },
-                { roundNumber: 2, label: 'Round 2: Bug Hunting', type: 'coding' },
-                { roundNumber: 3, label: 'Round 3: Advanced', type: 'coding' },
-                { roundNumber: 99, label: 'Round 99: Tie-Breaker', type: 'coding' }
-              ].map(r => {
+              {(dynamicRounds && dynamicRounds.length > 0 ? dynamicRounds : [
+                { roundNumber: 1, title: 'Round 1: MCQs', type: 'mcq' as const, questionCount: 10 },
+                { roundNumber: 2, title: 'Round 2: Bug Hunting', type: 'coding' as const, questionCount: 3 },
+                { roundNumber: 3, title: 'Round 3: Advanced', type: 'coding' as const, questionCount: 2 }
+              ]).map(r => {
                 const isSelected = selectedRound === r.roundNumber;
                 const count = roundQuestionCounts[r.roundNumber] !== undefined
                   ? roundQuestionCounts[r.roundNumber]
-                  : (r.roundNumber === selectedRound ? questions.length : undefined);
+                  : (r.roundNumber === selectedRound ? questions.length : 0);
+                const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+                const isFull = count >= targetCount;
 
                 return (
                   <button
                     key={r.roundNumber}
                     onClick={() => setSelectedRound(r.roundNumber)}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
                       isSelected
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-400'
+                        : 'text-slate-400 hover:text-white bg-slate-950 border-slate-800 hover:border-slate-700'
                     }`}
                   >
-                    <span>{r.label}</span>
-                    {count !== undefined && (
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
-                        isSelected ? 'bg-indigo-950/70 text-indigo-200' : 'bg-slate-800 text-slate-300'
-                      }`}>
-                        {count} Qs
-                      </span>
-                    )}
+                    <span className="font-mono text-indigo-300 font-black">Stage {r.roundNumber}</span>
+                    <span className="truncate max-w-[140px] sm:max-w-none">{r.title}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                      isSelected
+                        ? (isFull ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-indigo-950/80 text-indigo-200 border border-indigo-500/30')
+                        : (isFull ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-300')
+                    }`}>
+                      {count}/{targetCount} Qs
+                    </span>
                   </button>
                 );
               })}
+
+              {/* Sudden Death Tie-Breaker tab */}
+              <button
+                onClick={() => setSelectedRound(99)}
+                className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                  selectedRound === 99
+                    ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-600/30 ring-1 ring-amber-400'
+                    : 'text-slate-400 hover:text-white bg-slate-950 border-slate-800'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Tie-Breaker (R99)</span>
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300">
+                  {roundQuestionCounts[99] !== undefined ? roundQuestionCounts[99] : (selectedRound === 99 ? questions.length : 0)} Qs
+                </span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-center">
+            <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
               <button
-                onClick={() => {
-                  setDirectRoundTarget(selectedRound);
-                  setIsImportModalOpen(true);
-                }}
-                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
-                title="Bulk import questions into this round from CSV, XLSX, or JSON"
+                onClick={() => handlePopulateStage(selectedRound)}
+                disabled={populatingStage === selectedRound}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50"
+                title={`Auto-fill questions from bank matching Stage ${selectedRound} type`}
               >
-                <UploadCloud className="w-3.5 h-3.5 text-slate-950" />
-                <span>Import to Round</span>
+                <Sparkles className={`w-3.5 h-3.5 text-cyan-300 ${populatingStage === selectedRound ? 'animate-spin' : ''}`} />
+                <span>{populatingStage === selectedRound ? 'Filling...' : `⚡ Auto-Fill Stage ${selectedRound === 99 ? 'TB' : selectedRound} from Bank`}</span>
               </button>
 
               <button
@@ -1036,24 +1298,39 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Add Question to Round</span>
+                <span>+ Add Question</span>
               </button>
 
               <button
-                onClick={() => handleSeedRoundQuestions(selectedRound)}
-                disabled={seedingRound}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                onClick={() => {
+                  setDirectRoundTarget(selectedRound);
+                  setIsImportModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+                title="Bulk import questions into this round from CSV, XLSX, or JSON"
               >
-                <Sparkles className={`w-3.5 h-3.5 text-cyan-400 ${seedingRound ? 'animate-spin' : ''}`} />
-                <span>{seedingRound ? 'Seeding...' : `Seed Round ${selectedRound === 99 ? 'Tie-Breaker' : selectedRound}`}</span>
+                <UploadCloud className="w-3.5 h-3.5 text-slate-950" />
+                <span>Import</span>
               </button>
 
               <button
-                onClick={() => setActiveView('question_bank')}
+                onClick={() => {
+                  setSelectedStageNumber(selectedRound);
+                  if (currentRoundMeta) {
+                    if (currentRoundMeta.type === 'mcq' || currentRoundMeta.type === 'aptitude') {
+                      setSelectedType(currentRoundMeta.type);
+                    } else if (currentRoundMeta.type === 'sql') {
+                      setSelectedType('sql');
+                    } else if (currentRoundMeta.type === 'debugging' || currentRoundMeta.type === 'coding') {
+                      setSelectedType(currentRoundMeta.type);
+                    }
+                  }
+                  setActiveView('question_bank');
+                }}
                 className="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Deploy from Bank</span>
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Browse Bank</span>
               </button>
             </div>
           </div>
@@ -1072,37 +1349,54 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-white">
-                    No Questions Deployed for Round {selectedRound === 99 ? 'Tie-Breaker' : selectedRound}
+                    No Questions Deployed for Stage {selectedRound === 99 ? 'Tie-Breaker' : selectedRound}
+                    {currentRoundMeta ? `: ${currentRoundMeta.title}` : ''}
                   </h3>
                   <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed mt-1">
-                    When participants advance to this round, they will have no questions to solve. Deploy standard curated questions or pick custom challenges from the Question Bank.
+                    {currentRoundMeta
+                      ? `This stage requires ${currentRoundMeta.questionCount || 3} ${currentRoundMeta.type.toUpperCase()} challenges (${currentRoundMeta.durationMinutes} mins, ${currentRoundMeta.totalMarks} marks). Click "Auto-Fill Stage from Bank" to deploy compatible challenges or create custom questions.`
+                      : 'When participants advance to this round, they will have no questions to solve. Deploy standard curated questions or pick custom challenges from the Question Bank.'}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
                   <button
-                    onClick={() => handleSeedRoundQuestions(selectedRound)}
-                    disabled={seedingRound}
-                    className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+                    onClick={() => handlePopulateStage(selectedRound)}
+                    disabled={populatingStage === selectedRound}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>⚡ Populate Standard Round {selectedRound === 99 ? 'Tie-Breaker' : selectedRound} Questions</span>
+                    <span>⚡ Auto-Fill Stage {selectedRound === 99 ? 'Tie-Breaker' : selectedRound} from Bank</span>
                   </button>
 
                   <button
-                    onClick={handlePopulateEntireEvent}
-                    disabled={populatingAll || !selectedEventId}
-                    className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-cyan-600/30 cursor-pointer disabled:opacity-50"
+                    onClick={() => {
+                      setSelectedStageNumber(selectedRound);
+                      if (currentRoundMeta) {
+                        if (currentRoundMeta.type === 'mcq' || currentRoundMeta.type === 'aptitude') {
+                          setSelectedType(currentRoundMeta.type);
+                        } else if (currentRoundMeta.type === 'sql') {
+                          setSelectedType('sql');
+                        } else if (currentRoundMeta.type === 'debugging' || currentRoundMeta.type === 'coding') {
+                          setSelectedType(currentRoundMeta.type);
+                        }
+                      }
+                      setActiveView('question_bank');
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold border border-purple-500/40 cursor-pointer"
                   >
-                    <Layers className="w-4 h-4" />
-                    <span>⚡ Auto-Populate All 4 Rounds</span>
+                    Browse Compatible in Bank
                   </button>
 
                   <button
-                    onClick={() => setActiveView('question_bank')}
+                    onClick={() => {
+                      setEditingTemplate(null);
+                      setDirectRoundTarget(selectedRound);
+                      setIsAddModalOpen(true);
+                    }}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer"
                   >
-                    Browse Question Bank
+                    + Create Custom Question
                   </button>
                 </div>
               </div>

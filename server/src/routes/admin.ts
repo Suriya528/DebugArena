@@ -12,6 +12,7 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { TieBreak } from '../models/TieBreak.js';
 import { DynamicRound } from '../models/DynamicRound.js';
+import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { AuditLog } from '../models/AuditLog.js';
 import { broadcastToParticipants, broadcastToAdmins, emitToUser } from '../services/socketService.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
@@ -892,14 +893,11 @@ adminRouter.get('/questions', async (req: AuthenticatedRequest, res: Response): 
     const filter: Record<string, any> = {};
     if (roundNumber) filter.roundNumber = roundNumber;
     if (eventId) {
-      filter.$or = [{ eventId }, { eventId: null }, { eventId: { $exists: false } }];
+      const eventObjId = mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+      filter.eventId = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
     }
 
-    let questions = await Question.find(filter).sort({ roundNumber: 1, orderIndex: 1 });
-    if (questions.length === 0 && roundNumber) {
-      questions = await Question.find({ roundNumber }).sort({ orderIndex: 1 });
-    }
-
+    const questions = await Question.find(filter).sort({ roundNumber: 1, orderIndex: 1 });
     res.json({ questions });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch questions' });
@@ -915,21 +913,70 @@ adminRouter.post('/questions/seed-round', async (req: AuthenticatedRequest, res:
       return;
     }
 
-    const { DEFAULT_ROUND_1_MCQS, DEFAULT_ROUND_2_CODING, DEFAULT_ROUND_3_CODING, DEFAULT_TIE_BREAKER_QUESTION } = await import('../services/defaultQuestions.js');
-    let sourceQuestions: any[] = [];
-    if (roundNumber === 1) sourceQuestions = DEFAULT_ROUND_1_MCQS;
-    else if (roundNumber === 2) sourceQuestions = DEFAULT_ROUND_2_CODING;
-    else if (roundNumber === 3) sourceQuestions = DEFAULT_ROUND_3_CODING;
-    else if (roundNumber === 99) sourceQuestions = [DEFAULT_TIE_BREAKER_QUESTION];
-
     const targetEventId = eventId || req.user?.eventId;
     const targetCollegeId = req.user?.collegeId;
+    const cleanEventId = targetEventId && mongoose.Types.ObjectId.isValid(targetEventId)
+      ? new mongoose.Types.ObjectId(targetEventId)
+      : targetEventId;
+
+    // Check if a DynamicRound exists for this event
+    let dr = null;
+    if (cleanEventId) {
+      dr = await DynamicRound.findOne({ eventId: { $in: [targetEventId, cleanEventId] }, roundNumber });
+    }
+
+    const { DEFAULT_ROUND_1_MCQS, DEFAULT_ROUND_2_CODING, DEFAULT_ROUND_3_CODING, DEFAULT_TIE_BREAKER_QUESTION } = await import('../services/defaultQuestions.js');
+
+    let sourceQuestions: any[] = [];
+    if (dr) {
+      // Dynamic round exists: match by dynamic round type
+      const targetQuota = dr.questionCount || (dr.type === 'mcq' ? 10 : 3);
+      if (dr.type === 'mcq' || dr.type === 'aptitude') {
+        sourceQuestions = DEFAULT_ROUND_1_MCQS.slice(0, targetQuota);
+      } else if (dr.type === 'debugging') {
+        sourceQuestions = DEFAULT_ROUND_2_CODING.slice(0, targetQuota);
+      } else if (dr.type === 'coding') {
+        sourceQuestions = DEFAULT_ROUND_3_CODING.slice(0, targetQuota);
+      } else if (dr.type === 'sql') {
+        // Query SQL templates from bank if available
+        const sqlTemplates = await QuestionTemplate.find({ type: 'sql' }).limit(targetQuota);
+        if (sqlTemplates.length > 0) {
+          sourceQuestions = sqlTemplates.map((tmpl, idx) => ({
+            roundNumber,
+            orderIndex: idx + 1,
+            type: 'coding',
+            title: tmpl.title,
+            prompt: tmpl.prompt,
+            marks: tmpl.marks || 25,
+            allowedLanguages: tmpl.allowedLanguages || ['sql'],
+            starterCode: tmpl.starterCode instanceof Map ? Object.fromEntries(tmpl.starterCode) : tmpl.starterCode,
+            testCases: (tmpl.testCases || []).map(tc => ({
+              input: tc.input,
+              expectedOutput: tc.output,
+              isHidden: tc.isHidden,
+              weight: tc.weight
+            }))
+          }));
+        } else {
+          sourceQuestions = DEFAULT_ROUND_2_CODING.slice(0, targetQuota);
+        }
+      } else {
+        sourceQuestions = DEFAULT_ROUND_2_CODING.slice(0, targetQuota);
+      }
+    } else {
+      // Fallback to classic defaults
+      if (roundNumber === 1) sourceQuestions = DEFAULT_ROUND_1_MCQS;
+      else if (roundNumber === 2) sourceQuestions = DEFAULT_ROUND_2_CODING;
+      else if (roundNumber === 3) sourceQuestions = DEFAULT_ROUND_3_CODING;
+      else if (roundNumber === 99) sourceQuestions = [DEFAULT_TIE_BREAKER_QUESTION];
+    }
 
     const created = await Question.create(
-      sourceQuestions.map(q => ({
+      sourceQuestions.map((q, idx) => ({
         ...q,
         roundNumber,
-        eventId: targetEventId,
+        orderIndex: q.orderIndex || idx + 1,
+        eventId: cleanEventId,
         collegeId: targetCollegeId
       }))
     );

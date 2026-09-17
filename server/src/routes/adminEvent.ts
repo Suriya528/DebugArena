@@ -268,7 +268,8 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       adminAccessTokenHash,
       participantTokenCipher,
       adminTokenCipher,
-      status: 'ready',
+      status: 'live',
+      startedAt: new Date(),
       rules: rules || [
         'Full-screen proctoring is strictly enforced throughout the competition.',
         'Zero negative marking on all debugging challenges.',
@@ -419,6 +420,18 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
       return;
     }
 
+    if (event.status === 'ready') {
+      event.status = 'live';
+      if (!event.startedAt) event.startedAt = new Date();
+      await event.save();
+      const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+      if (r1 && r1.status !== 'active') {
+        r1.status = 'active';
+        if (!r1.startedAt) r1.startedAt = new Date();
+        await r1.save();
+      }
+    }
+
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
     const participantToken = decryptToken(event.participantTokenCipher);
 
@@ -546,12 +559,13 @@ adminEventRouter.post('/:eventId/publish', async (req: AuthenticatedRequest, res
       res.status(404).json({ error: 'Event not found' });
       return;
     }
-    event.status = 'ready';
+    event.status = 'live';
     event.publishedAt = new Date();
+    if (!event.startedAt) event.startedAt = new Date();
     await event.save();
 
     broadcastToAll('event:published', { eventId: event._id, name: event.name });
-    res.json({ message: 'Event published and ready for participants', event });
+    res.json({ message: 'Event published and is now LIVE', event });
   } catch (err) {
     res.status(500).json({ error: 'Failed to publish event' });
   }
@@ -628,6 +642,19 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
       }
     }
 
+    // If event is in 'ready', promote it to 'live' so entering workspace shows LIVE immediately
+    if (event.status === 'ready') {
+      event.status = 'live';
+      if (!event.startedAt) event.startedAt = new Date();
+      await event.save();
+      const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+      if (round1 && round1.status !== 'active') {
+        round1.status = 'active';
+        if (!round1.startedAt) round1.startedAt = new Date();
+        await round1.save();
+      }
+    }
+
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
     res.json({ event, rounds });
   } catch (err) {
@@ -678,8 +705,8 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     // Enforce legal lifecycle transitions
     if (status && status !== event.status) {
       const allowedTransitions: Record<string, string[]> = {
-        draft: ['registration', 'ready'],
-        registration: ['ready', 'draft'],
+        draft: ['registration', 'ready', 'live'],
+        registration: ['ready', 'draft', 'live'],
         ready: ['live', 'draft'],
         live: ['frozen', 'completed'],
         frozen: ['live', 'completed'],
