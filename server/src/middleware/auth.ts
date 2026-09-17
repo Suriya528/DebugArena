@@ -14,6 +14,8 @@ export interface AuthPayload {
 
 export interface AuthenticatedRequest extends Request {
   user?: AuthPayload;
+  file?: Express.Multer.File | any;
+  files?: Express.Multer.File[] | { [fieldname: string]: Express.Multer.File[] } | any;
 }
 
 export function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
