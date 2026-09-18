@@ -17,6 +17,7 @@ export interface IAttemptTestCaseResult {
 
 export interface IAttempt extends Document {
   userId: Types.ObjectId;
+  eventId?: Types.ObjectId;
   roundNumber: number;
   questionId: Types.ObjectId;
   // MCQ
@@ -62,6 +63,7 @@ const AttemptTestCaseResultSchema = new Schema<IAttemptTestCaseResult>(
 const AttemptSchema = new Schema<IAttempt>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     roundNumber: { type: Number, required: true, index: true },
     questionId: { type: Schema.Types.ObjectId, ref: 'Question', required: true, index: true },
     selectedOption: { type: Number, default: null },
@@ -91,5 +93,6 @@ const AttemptSchema = new Schema<IAttempt>(
 
 AttemptSchema.index({ userId: 1, roundNumber: 1, questionId: 1 }, { unique: true });
 AttemptSchema.index({ userId: 1, roundNumber: 1, retentionStatus: 1 });
+AttemptSchema.index({ eventId: 1, roundNumber: 1, userId: 1 });
 
 export const Attempt = mongoose.model<IAttempt>('Attempt', AttemptSchema);

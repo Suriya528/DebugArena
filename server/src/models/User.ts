@@ -11,6 +11,7 @@ export type UserRole =
 
 export interface IUser extends Document {
   username: string;
+  usernameNormalized?: string;
   name: string;
   email?: string;
   passwordHash?: string;
@@ -37,6 +38,7 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>(
   {
     username: { type: String, required: true, trim: true, lowercase: true },
+    usernameNormalized: { type: String, trim: true, lowercase: true, index: true },
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
     passwordHash: { type: String, required: function(this: any) { return this.authProvider === 'local'; } },
@@ -72,10 +74,22 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
+UserSchema.pre('save', function (next) {
+  if (this.username) {
+    this.username = this.username.trim().toLowerCase();
+    this.usernameNormalized = this.username;
+  }
+  next();
+});
+
 UserSchema.index({ email: 1 }, { unique: true, sparse: true });
-// Event-scoped uniqueness for participants
+// Event-scoped uniqueness for participants (both username and usernameNormalized)
 UserSchema.index(
   { eventId: 1, username: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
+);
+UserSchema.index(
+  { eventId: 1, usernameNormalized: 1 },
   { unique: true, sparse: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
 );
 // Global uniqueness for administrators/coordinators

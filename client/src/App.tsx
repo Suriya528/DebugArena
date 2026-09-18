@@ -26,9 +26,10 @@ import { LandingPage } from './components/home/LandingPage.js';
 import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
 import { VerifySignInView } from './components/auth/VerifySignInView.js';
 import { KioskRecoveryPortal } from './components/participant/KioskRecoveryPortal.js';
+import { AdminControlEntryView } from './components/admin/AdminControlEntryView.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
-import { api, getAdminEventManagement } from './services/api.js';
+import { api } from './services/api.js';
 import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -56,41 +57,11 @@ export const App: React.FC = () => {
     return localStorage.getItem('debugarena_active_event_id');
   });
 
-  // Private Admin Management Route State (/manage/:adminToken)
-  const isManageRoute = currentPath.startsWith('/manage/');
-  const adminManageToken = isManageRoute ? currentPath.split('/manage/')[1]?.trim() : null;
-  const [manageError, setManageError] = useState<string | null>(null);
-  const [manageLoading, setManageLoading] = useState<boolean>(false);
-  const [manageAuthModalOpen, setManageAuthModalOpen] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (isManageRoute && adminManageToken && user && user.role !== 'participant') {
-      let isMounted = true;
-      setManageLoading(true);
-      setManageError(null);
-      getAdminEventManagement(adminManageToken)
-        .then((data) => {
-          if (!isMounted) return;
-          if (data.event && data.event._id) {
-            localStorage.setItem('debugarena_active_event_id', data.event._id);
-            setActiveEventId(data.event._id);
-          }
-          setAdminTab('events');
-          window.history.pushState({}, '', '/');
-          setCurrentPath('/');
-        })
-        .catch((err) => {
-          if (!isMounted) return;
-          setManageError(err.response?.data?.error || 'Invalid or expired tournament management link.');
-        })
-        .finally(() => {
-          if (isMounted) setManageLoading(false);
-        });
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [isManageRoute, adminManageToken, user]);
+  // Private Admin Control Route State (/control/:adminToken or legacy /manage/:adminToken)
+  const isControlRoute = currentPath.startsWith('/control/') || currentPath.startsWith('/manage/');
+  const adminControlToken = isControlRoute
+    ? (currentPath.startsWith('/control/') ? currentPath.split('/control/')[1] : currentPath.split('/manage/')[1])?.trim()
+    : null;
 
   // Participant Portal State
   const [roundState, setRoundState] = useState<any>(null);
@@ -413,161 +384,25 @@ export const App: React.FC = () => {
     );
   }
 
-  // Private Admin Management Route (/manage/:adminToken)
-  if (isManageRoute && adminManageToken) {
-    if (user && user.role !== 'participant') {
-      if (manageLoading) {
-        return (
-          <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4">
-            <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400">
-                <RefreshCw className="w-6 h-6 animate-spin" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Verifying Management Authorization</h2>
-                <p className="text-sm text-slate-400 mt-1">
-                  Connecting to tournament control center and establishing event workspace...
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      if (manageError) {
-        return (
-          <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4">
-            <div className="bg-[#0f172a] border border-rose-500/30 rounded-2xl p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Management Access Denied</h2>
-                <p className="text-sm text-rose-300 mt-1 font-mono bg-rose-950/40 p-2 rounded border border-rose-900/50">
-                  {manageError}
-                </p>
-              </div>
-              <p className="text-xs text-slate-400">
-                Only authorized organizers of this event or super-administrators may access this tournament workspace.
-              </p>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => {
-                    logout();
-                    setManageAuthModalOpen(true);
-                  }}
-                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
-                >
-                  Switch Account
-                </button>
-                <button
-                  onClick={() => {
-                    window.history.pushState({}, '', '/');
-                    setCurrentPath('/');
-                  }}
-                  className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-600/30"
-                >
-                  Return to Home
-                </button>
-              </div>
-              <AdminAuthModal
-                isOpen={manageAuthModalOpen}
-                onClose={() => setManageAuthModalOpen(false)}
-              />
-            </div>
-          </div>
-        );
-      }
-    }
-
-    if (user && user.role === 'participant') {
-      return (
-        <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4">
-          <div className="bg-[#0f172a] border border-amber-500/30 rounded-2xl p-8 max-w-md w-full text-center space-y-4 shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
-              <Shield className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white">Administrative Access Required</h2>
-              <p className="text-sm text-slate-400 mt-1">
-                You are currently signed in with a participant account (<span className="text-amber-300 font-mono">{user.username}</span>). Contestants cannot access administrative links.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 pt-2">
-              <button
-                onClick={() => {
-                  logout();
-                  setManageAuthModalOpen(true);
-                }}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition shadow-lg shadow-amber-600/30"
-              >
-                Sign Out & Log In as Admin
-              </button>
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setCurrentPath('/');
-                }}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 transition"
-              >
-                Return to Participant Portal
-              </button>
-            </div>
-            <AdminAuthModal
-              isOpen={manageAuthModalOpen}
-              onClose={() => setManageAuthModalOpen(false)}
-            />
-          </div>
-        </div>
-      );
-    }
-
-    // Unauthenticated user with an admin manage link
+  // Private Admin Control Route (/control/:adminToken or legacy /manage/:adminToken)
+  if (isControlRoute && adminControlToken) {
     return (
-      <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4 relative">
-        <div className="bg-[#0f172a] border border-indigo-500/30 rounded-2xl p-8 max-w-md w-full text-center space-y-5 shadow-2xl relative z-10">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400">
-            <Lock className="w-7 h-7" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">Private Tournament Administration</h2>
-            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              This link contains a cryptographically protected management token for tournament organizers. Sign in with your administrator credentials to open the event control center.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800/80 text-left space-y-1">
-            <span className="text-[10px] uppercase font-mono font-bold text-slate-500 tracking-wider">Access Scope</span>
-            <p className="text-xs text-slate-300">
-              Only the organizer who created this event or super-administrators are permitted to manage this tournament.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2.5 pt-2">
-            <button
-              onClick={() => setManageAuthModalOpen(true)}
-              className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-4 h-4" />
-              Sign In as Administrator
-            </button>
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setCurrentPath('/');
-              }}
-              className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-transparent hover:bg-slate-800/50 transition"
-            >
-              Return to Homepage
-            </button>
-          </div>
-        </div>
-
-        <AdminAuthModal
-          isOpen={manageAuthModalOpen}
-          onClose={() => setManageAuthModalOpen(false)}
-        />
-      </div>
+      <AdminControlEntryView
+        adminToken={adminControlToken}
+        onSuccess={(data) => {
+          if (data.event && data.event._id) {
+            localStorage.setItem('debugarena_active_event_id', data.event._id);
+            setActiveEventId(data.event._id);
+          }
+          setAdminTab('events');
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
+        }}
+        onBackToHome={() => {
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
+        }}
+      />
     );
   }
 
@@ -684,17 +519,32 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 3A. Participant Eliminated or Waiting for Admin Advancement */}
-          {(roundState?.isEliminated || roundState?.isWaitingAdvancement) && (
+          {/* 3A. Participant Inactive / Concluded States (Eliminated, Waiting Advancement, Qualified, Next Round Available, or Final Round) */}
+          {!roundState?.isTieBreak && (
+            roundState?.isEliminated ||
+            roundState?.isWaitingAdvancement ||
+            roundState?.isQualifiedWaitingNextRound ||
+            roundState?.nextRoundAvailable ||
+            (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'advanced')) ||
+            currentProgress?.status === 'submitted' ||
+            currentProgress?.status === 'advanced'
+          ) && (
             <>
-              <Navbar />
+              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
               <main className="flex-1 flex items-center justify-center p-4">
                 <RoundSummaryView
-                  round={{ roundNumber: 1, title: 'DebugArena', status: 'completed' } as any}
-                  progress={{ totalScore: 0, timeTakenSeconds: 0, status: 'eliminated' } as any}
+                  round={currentRound || ({ roundNumber: 1, title: 'Debug Arena', status: 'completed' } as any)}
+                  progress={currentProgress || ({ totalScore: 0, timeTakenSeconds: 0, status: roundState?.isEliminated ? 'eliminated' : 'submitted' } as any)}
                   onRefresh={fetchRoundState}
-                  isEliminated={roundState.isEliminated}
-                  isWaitingAdvancement={roundState.isWaitingAdvancement}
+                  isEliminated={roundState?.isEliminated}
+                  isWaitingAdvancement={roundState?.isWaitingAdvancement}
+                  isQualifiedWaitingNextRound={roundState?.isQualifiedWaitingNextRound}
+                  nextRoundAvailable={roundState?.nextRoundAvailable}
+                  isFinalRound={roundState?.isFinalRound}
+                  onEnterNextRound={() => {
+                    setHasStartedActiveRoundState(false);
+                    fetchRoundState();
+                  }}
                 />
               </main>
             </>
@@ -710,20 +560,6 @@ export const App: React.FC = () => {
                   attempt={roundState.attempt}
                   tieBreakId={roundState.tieBreakId}
                   onCompleted={fetchRoundState}
-                />
-              </main>
-            </>
-          )}
-
-          {/* 3C. Round Submitted -> Shows "Submitted Successfully" */}
-          {!roundState?.isTieBreak && (currentProgress?.status === 'submitted' || currentProgress?.status === 'advanced') && (
-            <>
-              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
-              <main className="flex-1 flex items-center justify-center p-4">
-                <RoundSummaryView
-                  round={currentRound}
-                  progress={currentProgress}
-                  onRefresh={fetchRoundState}
                 />
               </main>
             </>

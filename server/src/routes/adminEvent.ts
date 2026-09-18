@@ -23,7 +23,35 @@ import { generateSecureToken, hashToken, encryptToken, decryptToken } from '../u
 
 export const adminEventRouter = Router();
 
-// All routes require authenticated admin
+// Public metadata check for private admin URL (/control/:adminToken entry page)
+// Does NOT leak any secrets or event code - returns only public display title/college
+adminEventRouter.get('/control-info/:adminToken', async (req, res): Promise<void> => {
+  try {
+    const { adminToken } = req.params;
+    if (!adminToken) {
+      res.status(400).json({ error: 'Control token is required.' });
+      return;
+    }
+    const tokenHash = hashToken(adminToken);
+    const event = await Event.findOne({ adminAccessTokenHash: tokenHash }).populate('collegeId', 'name code');
+    if (!event) {
+      res.status(404).json({ error: 'Invalid or expired tournament control link.' });
+      return;
+    }
+
+    const collegeObj: any = event.collegeId;
+    res.json({
+      success: true,
+      eventName: event.name,
+      collegeName: collegeObj?.name || 'Institution',
+      status: event.status
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to verify control link.' });
+  }
+});
+
+// All subsequent routes require authenticated admin
 adminEventRouter.use(authenticate, requireAnyAdmin);
 
 // Helper to log audit actions
@@ -302,8 +330,11 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
     });
 
     // Create initial dynamic rounds if provided
-    let rawRounds = initialRounds && Array.isArray(initialRounds) && initialRounds.length > 0
-      ? initialRounds
+    const userProvidedRounds = (req.body.rounds && Array.isArray(req.body.rounds) && req.body.rounds.length > 0)
+      ? req.body.rounds
+      : initialRounds;
+    let rawRounds = userProvidedRounds && Array.isArray(userProvidedRounds) && userProvidedRounds.length > 0
+      ? userProvidedRounds
       : [
           { roundNumber: 1, title: 'Round 1: Rapid-Fire Debugging MCQs', type: 'mcq', durationMinutes: 15, questionCount: 10, totalMarks: 100, advancementQuota: 15, allowedLanguages: [] },
           { roundNumber: 2, title: 'Round 2: Core Bug Hunting', type: 'debugging', durationMinutes: 30, questionCount: 3, totalMarks: 100, advancementQuota: 10, allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'] },
@@ -388,8 +419,8 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       rounds: createdRounds,
       participantAccessToken: participantToken,
       adminAccessToken: adminToken,
-      participantLink: `/join/${participantToken}`,
-      adminLink: `/manage/${adminToken}`
+      participantLink: `/join/${cleanCode}`,
+      adminLink: `/control/${adminToken}`
     });
   } catch (err: any) {
     console.error('Error creating event:', err);
@@ -397,7 +428,81 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
   }
 });
 
-// GET /api/admin/events/manage/:adminToken
+// POST /api/admin/events/control-enter
+// Security: Private Admin URL + Correct Event Code + Authenticated Admin + Admin Role + Permission for this Event
+adminEventRouter.post('/control-enter', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { adminToken, eventCode } = req.body;
+    if (!adminToken || !eventCode) {
+      res.status(400).json({ error: 'Both Admin Access Token and Event Key (Event Code) are required.' });
+      return;
+    }
+
+    const tokenHash = hashToken(adminToken.trim());
+    const event = await Event.findOne({ adminAccessTokenHash: tokenHash }).populate('collegeId', 'name code logoUrl primaryColor');
+    if (!event) {
+      res.status(404).json({ error: 'Invalid or expired tournament control link.' });
+      return;
+    }
+
+    // Role check: Contestants can never manage tournaments
+    if (req.user!.role === 'participant') {
+      res.status(403).json({ error: 'Contestants are not authorized to access the Event Control Center.' });
+      return;
+    }
+
+    // Event Key (Event Code) Verification
+    const cleanKey = eventCode.trim().toUpperCase();
+    if (event.code !== cleanKey) {
+      res.status(403).json({ error: `Incorrect Event Key. Please enter the valid Event Code for "${event.name}".` });
+      return;
+    }
+
+    // Permission check: Organizer must own the event or be super_admin
+    const isOwner = event.ownerId && event.ownerId.toString() === req.user!.userId.toString();
+    const isSuper = req.user!.role === 'super_admin';
+    if (!isOwner && !isSuper) {
+      res.status(403).json({ error: 'You do not have management permissions for this tournament.' });
+      return;
+    }
+
+    if (event.status === 'ready') {
+      event.status = 'live';
+      if (!event.startedAt) event.startedAt = new Date();
+      await event.save();
+      const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+      if (r1 && r1.status !== 'active') {
+        r1.status = 'active';
+        if (!r1.startedAt) r1.startedAt = new Date();
+        await r1.save();
+      }
+    }
+
+    const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+
+    const eventObj = event.toObject();
+    delete (eventObj as any).participantAccessTokenHash;
+    delete (eventObj as any).adminAccessTokenHash;
+    delete (eventObj as any).participantTokenCipher;
+    delete (eventObj as any).adminTokenCipher;
+
+    await recordAudit(req, 'EVENT_CONTROL_ENTERED', 'Event', event._id.toString(), { code: event.code }, 'Admin entered Event Control Center via private URL', event.collegeId, event._id);
+
+    res.json({
+      success: true,
+      eventId: event._id,
+      event: eventObj,
+      rounds,
+      participantLink: `/join/${event.code}`,
+      adminLink: `/control/${adminToken.trim()}`
+    });
+  } catch (err) {
+    console.error('Failed to enter event control:', err);
+    res.status(500).json({ error: 'Failed to enter Event Control Center.' });
+  }
+});
+
+// GET /api/admin/events/manage/:adminToken (legacy compatibility)
 adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { adminToken } = req.params;
@@ -433,7 +538,6 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
     }
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
-    const participantToken = decryptToken(event.participantTokenCipher);
 
     const eventObj = event.toObject();
     delete (eventObj as any).participantAccessTokenHash;
@@ -444,8 +548,8 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
     res.json({
       event: eventObj,
       rounds,
-      participantLink: participantToken ? `/join/${participantToken}` : null,
-      adminLink: `/manage/${adminToken}`
+      participantLink: `/join/${event.code}`,
+      adminLink: `/control/${adminToken}`
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to access event management' });
@@ -479,7 +583,7 @@ adminEventRouter.post('/:eventId/regenerate-admin-link', async (req: Authenticat
     res.json({
       message: 'Admin management link regenerated successfully. Old link has been invalidated.',
       adminAccessToken: newAdminToken,
-      adminLink: `/manage/${newAdminToken}`
+      adminLink: `/control/${newAdminToken}`
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to regenerate admin link' });
@@ -656,7 +760,27 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
     }
 
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
-    res.json({ event, rounds });
+
+    const eventObj = event.toObject();
+    let adminToken: string | null = null;
+    if (event.adminTokenCipher) {
+      try {
+        adminToken = decryptToken(event.adminTokenCipher);
+      } catch {}
+    }
+    (eventObj as any).participantLink = `/join/${event.code}`;
+    (eventObj as any).adminLink = adminToken ? `/control/${adminToken}` : null;
+    delete (eventObj as any).participantAccessTokenHash;
+    delete (eventObj as any).adminAccessTokenHash;
+    delete (eventObj as any).participantTokenCipher;
+    delete (eventObj as any).adminTokenCipher;
+
+    res.json({
+      event: eventObj,
+      rounds,
+      participantLink: `/join/${event.code}`,
+      adminLink: (eventObj as any).adminLink
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch event details' });
   }

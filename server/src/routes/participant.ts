@@ -43,7 +43,10 @@ participantRouter.get('/access/:participantToken', async (req: Request, res: Res
     }
 
     const tokenHash = hashToken(participantToken);
-    const event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    let event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    if (!event) {
+      event = await Event.findOne({ code: participantToken.trim().toUpperCase() });
+    }
     if (!event) {
       res.status(404).json({ error: 'Invalid, expired, or deactivated competition join link.' });
       return;
@@ -105,7 +108,10 @@ participantRouter.post('/join-by-token', async (req: Request, res: Response): Pr
     }
 
     const tokenHash = hashToken(participantToken);
-    const event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    let event = await Event.findOne({ participantAccessTokenHash: tokenHash });
+    if (!event) {
+      event = await Event.findOne({ code: participantToken.trim().toUpperCase() });
+    }
     if (!event) {
       res.status(404).json({ error: 'Invalid or expired competition join link.' });
       return;
@@ -450,14 +456,14 @@ async function getParticipantAccessibleRound(userId: string, eventId?: string) {
   for (let r = maxRound; r >= 1; r--) {
     const prog = progressList.find(p => p.roundNumber === r);
     if (prog) {
-      if (prog.status === 'in_progress' || prog.status === 'submitted') {
+      if (prog.status === 'in_progress' || prog.status === 'submitted' || prog.status === 'not_started') {
         return { roundNumber: r, progress: prog, activeTieBreak };
       }
     }
     // If user has advanced from round r-1, they are eligible for round r
     const prevProg = progressList.find(p => p.roundNumber === r - 1);
     if (prevProg && prevProg.status === 'advanced') {
-      return { roundNumber: r, progress: null, activeTieBreak };
+      return { roundNumber: r, progress: prog || null, activeTieBreak };
     }
   }
 
@@ -475,7 +481,8 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     if (eliminatedProg) {
       res.status(403).json({
         error: 'You have been eliminated from the competition.',
-        status: 'eliminated'
+        status: 'eliminated',
+        isEliminated: true
       });
       return;
     }
@@ -549,15 +556,32 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Get or initialize RoundProgress
     let currentProgress = progress;
     if (!currentProgress) {
-      currentProgress = await RoundProgress.create({
-        userId,
-        roundNumber,
-        status: round.status === 'active' ? 'in_progress' : 'not_started',
-        startedAt: round.status === 'active' ? (round.startedAt || new Date()) : null
-      });
-    } else if (currentProgress.status === 'not_started' && round.status === 'active') {
+      currentProgress = await RoundProgress.findOne({ userId, roundNumber });
+    }
+    if (!currentProgress) {
+      try {
+        currentProgress = await RoundProgress.create({
+          userId,
+          eventId: req.user?.eventId,
+          roundNumber,
+          status: round.status === 'active' ? 'in_progress' : 'not_started',
+          startedAt: round.status === 'active' ? (round.startedAt || new Date()) : null
+        });
+      } catch (err: any) {
+        if (err.code === 11000) {
+          currentProgress = await RoundProgress.findOne({ userId, roundNumber });
+        } else {
+          throw err;
+        }
+      }
+    }
+    
+    if (currentProgress && currentProgress.status === 'not_started' && round.status === 'active') {
       currentProgress.status = 'in_progress';
       currentProgress.startedAt = round.startedAt || new Date();
+      if (!currentProgress.eventId && req.user?.eventId) {
+        currentProgress.eventId = req.user.eventId as any;
+      }
       await currentProgress.save();
     }
 
@@ -662,6 +686,17 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       }
     }
 
+    let isFinalRound = false;
+    if (req.user?.eventId) {
+      const maxDyn = await DynamicRound.findOne({ eventId: req.user.eventId }).sort({ roundNumber: -1 });
+      if (maxDyn && maxDyn.roundNumber === round.roundNumber) {
+        isFinalRound = true;
+      }
+    }
+
+    const isQualifiedWaitingNextRound = roundNumber > 1 && round.status !== 'active';
+    const nextRoundAvailable = roundNumber > 1 && round.status === 'active' && currentProgress.status !== 'submitted';
+
     res.json({
       competition: {
         title: eventTitle,
@@ -683,8 +718,14 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         totalScore: currentProgress.totalScore,
         markedForReview: currentProgress.markedForReview,
         violationCount: currentProgress.violationCount,
-        timeTakenSeconds: currentProgress.timeTakenSeconds
+        timeTakenSeconds: currentProgress.timeTakenSeconds,
+        isQualifiedWaitingNextRound,
+        nextRoundAvailable,
+        isFinalRound
       },
+      isQualifiedWaitingNextRound,
+      nextRoundAvailable,
+      isFinalRound,
       questions: sanitizedQuestions,
       attempts: existingAttempts.map(att => ({
         questionId: att.questionId,

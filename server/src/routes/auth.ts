@@ -22,18 +22,26 @@ authRouter.get('/config', (_req: Request, res: Response): void => {
 // POST /api/auth/login
 authRouter.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      res.status(400).json({ error: 'Username and password are required' });
+    const rawInput = req.body.username || req.body.identifier;
+    const { password } = req.body;
+    if (!rawInput || !password) {
+      res.status(400).json({ error: 'Username/Email and password are required' });
       return;
     }
 
-    const identifier = username.toLowerCase().trim();
+    const identifier = rawInput.toLowerCase().trim();
     const user = await User.findOne({
       $or: [{ username: identifier }, { email: identifier }]
     });
     if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    if (user.role === 'participant') {
+      res.status(403).json({
+        error: 'Global participant login has been retired. Participants must join through their event link: /join/<eventCode>'
+      });
       return;
     }
 
@@ -56,7 +64,7 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const needsOnboarding = !user.collegeId && user.role !== 'participant';
+    const needsOnboarding = !user.collegeId;
 
     const payload: AuthPayload = {
       userId: user._id.toString(),

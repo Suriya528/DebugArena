@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IRoundProgress extends Document {
   userId: Types.ObjectId;
+  eventId?: Types.ObjectId;
   roundNumber: number;
   totalScore: number;
   timeTakenSeconds: number;
@@ -19,6 +20,7 @@ export interface IRoundProgress extends Document {
 const RoundProgressSchema = new Schema<IRoundProgress>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     roundNumber: { type: Number, required: true, index: true },
     totalScore: { type: Number, default: 0 },
     timeTakenSeconds: { type: Number, default: 0 },
@@ -42,5 +44,6 @@ const RoundProgressSchema = new Schema<IRoundProgress>(
 );
 
 RoundProgressSchema.index({ userId: 1, roundNumber: 1 }, { unique: true });
+RoundProgressSchema.index({ eventId: 1, roundNumber: 1, userId: 1 });
 
 export const RoundProgress = mongoose.model<IRoundProgress>('RoundProgress', RoundProgressSchema);

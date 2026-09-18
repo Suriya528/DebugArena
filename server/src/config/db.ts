@@ -36,6 +36,7 @@ export async function connectDB(): Promise<void> {
 
     await mongoose.connect(uri, options);
     console.log('✅ Connected to MongoDB successfully (dbName: debugarena, maxPoolSize: 50).');
+    await reconcileDatabaseIndexes();
   } catch (error) {
     const maskedUri = (uri || '').replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
     console.error(`❌ [FATAL] Failed to connect to MongoDB at: ${maskedUri}`);
@@ -54,12 +55,34 @@ export async function connectDB(): Promise<void> {
         const fallbackUri = mongod.getUri();
         await mongoose.connect(fallbackUri, { dbName: 'debugarena' });
         console.log(`📦 Embedded MongoDB fallback initialized at: ${fallbackUri}`);
+        await reconcileDatabaseIndexes();
         return;
       } catch (fallbackErr) {
         console.error('❌ Embedded MongoDB fallback also failed:', fallbackErr);
       }
     }
     throw error;
+  }
+}
+
+async function reconcileDatabaseIndexes(): Promise<void> {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) return;
+    const collections = await db.listCollections({ name: 'users' }).toArray();
+    if (collections.length > 0) {
+      const indexes = await db.collection('users').indexes();
+      for (const idx of indexes) {
+        // Drop legacy global unique username_1 index if it lacks partialFilterExpression
+        if (idx.name === 'username_1' && idx.unique && !idx.partialFilterExpression) {
+          console.log('🔄 Dropping legacy global unique index username_1 on users...');
+          await db.collection('users').dropIndex('username_1');
+          console.log('✅ Legacy global unique index username_1 dropped.');
+        }
+      }
+    }
+  } catch (err: any) {
+    // Non-critical: safe to ignore if already dropped
   }
 }
 

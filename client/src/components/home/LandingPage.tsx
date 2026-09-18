@@ -48,15 +48,6 @@ export const LandingPage: React.FC = () => {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [certLookupId, setCertLookupId] = useState('');
-  const [eventCodeInput, setEventCodeInput] = useState('');
-
-  const handleJoinByCodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = eventCodeInput.trim().toUpperCase();
-    if (clean) {
-      window.location.href = `/join/${encodeURIComponent(clean)}`;
-    }
-  };
 
   // Footer Details Modal state
   const [footerTopic, setFooterTopic] = useState<FooterTopicId | null>(null);
@@ -374,49 +365,43 @@ export const LandingPage: React.FC = () => {
             </div>
 
             {/* Event Access Portal */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xl max-w-lg space-y-4">
-              {/* Participant Quick Join by Code Form */}
-              <div className="space-y-2">
-                <div className="text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Participant Tournament Entry</span>
-                  </span>
-                  <span className="bg-amber-500/10 px-2 py-0.5 rounded text-[10px] text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20">
-                    Proctored Kiosk
-                  </span>
+            <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-xl max-w-lg space-y-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Competition Platform for Colleges</span>
                 </div>
-                <form onSubmit={handleJoinByCodeSubmit} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={eventCodeInput}
-                    onChange={(e) => setEventCodeInput(e.target.value)}
-                    placeholder="Enter Event Code (e.g. DEBUG26)"
-                    className="flex-1 h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold uppercase text-slate-900 dark:text-white placeholder:normal-case placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:border-amber-500"
-                  />
-                  <button
-                    type="submit"
-                    className="h-10 px-4 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 transition-all shrink-0 flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
-                  >
-                    <span>Join Event</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
-                  Or click the private <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">/join/&lt;token&gt;</code> link provided by your college host.
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                  Debug Arena
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
+                  Multi-college competitive debugging tournaments with dynamic rounds, real-time proctored anti-cheat, and automated evaluation.
                 </p>
               </div>
 
-              {/* Host / Admin Console Divider */}
-              <div className="pt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80">
-                <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">Convening an Event for Your College?</span>
+              {/* Admin Login CTA */}
+              <div className="pt-1">
                 <button
                   onClick={() => setIsAdminModalOpen(true)}
-                  className="h-8 px-3 rounded-lg text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  className="w-full h-11 px-5 rounded-xl text-xs sm:text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 transition-all shadow-md shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
                 >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Admin Console</span>
+                  <Shield className="w-4 h-4 text-slate-950" />
+                  <span>Admin Login</span>
+                  <ArrowRight className="w-4 h-4 text-slate-950 ml-1" />
                 </button>
+              </div>
+
+              {/* Participant Notice */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
+                <Users className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="text-xs space-y-0.5">
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">
+                    Participants: use the event link provided by your college.
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                    Contestant accounts are strictly scoped to your specific tournament. Follow the direct <code className="font-mono text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded">/join/&lt;eventCode&gt;</code> URL shared by your institution.
+                  </p>
+                </div>
               </div>
             </div>
 

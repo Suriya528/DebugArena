@@ -317,3 +317,14 @@ export async function getAdminEventManagement(adminToken: string) {
   const res = await api.get(`/admin/events/manage/${encodeURIComponent(adminToken)}`);
   return res.data;
 }
+
+export async function getAdminControlInfo(adminToken: string) {
+  const res = await api.get(`/admin/events/control-info/${encodeURIComponent(adminToken)}`);
+  return res.data;
+}
+
+export async function enterAdminControl(data: { adminToken: string; eventCode: string }) {
+  const res = await api.post('/admin/events/control-enter', data);
+  return res.data;
+}
+
