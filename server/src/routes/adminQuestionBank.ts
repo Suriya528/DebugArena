@@ -57,6 +57,16 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
         ? new mongoose.Types.ObjectId(eventId as string)
         : eventId;
 
+      // Event-scoped isolation: Only include this event's questions or shared global templates
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { eventId: cleanEventId },
+          { eventId: null },
+          { eventId: { $exists: false } }
+        ]
+      });
+
       const roundFilter: any = { eventId: { $in: [eventId, cleanEventId] } };
       if (stageNumber) {
         const parsedStage = parseInt(stageNumber as string, 10);
@@ -201,8 +211,10 @@ adminQuestionBankRouter.post('/', async (req: AuthenticatedRequest, res: Respons
       return;
     }
 
+    const targetEventId = req.body.eventId || req.user?.eventId;
     const template = await QuestionTemplate.create({
       collegeId: req.user?.collegeId,
+      eventId: targetEventId,
       title: title.trim(),
       topic: topic.trim(),
       language: language || 'java',

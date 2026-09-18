@@ -222,8 +222,8 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
         return {
           ...obj,
           rounds: roundsByEventId[ev._id.toString()] || [],
-          participantLink: `/join/${participantToken}`,
-          adminLink: `/manage/${adminToken}`
+          participantLink: `/join/${ev.code}`,
+          adminLink: `/control/${adminToken}`
         };
       })
     );
@@ -467,18 +467,6 @@ adminEventRouter.post('/control-enter', async (req: AuthenticatedRequest, res: R
       return;
     }
 
-    if (event.status === 'ready') {
-      event.status = 'live';
-      if (!event.startedAt) event.startedAt = new Date();
-      await event.save();
-      const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (r1 && r1.status !== 'active' && r1.status !== 'completed' && r1.status !== 'locked') {
-        r1.status = 'active';
-        if (!r1.startedAt) r1.startedAt = new Date();
-        await r1.save();
-      }
-    }
-
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
 
     const eventObj = event.toObject();
@@ -524,18 +512,6 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
     if (!isOwner && !isSuper) {
       res.status(403).json({ error: 'You are not authorized to manage this event.' });
       return;
-    }
-
-    if (event.status === 'ready') {
-      event.status = 'live';
-      if (!event.startedAt) event.startedAt = new Date();
-      await event.save();
-      const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (r1 && r1.status !== 'active' && r1.status !== 'completed' && r1.status !== 'locked') {
-        r1.status = 'active';
-        if (!r1.startedAt) r1.startedAt = new Date();
-        await r1.save();
-      }
     }
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
@@ -616,7 +592,7 @@ adminEventRouter.post('/:eventId/validate', async (req: AuthenticatedRequest, re
       if (qCount === 0) {
         errors.push(`Round ${round.roundNumber} ("${round.title}") has 0 questions configured.`);
       } else if (qCount < round.questionCount) {
-        warnings.push(`Round ${round.roundNumber} has ${qCount} questions, but target question count is ${round.questionCount}.`);
+        errors.push(`Round ${round.roundNumber} requires ${round.questionCount} questions but only ${qCount} are assigned.`);
       }
       if (round.durationMinutes <= 0) {
         errors.push(`Round ${round.roundNumber} duration must be greater than 0 minutes.`);
@@ -664,6 +640,20 @@ adminEventRouter.post('/:eventId/publish', async (req: AuthenticatedRequest, res
       res.status(404).json({ error: 'Event not found' });
       return;
     }
+
+    const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    for (const r of rounds) {
+      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
+      const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+      if (qCount < targetCount) {
+        res.status(400).json({
+          error: `Cannot publish event. Round ${r.roundNumber} requires ${targetCount} questions but only ${qCount} are assigned.`,
+          incompleteRound: r.roundNumber
+        });
+        return;
+      }
+    }
+
     event.status = 'live';
     event.publishedAt = new Date();
     if (!event.startedAt) event.startedAt = new Date();
@@ -685,6 +675,26 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
       res.status(404).json({ error: 'Event not found' });
       return;
     }
+
+    const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    if (rounds.length === 0) {
+      res.status(400).json({ error: 'Cannot start event. At least one round must be configured.' });
+      return;
+    }
+    for (const r of rounds) {
+      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
+      const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+      if (qCount < targetCount) {
+        res.status(400).json({
+          error: `Cannot start event. Round ${r.roundNumber} requires ${targetCount} questions but only ${qCount} are assigned.`,
+          incompleteRound: r.roundNumber,
+          requiredCount: targetCount,
+          assignedCount: qCount
+        });
+        return;
+      }
+    }
+
     const now = new Date();
     event.status = 'live';
     event.startedAt = now;
@@ -744,19 +754,6 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
       if (evCollegeId && evCollegeId.toString() !== req.user.collegeId.toString()) {
         res.status(404).json({ error: 'Event not found' });
         return;
-      }
-    }
-
-    // If event is in 'ready', promote it to 'live' so entering workspace shows LIVE immediately
-    if (event.status === 'ready') {
-      event.status = 'live';
-      if (!event.startedAt) event.startedAt = new Date();
-      await event.save();
-      const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (round1 && round1.status !== 'active' && round1.status !== 'completed' && round1.status !== 'locked') {
-        round1.status = 'active';
-        if (!round1.startedAt) round1.startedAt = new Date();
-        await round1.save();
       }
     }
 

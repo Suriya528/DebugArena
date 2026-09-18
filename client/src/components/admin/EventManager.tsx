@@ -706,10 +706,10 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
 
                 <div className="flex items-center gap-2 pt-1">
                   <div className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-amber-300 truncate">
-                    {`${window.location.origin}${activeEvent.adminLink || `/manage/${activeEvent._id}`}`}
+                    {`${window.location.origin}${activeEvent.adminLink || ''}`}
                   </div>
                   <button
-                    onClick={() => handleCopyAdminLink(`${window.location.origin}${activeEvent.adminLink || `/manage/${activeEvent._id}`}`)}
+                    onClick={() => handleCopyAdminLink(`${window.location.origin}${activeEvent.adminLink || ''}`)}
                     className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono text-xs font-bold transition-all shadow-md shadow-amber-500/20 shrink-0 cursor-pointer"
                   >
                     {copiedAdminLink ? 'Copied!' : 'Copy Link'}

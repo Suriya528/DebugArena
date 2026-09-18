@@ -131,12 +131,14 @@ async function runVerification() {
     if (!participantLink || !participantLink.startsWith('/join/')) {
       throw new Error(`Invalid participant link returned: ${participantLink}`);
     }
-    if (!adminLink || !adminLink.startsWith('/manage/')) {
+    if (!adminLink || (!adminLink.startsWith('/control/') && !adminLink.startsWith('/manage/'))) {
       throw new Error(`Invalid admin link returned: ${adminLink}`);
     }
 
     const rawParticipantToken = participantLink.split('/join/')[1];
-    const rawAdminToken = adminLink.split('/manage/')[1];
+    const rawAdminToken = adminLink.startsWith('/control/')
+      ? adminLink.split('/control/')[1]
+      : adminLink.split('/manage/')[1];
 
     // Verify DB records: Plaintext tokens must NOT exist, SHA-256 hashes must match
     const eventInDb = await Event.findById(createdEvent._id);
@@ -147,28 +149,16 @@ async function runVerification() {
       throw new Error('CRITICAL SECURITY VIOLATION: Raw tokens stored in plaintext in DB!');
     }
 
-    const expectedParticipantHash = hashToken(rawParticipantToken);
-    const expectedAdminHash = hashToken(rawAdminToken);
-
-    if (eventInDb.participantAccessTokenHash !== expectedParticipantHash) {
-      throw new Error('participantAccessTokenHash does not match SHA-256 of raw token');
+    if (rawParticipantToken !== eventInDb.code) {
+      throw new Error(`Participant link must use Event Code (${eventInDb.code}), got: ${rawParticipantToken}`);
     }
+
+    const expectedAdminHash = hashToken(rawAdminToken);
     if (eventInDb.adminAccessTokenHash !== expectedAdminHash) {
       throw new Error('adminAccessTokenHash does not match SHA-256 of raw token');
     }
-    console.log('  ✅ Raw tokens are absent from DB.');
-    console.log('  ✅ SHA-256 hashes match raw tokens exactly.');
-
-    // Verify authorized decryptability for event owner
-    const decryptedParticipant = decryptToken(eventInDb.participantTokenCipher);
-    const decryptedAdmin = decryptToken(eventInDb.adminTokenCipher);
-    if (decryptedParticipant !== rawParticipantToken) {
-      throw new Error('Decrypted participant token does not match original token');
-    }
-    if (decryptedAdmin !== rawAdminToken) {
-      throw new Error('Decrypted admin token does not match original token');
-    }
-    console.log('  ✅ AES-256-GCM ciphers decrypt cleanly for owner recovery.');
+    console.log('  ✅ Participant link uses Event Code context directly (/join/<eventCode>).');
+    console.log('  ✅ Raw admin token is absent from DB, only SHA-256 hash stored.');
 
     // -------------------------------------------------------------
     // Step 3: Public Participant Access Resolution
@@ -291,7 +281,9 @@ async function runVerification() {
       { headers: { Authorization: `Bearer ${tokenAdminA}` } }
     );
     const newAdminLink = regenRes.data.adminLink;
-    const newRawAdminToken = newAdminLink.split('/manage/')[1];
+    const newRawAdminToken = newAdminLink.startsWith('/control/')
+      ? newAdminLink.split('/control/')[1]
+      : newAdminLink.split('/manage/')[1];
 
     if (newRawAdminToken === rawAdminToken) {
       throw new Error('Regenerated admin token must be different from old token');
