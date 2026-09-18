@@ -57,13 +57,19 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       if (user.collegeId) {
         socket.join(`participant-tenant:${user.collegeId}`);
       }
+      if (user.eventId) {
+        socket.join(`event:${user.eventId}`);
+      }
       onlineUsers.set(user.userId, {
         socketId: socket.id,
         user,
         lastActive: new Date()
       });
 
-      const connectPayload = { userId: user.userId, username: user.username, name: user.name, collegeId: user.collegeId };
+      const connectPayload = { userId: user.userId, username: user.username, name: user.name, collegeId: user.collegeId, eventId: user.eventId };
+      if (user.eventId) {
+        io?.to(`admin-room:${user.eventId}`).emit('admin:user_connected', connectPayload);
+      }
       if (user.collegeId) {
         io?.to(`admin-room:${user.collegeId}`).emit('admin:user_connected', connectPayload);
       }
@@ -81,10 +87,14 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
           userId: user.userId,
           username: user.username,
           collegeId: user.collegeId,
+          eventId: user.eventId,
           currentRound: data.currentRound,
           currentQuestionId: data.currentQuestionId,
           timestamp: new Date()
         };
+        if (user.eventId) {
+          io?.to(`admin-room:${user.eventId}`).emit('admin:presence_update', presencePayload);
+        }
         if (user.collegeId) {
           io?.to(`admin-room:${user.collegeId}`).emit('admin:presence_update', presencePayload);
         }
@@ -97,7 +107,10 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         const existing = onlineUsers.get(user.userId);
         if (existing && existing.socketId === socket.id) {
           onlineUsers.delete(user.userId);
-          const disconnectPayload = { userId: user.userId, username: user.username, collegeId: user.collegeId };
+          const disconnectPayload = { userId: user.userId, username: user.username, collegeId: user.collegeId, eventId: user.eventId };
+          if (user.eventId) {
+            io?.to(`admin-room:${user.eventId}`).emit('admin:user_disconnected', disconnectPayload);
+          }
           if (user.collegeId) {
             io?.to(`admin-room:${user.collegeId}`).emit('admin:user_disconnected', disconnectPayload);
           }
@@ -117,8 +130,11 @@ export function getIO(): SocketIOServer {
   return io;
 }
 
-export function broadcastToAdmins(event: string, payload: any, collegeId?: string): void {
+export function broadcastToAdmins(event: string, payload: any, collegeId?: string, eventId?: string): void {
   if (io) {
+    if (eventId) {
+      io.to(`admin-room:${eventId}`).emit(event, payload);
+    }
     if (collegeId) {
       io.to(`admin-room:${collegeId}`).emit(event, payload);
     }
@@ -127,15 +143,24 @@ export function broadcastToAdmins(event: string, payload: any, collegeId?: strin
   }
 }
 
-export function broadcastToParticipants(event: string, payload: any): void {
+export function broadcastToParticipants(event: string, payload: any, eventId?: string): void {
   if (io) {
-    io.emit(event, payload);
+    if (eventId) {
+      io.to(`event:${eventId}`).emit(event, payload);
+    } else {
+      io.emit(event, payload);
+    }
   }
 }
 
-export function broadcastToAll(event: string, payload: any): void {
+export function broadcastToAll(event: string, payload: any, eventId?: string): void {
   if (io) {
-    io.emit(event, payload);
+    if (eventId) {
+      io.to(`event:${eventId}`).emit(event, payload);
+      io.to(`admin-room:${eventId}`).emit(event, payload);
+    } else {
+      io.emit(event, payload);
+    }
   }
 }
 

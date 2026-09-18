@@ -436,7 +436,11 @@ async function getParticipantAccessibleRound(userId: string, eventId?: string) {
     status: 'active'
   });
 
-  const progressList = await RoundProgress.find({ userId }).sort({ roundNumber: -1 });
+  const progQuery: any = { userId };
+  if (eventId) {
+    progQuery.eventId = eventId;
+  }
+  const progressList = await RoundProgress.find(progQuery).sort({ roundNumber: -1 });
 
   let maxRound = 3;
   if (eventId) {
@@ -470,8 +474,12 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
   try {
     const userId = req.user!.userId;
 
-    // Check if participant was eliminated in any round
-    const eliminatedProg = await RoundProgress.findOne({ userId, status: 'eliminated' });
+    // Check if participant was eliminated in this event
+    const elimQuery: any = { userId, status: 'eliminated' };
+    if (req.user?.eventId) {
+      elimQuery.eventId = req.user.eventId;
+    }
+    const eliminatedProg = await RoundProgress.findOne(elimQuery);
     if (eliminatedProg) {
       res.status(403).json({
         error: 'You have been eliminated from the competition.',
@@ -522,9 +530,13 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       return;
     }
 
-    // Check if participant was eliminated in earlier round
+    // Check if participant was eliminated in earlier round of this event
     if (roundNumber > 1) {
-      const prevProg = await RoundProgress.findOne({ userId, roundNumber: roundNumber - 1 });
+      const prevQuery: any = { userId, roundNumber: roundNumber - 1 };
+      if (req.user?.eventId) {
+        prevQuery.eventId = req.user.eventId;
+      }
+      const prevProg = await RoundProgress.findOne(prevQuery);
       if (!prevProg || prevProg.status === 'eliminated') {
         res.status(403).json({
           error: 'You are eliminated from the competition',
@@ -541,10 +553,12 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       }
     }
 
-    // Determine remaining time from server
+    // Determine remaining time and absolute deadline from server
     let remainingSeconds = 0;
+    let deadlineAt: Date | null = null;
     if (round.status === 'active' && round.startedAt) {
       remainingSeconds = getRemainingSeconds(round);
+      deadlineAt = new Date(new Date(round.startedAt).getTime() + round.durationMinutes * 60000);
     }
 
     // Get or initialize RoundProgress
@@ -685,7 +699,22 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     }
 
     const isQualifiedWaitingNextRound = roundNumber > 1 && round.status !== 'active';
-    const nextRoundAvailable = roundNumber > 1 && round.status === 'active' && currentProgress?.status !== 'submitted';
+    // nextRoundAvailable is strictly for when participant has completed their current round but an admin has started a subsequent stage
+    let nextRoundAvailable = false;
+    if (currentProgress?.status === 'submitted' && !isFinalRound) {
+      let nextStageRound: any = null;
+      if (req.user?.eventId) {
+        nextStageRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: roundNumber + 1 });
+      } else {
+        nextStageRound = await Round.findOne({ roundNumber: roundNumber + 1 });
+      }
+      if (nextStageRound && nextStageRound.status === 'active') {
+        const currentRoundProg = await RoundProgress.findOne({ userId, roundNumber });
+        if (currentRoundProg?.status === 'advanced') {
+          nextRoundAvailable = true;
+        }
+      }
+    }
 
     res.json({
       competition: {
@@ -701,6 +730,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         durationMinutes: round.durationMinutes,
         status: round.status,
         startedAt: round.startedAt,
+        deadlineAt,
         remainingSeconds
       },
       progress: {
@@ -1152,6 +1182,25 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     attempt.lastSubmittedAt = new Date();
     await attempt.save();
 
+    // Dynamically update RoundProgress.totalScore so live scoreboard shows real-time points during coding rounds
+    let participantTotalRoundScore = 0;
+    if (roundNumber !== 99) {
+      const allRoundAttempts = await Attempt.find({ userId, roundNumber });
+      for (const att of allRoundAttempts) {
+        participantTotalRoundScore += att.score || 0;
+      }
+      await RoundProgress.findOneAndUpdate(
+        { userId, roundNumber },
+        {
+          $set: {
+            totalScore: participantTotalRoundScore,
+            ...(req.user?.eventId ? { eventId: req.user.eventId } : {})
+          }
+        },
+        { upsert: false }
+      );
+    }
+
     // Record debugging journey milestone
     await CodeMilestone.create({
       userId,
@@ -1165,15 +1214,28 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       charDelta: code.length
     }).catch(() => {});
 
+    const eventIdStr = req.user?.eventId ? req.user.eventId.toString() : undefined;
+    const collegeIdStr = req.user?.collegeId ? req.user.collegeId.toString() : undefined;
+
     broadcastToAdmins('admin:submit_code', {
       userId,
       username: req.user!.username,
       questionId,
       score: currentScore,
       bestScore: attempt.score,
+      roundTotalScore: participantTotalRoundScore,
       passedCount: results.filter(r => r.passed).length,
-      totalCount: results.length
-    });
+      totalCount: results.length,
+      roundNumber,
+      eventId: eventIdStr
+    }, collegeIdStr, eventIdStr);
+
+    broadcastToAdmins('admin:leaderboard_update', {
+      userId,
+      roundNumber,
+      totalScore: participantTotalRoundScore,
+      eventId: eventIdStr
+    }, collegeIdStr, eventIdStr);
 
     const responsePayload = {
       success: true,

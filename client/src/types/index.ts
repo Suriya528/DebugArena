@@ -86,6 +86,7 @@ export interface DynamicRound {
   status: 'pending' | 'active' | 'locked' | 'completed';
   startedAt: string | null;
   endedAt?: string | null;
+  deadlineAt?: string | null;
   isFrozen?: boolean;
   assignedQuestionCount?: number;
   targetQuestionCount?: number;
@@ -123,6 +124,7 @@ export interface Round {
   durationMinutes: number;
   status: 'pending' | 'active' | 'locked' | 'completed';
   startedAt: string | null;
+  deadlineAt?: string | null;
   remainingSeconds: number;
 }
 

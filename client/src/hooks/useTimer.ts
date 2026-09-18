@@ -3,29 +3,37 @@ import { syncTimeWithServer, getCalibratedNow } from '../services/api.js';
 
 interface UseTimerProps {
   serverRemainingSeconds: number;
+  deadlineAt?: string | Date | null;
   isActive: boolean;
   onExpire?: () => void;
 }
 
-export function useTimer({ serverRemainingSeconds, isActive, onExpire }: UseTimerProps) {
+export function useTimer({ serverRemainingSeconds, deadlineAt, isActive, onExpire }: UseTimerProps) {
   const [remainingSeconds, setRemainingSeconds] = useState<number>(serverRemainingSeconds);
   const onExpireRef = useRef(onExpire);
   onExpireRef.current = onExpire;
 
-  const targetEndTimeRef = useRef<number>(Date.now() + serverRemainingSeconds * 1000);
+  const getTargetTime = () => {
+    if (deadlineAt) {
+      return new Date(deadlineAt).getTime();
+    }
+    return getCalibratedNow() + serverRemainingSeconds * 1000;
+  };
+
+  const targetEndTimeRef = useRef<number>(getTargetTime());
 
   // Sync server clock calibration on mount
   useEffect(() => {
     syncTimeWithServer().then(() => {
-      targetEndTimeRef.current = getCalibratedNow() + serverRemainingSeconds * 1000;
+      targetEndTimeRef.current = getTargetTime();
     });
   }, []);
 
-  // Resync when server remaining time updates
+  // Resync when server remaining time or deadline updates
   useEffect(() => {
-    targetEndTimeRef.current = getCalibratedNow() + serverRemainingSeconds * 1000;
+    targetEndTimeRef.current = getTargetTime();
     setRemainingSeconds(serverRemainingSeconds);
-  }, [serverRemainingSeconds]);
+  }, [serverRemainingSeconds, deadlineAt]);
 
   useEffect(() => {
     if (!isActive) return;

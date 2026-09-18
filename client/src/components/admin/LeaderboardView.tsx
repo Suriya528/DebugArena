@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Download, Award, Clock, RefreshCw, Medal, Search, Layers, Lock, Eye, EyeOff, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { LeaderboardRow, DynamicRound } from '../../types/index.js';
 import { api, lockDynamicRound } from '../../services/api.js';
+import { useRealtime } from '../../context/SocketContext.js';
 
 interface LeaderboardViewProps {
   eventId?: string;
@@ -9,6 +10,7 @@ interface LeaderboardViewProps {
 }
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propEventId, rounds: propRounds }) => {
+  const { socket } = useRealtime();
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [eventRounds, setEventRounds] = useState<any[]>(propRounds || []);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -42,9 +44,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
     }
   }, [propRounds]);
 
-  const fetchLeaderboard = async (targetEventId?: string) => {
+  const fetchLeaderboard = async (targetEventId?: string, isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       const evId = propEventId || targetEventId || activeEvent?._id;
       const url = evId ? `/admin/leaderboard?eventId=${encodeURIComponent(evId)}` : '/admin/leaderboard';
       const res = await api.get(url);
@@ -55,9 +57,40 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
     } catch (err) {
       console.error('Failed to load leaderboard:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
+
+  // Real-time live scoreboard refresh on socket events & periodic 6s pulse
+  useEffect(() => {
+    const targetEvId = propEventId || activeEvent?._id;
+    const interval = setInterval(() => {
+      fetchLeaderboard(targetEvId, true);
+    }, 6000);
+
+    if (!socket) return () => clearInterval(interval);
+
+    const handleUpdate = (data: any) => {
+      if (!targetEvId || !data?.eventId || data.eventId === targetEvId) {
+        fetchLeaderboard(targetEvId, true);
+      }
+    };
+
+    socket.on('admin:leaderboard_update', handleUpdate);
+    socket.on('admin:participant_submitted', handleUpdate);
+    socket.on('admin:submit_code', handleUpdate);
+    socket.on('round:completed', handleUpdate);
+    socket.on('round:locked', handleUpdate);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('admin:leaderboard_update', handleUpdate);
+      socket.off('admin:participant_submitted', handleUpdate);
+      socket.off('admin:submit_code', handleUpdate);
+      socket.off('round:completed', handleUpdate);
+      socket.off('round:locked', handleUpdate);
+    };
+  }, [socket, propEventId, activeEvent?._id]);
 
   useEffect(() => {
     async function loadMetaAndLeaderboard() {

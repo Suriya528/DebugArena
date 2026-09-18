@@ -43,7 +43,13 @@ const RoundProgressSchema = new Schema<IRoundProgress>(
   { timestamps: true }
 );
 
-RoundProgressSchema.index({ userId: 1, roundNumber: 1 }, { unique: true });
-RoundProgressSchema.index({ eventId: 1, roundNumber: 1, userId: 1 });
+RoundProgressSchema.index(
+  { eventId: 1, userId: 1, roundNumber: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { eventId: { $exists: true } } }
+);
+RoundProgressSchema.index(
+  { userId: 1, roundNumber: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { eventId: { $exists: false } } }
+);
 
 export const RoundProgress = mongoose.model<IRoundProgress>('RoundProgress', RoundProgressSchema);

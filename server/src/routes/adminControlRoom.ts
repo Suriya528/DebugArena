@@ -35,17 +35,24 @@ adminControlRoomRouter.get('/pulse', async (req: AuthenticatedRequest, res: Resp
     if (collegeId) userFilter.collegeId = collegeId;
     if (eventId) userFilter.eventId = eventId;
     const tenantUserIds = await User.find(userFilter).distinct('_id');
-
-    const progressFilter: any = { roundNumber };
-    if (tenantUserIds.length > 0) progressFilter.userId = { $in: tenantUserIds };
-
     const totalParticipants = tenantUserIds.length;
-    const inProgressCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'in_progress' });
-    const submittedCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'submitted' });
 
-    const violationFilter: any = { roundNumber };
-    if (tenantUserIds.length > 0) violationFilter.userId = { $in: tenantUserIds };
-    const violationsCount = await ViolationLog.countDocuments(violationFilter);
+    let inProgressCount = 0;
+    let submittedCount = 0;
+    let violationsCount = 0;
+
+    if (tenantUserIds.length > 0) {
+      const progressFilter = { roundNumber, userId: { $in: tenantUserIds } };
+      inProgressCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'in_progress' });
+      submittedCount = await RoundProgress.countDocuments({ ...progressFilter, status: 'submitted' });
+
+      const violationFilter = { roundNumber, userId: { $in: tenantUserIds } };
+      violationsCount = await ViolationLog.countDocuments(violationFilter);
+    } else if (!collegeId && !eventId && req.user?.role === 'super_admin') {
+      inProgressCount = await RoundProgress.countDocuments({ roundNumber, status: 'in_progress' });
+      submittedCount = await RoundProgress.countDocuments({ roundNumber, status: 'submitted' });
+      violationsCount = await ViolationLog.countDocuments({ roundNumber });
+    }
 
     // Measure DB Ping
     const dbStart = Date.now();

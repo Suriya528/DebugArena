@@ -704,16 +704,17 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
       { upsert: true }
     );
 
-    broadcastToAll('event:started', { eventId: event._id, startedAt: now, currentRound: 1 });
+    const eventIdStr = event._id.toString();
+    broadcastToAll('event:started', { eventId: event._id, startedAt: now, currentRound: 1 }, eventIdStr);
     if (round1) {
       broadcastToAll('round:started', {
-        eventId: event._id.toString(),
+        eventId: eventIdStr,
         roundNumber: 1,
         title: round1.title,
         type: round1.type,
         durationMinutes: round1.durationMinutes,
         startedAt: now
-      });
+      }, eventIdStr);
     }
 
     await recordAudit(req, 'EVENT_STARTED', 'Event', event._id.toString(), { startedAt: now, roundsCount: rounds.length }, '', event.collegeId, event._id);
@@ -1244,7 +1245,7 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
       type: round.type,
       durationMinutes: round.durationMinutes,
       startedAt: round.startedAt
-    });
+    }, eventId);
 
     res.json({ message: `Round ${parsedRound} started successfully`, round });
   } catch (err) {
@@ -1300,12 +1301,12 @@ const lockRoundHandler = async (req: AuthenticatedRequest, res: Response): Promi
       eventId,
       roundNumber: parsedRound,
       message: `Round ${parsedRound} has concluded.`
-    });
+    }, eventId);
     broadcastToAll('round:completed', {
       eventId,
       roundNumber: parsedRound
-    });
-    broadcastToAdmins('admin:round_locked', { eventId, roundNumber: parsedRound, status: 'completed' });
+    }, eventId);
+    broadcastToAdmins('admin:round_locked', { eventId, roundNumber: parsedRound, status: 'completed' }, event.collegeId?.toString(), eventId);
 
     res.json({ message: `Round ${parsedRound} completed and finalized successfully`, round });
   } catch (err) {

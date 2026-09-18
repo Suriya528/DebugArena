@@ -81,6 +81,18 @@ async function reconcileDatabaseIndexes(): Promise<void> {
         }
       }
     }
+
+    const rpCollections = await db.listCollections({ name: 'roundprogresses' }).toArray();
+    if (rpCollections.length > 0) {
+      const indexes = await db.collection('roundprogresses').indexes();
+      for (const idx of indexes) {
+        if (idx.name === 'userId_1_roundNumber_1' && idx.unique && !idx.partialFilterExpression) {
+          console.log('🔄 Dropping legacy unique index userId_1_roundNumber_1 on roundprogresses...');
+          await db.collection('roundprogresses').dropIndex('userId_1_roundNumber_1');
+          console.log('✅ Legacy index userId_1_roundNumber_1 dropped from roundprogresses.');
+        }
+      }
+    }
   } catch (err: any) {
     // Non-critical: safe to ignore if already dropped
   }

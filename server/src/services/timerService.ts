@@ -74,16 +74,17 @@ export function startServerTimerSweep(): void {
           dynRound.endedAt = new Date();
           await dynRound.save();
 
+          const eventIdStr = dynRound.eventId?.toString();
           broadcastToParticipants('round:locked', {
             eventId: dynRound.eventId,
             roundNumber: dynRound.roundNumber,
             message: `Round ${dynRound.roundNumber} has concluded.`
-          });
+          }, eventIdStr);
 
           broadcastToAdmins('admin:round_locked', {
             eventId: dynRound.eventId,
             roundNumber: dynRound.roundNumber
-          });
+          }, undefined, eventIdStr);
 
           // Find participants scoped to this dynamic event
           const eventUsers = await User.find({ eventId: dynRound.eventId }).select('_id');

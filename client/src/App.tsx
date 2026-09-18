@@ -153,6 +153,7 @@ export const App: React.FC = () => {
   // Server-authoritative timer hook
   const { formattedTime, isUrgent } = useTimer({
     serverRemainingSeconds: roundState?.round?.remainingSeconds || 0,
+    deadlineAt: roundState?.round?.deadlineAt || null,
     isActive: roundState?.round?.status === 'active' && hasStartedActiveRound,
     onExpire: handleTimerExpire
   });
