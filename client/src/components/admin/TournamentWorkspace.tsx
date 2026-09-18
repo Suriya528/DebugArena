@@ -283,25 +283,6 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
     }
   };
 
-  const handleToggleCertificates = async () => {
-    if (!event) return;
-    const isCurrentlyEnabled = event.certificateConfig?.enabled === true;
-    const confirmMsg = isCurrentlyEnabled
-      ? `Disable certificates for "${event.name}"?`
-      : `Activate certificate issuance for "${event.name}"? Winners can receive QR-verifiable credentials.`;
-
-    if (window.confirm(confirmMsg)) {
-      try {
-        await api.patch(`/admin/events/${event._id}/toggle-certificates`, {
-          enabled: !isCurrentlyEnabled
-        });
-        await fetchWorkspaceData();
-      } catch (err: any) {
-        alert(err.response?.data?.error || 'Failed to toggle certificates');
-      }
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center font-mono text-xs text-slate-400">
@@ -743,13 +724,13 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
             <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-2">
               <span className="text-[10px] font-mono uppercase font-bold text-slate-500">
-                QR Credentials
+                Tournament Status
               </span>
-              <div className="text-2xl font-black text-emerald-400">
-                {event.certificateConfig?.enabled ? 'Active' : 'Disabled'}
+              <div className="text-2xl font-black text-emerald-400 uppercase">
+                {event.status}
               </div>
               <p className="text-xs text-slate-400">
-                Official certificates with public verification
+                Live competition state
               </p>
             </div>
           </div>
@@ -881,13 +862,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                 </p>
               )}
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <button
-                  onClick={handleToggleCertificates}
-                  className="text-xs font-mono text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                >
-                  {event.certificateConfig?.enabled ? 'Disable Certificates' : 'Enable Official Certificates'}
-                </button>
+              <div className="flex items-center justify-end pt-2 border-t border-slate-800">
                 <button
                   onClick={handleToggleFreeze}
                   className={`text-xs font-mono font-bold cursor-pointer ${

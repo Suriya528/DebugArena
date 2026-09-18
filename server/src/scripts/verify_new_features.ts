@@ -63,14 +63,6 @@ async function main() {
     console.log('  ⚠️ SKIP: No coding question found in Round 1 for custom testcase verification');
   }
 
-  // -------------------------------------------------------------
-  // FEATURE 2: Direct Certificate Access for Participants
-  // -------------------------------------------------------------
-  console.log('\n--- Feature 2: Participant Direct Certificate Access ---');
-  const certRes = await axios.get(`${API}/certificates/my-certificate`, customHeaders);
-  assert(certRes.status === 200, 'GET /certificates/my-certificate returned 200 OK');
-  assert(typeof certRes.data.hasCertificate === 'boolean', 'hasCertificate boolean returned');
-  console.log(`  ✅ PASS: /api/certificates/my-certificate gracefully queried (hasCertificate: ${certRes.data.hasCertificate})`);
 
   // -------------------------------------------------------------
   // FEATURE 3: Bulk CSV Import with Extended Schema

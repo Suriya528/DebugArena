@@ -13,7 +13,6 @@ import { adminEventRouter } from './routes/adminEvent.js';
 import { adminQuestionBankRouter } from './routes/adminQuestionBank.js';
 import { adminControlRoomRouter } from './routes/adminControlRoom.js';
 import { adminAnalyticsRouter } from './routes/adminAnalytics.js';
-import { certificateRouter } from './routes/certificate.js';
 import { timeSyncRouter } from './routes/timeSync.js';
 import { tenantContext } from './middleware/tenantContext.js';
 
@@ -65,7 +64,6 @@ app.use('/api/participant/run-code', codeRunLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api/time', timeSyncRouter);
 app.use('/api/participant', participantRouter);
-app.use('/api/certificates', certificateRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/admin/events', adminEventRouter);
 app.use('/api/admin/questions/bank', adminQuestionBankRouter);

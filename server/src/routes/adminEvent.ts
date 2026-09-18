@@ -12,7 +12,6 @@ import { finalizeEvent, setRetentionHold } from '../services/lifecycleService.js
 import { Question } from '../models/Question.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { CodeMilestone } from '../models/CodeMilestone.js';
-import { Certificate } from '../models/Certificate.js';
 import { Attempt } from '../models/Attempt.js';
 import { RoundProgress } from '../models/RoundProgress.js';
 import { TieBreak } from '../models/TieBreak.js';
@@ -314,19 +313,8 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       },
       branding: branding || {
         customTitle: `${name} | ${college.name}`,
-        certificateTitle: `Certificate of Achievement — ${name}`,
         signatoryName: 'Head of Department',
         signatoryTitle: 'Tournament Director'
-      },
-      certificateConfig: {
-        enabled: req.body.certificateConfig?.enabled === true,
-        useDefaultTemplate: req.body.certificateConfig?.useDefaultTemplate !== false || !req.body.certificateConfig?.customTemplateUrl?.trim(),
-        customTemplateUrl: req.body.certificateConfig?.customTemplateUrl?.trim() || '',
-        textColorMode: req.body.certificateConfig?.textColorMode || 'auto',
-        primaryColor: req.body.certificateConfig?.primaryColor || '#f59e0b',
-        issuerName: req.body.certificateConfig?.issuerName || 'Head of Department',
-        issuerTitle: req.body.certificateConfig?.issuerTitle || 'DebugArena Organizing Committee',
-        includeQrVerification: req.body.certificateConfig?.enabled === true ? (req.body.certificateConfig?.includeQrVerification !== false) : false
       }
     });
 
@@ -788,7 +776,7 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
 adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { eventId } = req.params;
-    const { name, description, rules, scoringConfig, branding, certificateConfig, status, overrideReason } = req.body;
+    const { name, description, rules, scoringConfig, branding, status, overrideReason } = req.body;
 
     const event = await Event.findById(eventId);
     if (!event) {
@@ -822,7 +810,6 @@ adminEventRouter.put('/:eventId', async (req: AuthenticatedRequest, res: Respons
     if (rules) event.rules = rules;
     if (scoringConfig) event.scoringConfig = { ...event.scoringConfig, ...scoringConfig };
     if (branding) event.branding = { ...event.branding, ...branding };
-    if (certificateConfig) event.certificateConfig = { ...event.certificateConfig, ...certificateConfig };
 
     // Enforce legal lifecycle transitions
     if (status && status !== event.status) {
@@ -897,7 +884,6 @@ adminEventRouter.delete('/:eventId', async (req: AuthenticatedRequest, res: Resp
       Question.deleteMany({ eventId }),
       ViolationLog.deleteMany({ $or: [{ eventId }, { userId: { $in: participantIds } }] }),
       CodeMilestone.deleteMany({ $or: [{ eventId }, { userId: { $in: participantIds } }, { questionId: { $in: questionIds } }] }),
-      Certificate.deleteMany({ eventId }),
       Competition.deleteMany({ eventId }),
       Attempt.deleteMany({ $or: [{ userId: { $in: participantIds } }, { questionId: { $in: questionIds } }] }),
       RoundProgress.deleteMany({ userId: { $in: participantIds } }),
@@ -935,58 +921,6 @@ adminEventRouter.delete('/:eventId', async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-// PATCH /api/admin/events/:eventId/toggle-certificates
-adminEventRouter.patch('/:eventId/toggle-certificates', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  try {
-    const { eventId } = req.params;
-    const { enabled } = req.body;
-
-    const event = await Event.findById(eventId);
-    if (!event) {
-      res.status(404).json({ error: 'Event not found' });
-      return;
-    }
-
-    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
-      res.status(404).json({ error: 'Event not found' });
-      return;
-    }
-
-    const currentConfig = event.certificateConfig || {
-      enabled: false,
-      useDefaultTemplate: true,
-      customTemplateUrl: '',
-      textColorMode: 'auto',
-      primaryColor: '#f59e0b',
-      issuerName: 'Head of Department',
-      issuerTitle: 'DebugArena Organizing Committee',
-      includeQrVerification: true
-    };
-
-    const targetEnabled = typeof enabled === 'boolean' ? enabled : !currentConfig.enabled;
-    event.certificateConfig = {
-      ...currentConfig,
-      enabled: targetEnabled
-    };
-
-    await event.save();
-
-    await recordAudit(
-      req,
-      targetEnabled ? 'EVENT_CERTIFICATES_ACTIVATED' : 'EVENT_CERTIFICATES_DEACTIVATED',
-      'Event',
-      eventId,
-      { certificatesEnabled: targetEnabled },
-      '',
-      event.collegeId,
-      event._id
-    );
-
-    res.json({ success: true, event });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to toggle certificate status' });
-  }
-});
 
 // POST /api/admin/events/:eventId/freeze
 adminEventRouter.post('/:eventId/freeze', async (req: AuthenticatedRequest, res: Response): Promise<void> => {

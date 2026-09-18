@@ -46,7 +46,7 @@ interface FooterDetailModalProps {
   topic: FooterTopicId | null;
   onClose: () => void;
   onSelectTopic: (topic: FooterTopicId) => void;
-  onAction?: (actionType: 'join' | 'admin' | 'verify') => void;
+  onAction?: (actionType: 'join' | 'admin') => void;
 }
 
 interface TopicContent {
@@ -62,7 +62,7 @@ interface TopicContent {
     technicalDetails?: { label: string; value: string }[];
   }[];
   actionLabel?: string;
-  actionType?: 'join' | 'admin' | 'verify';
+  actionType?: 'join' | 'admin';
 }
 
 const TOPIC_REGISTRY: Record<FooterTopicId, TopicContent> = {
@@ -165,32 +165,32 @@ const TOPIC_REGISTRY: Record<FooterTopicId, TopicContent> = {
   },
 
   'cryptographic-credentials': {
-    title: 'SHA-256 Verifiable Achievement Credentials',
-    category: 'CREDENTIAL SYSTEM',
+    title: 'SHA-256 Verifiable Tournament Audit Trail',
+    category: 'INTEGRITY SYSTEM',
     badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
     icon: Award,
     summary:
-      'Every issued tournament certificate is cryptographically anchored using SHA-256 hashing. Recruiters, academic boards, and LinkedIn viewers can publicly authenticate scores, ranks, and completion dates.',
+      'Every round submission and tournament outcome is cryptographically anchored using SHA-256 hashing. Organizers and academic boards can reliably authenticate scores, ranks, and submission timestamps.',
     sections: [
       {
         heading: 'Cryptographic Signature Specification',
         description:
-          'Certificates are stamped with a deterministic 64-character hex signature derived from the immutable tournament outcome:',
+          'Submissions and final outcomes are stamped with a deterministic 64-character hex signature derived from the immutable tournament attempt:',
         bullets: [
-          'Source Tuple: SHA-256(certificateId + studentRegNo + collegeId + eventCode + rank + finalScore + issuedAt).',
-          'Tamper Evidence: Altering a student name, rank, or score invalidates the cryptographic hash immediately.',
-          'Permanent Public URL: Each certificate has a public endpoint at /verify-cert/:id that never expires.',
-          'Automated Vector PDF: High-fidelity certificate rendering with institutional crest, department seal, and QR code.'
+          'Source Tuple: SHA-256(participantId + collegeId + roundNumber + finalScore + submittedAt).',
+          'Tamper Evidence: Altering a score, test-case pass rate, or timestamp invalidates the cryptographic hash immediately.',
+          'Immutable Audit Logs: Each round attempt generates verified execution metrics and audit trails.',
+          'Automated Leaderboard Verification: Cryptographically locked round results ensure absolute tournament fairness.'
         ],
         technicalDetails: [
           { label: 'Algorithm', value: 'SHA-256 (HMAC-backed)' },
           { label: 'Lookup Latency', value: '< 10ms Indexed Search' },
-          { label: 'Verification Auth', value: 'Zero login required for public recruiters' }
+          { label: 'Verification Auth', value: 'Instant cryptographic validation' }
         ]
       }
     ],
-    actionLabel: 'Verify a Certificate',
-    actionType: 'verify'
+    actionLabel: 'Launch Free College Workspace',
+    actionType: 'admin'
   },
 
   'question-bank': {
@@ -356,7 +356,7 @@ const TOPIC_REGISTRY: Record<FooterTopicId, TopicContent> = {
       {
         heading: '1. Information Collected & Purpose',
         description:
-          'DebugArena collects institutional emails for organizers and tournament participant identifiers solely for leaderboard computation, real-time proctoring monitoring, and certificate generation.'
+          'DebugArena collects institutional emails for organizers and tournament participant identifiers solely for leaderboard computation, real-time proctoring monitoring, and tournament scoring.'
       },
       {
         heading: '2. Data Retention & Erasure',
@@ -382,7 +382,7 @@ const TOPIC_REGISTRY: Record<FooterTopicId, TopicContent> = {
       {
         heading: '1. Acceptance of Terms',
         description:
-          'By accessing the DebugArena platform as an organizer, competitor, or certificate verifier, you agree to abide by these terms and the collegiate honor code.'
+          'By accessing the DebugArena platform as an organizer or competitor, you agree to abide by these terms and the collegiate honor code.'
       },
       {
         heading: '2. Fair Competition & Non-Interference',
@@ -408,11 +408,11 @@ const TOPIC_REGISTRY: Record<FooterTopicId, TopicContent> = {
       {
         heading: 'Collegiate Community License',
         description:
-          'Academic engineering departments and non-profit student tech organizations are granted unrestricted access to create tournament workspaces, host concurrent coding rounds, and issue verifiable digital certificates at zero institutional cost.',
+          'Academic engineering departments and non-profit student tech organizations are granted unrestricted access to create tournament workspaces, host concurrent coding rounds, and conduct real-time programming assessments at zero institutional cost.',
         bullets: [
           'Unlimited events and participant enrollments.',
           'Full access to Pyodide sandbox and anti-cheat kiosk features.',
-          'Automated SHA-256 certificate generation with lifelong public verification links.'
+          'Automated score tabulation with instant tournament leaderboards.'
         ]
       }
     ],
@@ -528,7 +528,7 @@ export const FooterDetailModal: React.FC<FooterDetailModalProps> = ({
             { id: 'code-sandbox', label: 'WASM Sandbox' },
             { id: 'kiosk-proctoring', label: 'Anti-Cheat Kiosk' },
             { id: 'multi-stage-rounds', label: '3-Round Engine' },
-            { id: 'cryptographic-credentials', label: 'SHA-256 Certs' },
+            { id: 'cryptographic-credentials', label: 'Audit Trail' },
             { id: 'system-status', label: 'Platform Status' },
             { id: 'security-standards', label: 'Security Specs' },
             { id: 'anti-cheat-guidelines', label: 'Honor Code' },

@@ -12,7 +12,6 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { authRouter } from '../routes/auth.js';
 import { adminRouter } from '../routes/admin.js';
 import { adminEventRouter } from '../routes/adminEvent.js';
-import { certificateRouter } from '../routes/certificate.js';
 import { tenantContext } from '../middleware/tenantContext.js';
 import { ENV } from '../config/env.js';
 
@@ -36,7 +35,6 @@ async function verifyTenantPrivacy() {
   app.use('/api/auth', authRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/events', adminEventRouter);
-  app.use('/api/certificates', certificateRouter);
 
   const server = http.createServer(app);
   await new Promise<void>(resolve => server.listen(PORT, () => resolve()));

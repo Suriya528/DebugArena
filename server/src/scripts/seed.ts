@@ -66,19 +66,8 @@ export async function seedData() {
     },
     branding: {
       customTitle: 'DebugX 2026 | ABC Tech',
-      certificateTitle: 'Certificate of Achievement — DebugX 2026',
       signatoryName: 'Dr. S. Ramanujan',
       signatoryTitle: 'Head of Computer Science & Engineering'
-    },
-    certificateConfig: {
-      enabled: true,
-      useDefaultTemplate: true,
-      customTemplateUrl: '',
-      textColorMode: 'auto',
-      primaryColor: '#b8860b',
-      issuerName: 'Dr. S. Ramanujan',
-      issuerTitle: 'Head of Computer Science & Engineering',
-      includeQrVerification: true
     }
   });
 

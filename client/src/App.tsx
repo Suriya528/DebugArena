@@ -20,7 +20,6 @@ import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
 import { TournamentWorkspace } from './components/admin/TournamentWorkspace.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
-import { CertificateVerifyView } from './components/public/CertificateVerifyView.js';
 import { EventDirectJoinView } from './components/public/EventDirectJoinView.js';
 import { LandingPage } from './components/home/LandingPage.js';
 import { AdminAuthModal } from './components/auth/AdminAuthModal.js';
@@ -322,21 +321,6 @@ export const App: React.FC = () => {
           <span className="text-xs font-mono text-slate-400">Loading DebugArena...</span>
         </div>
       </div>
-    );
-  }
-
-  // Public Unauthenticated Certificate Verification Portal
-  const isVerifyRoute = window.location.pathname.startsWith('/verify-cert/');
-  const verifyCertId = isVerifyRoute ? window.location.pathname.split('/verify-cert/')[1]?.trim() : null;
-
-  if (isVerifyRoute && verifyCertId) {
-    return (
-      <CertificateVerifyView
-        certificateId={verifyCertId}
-        onBack={() => {
-          window.location.href = '/';
-        }}
-      />
     );
   }
 

@@ -463,7 +463,7 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
                 </span>
               </h3>
               <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-                This is the culminating round of the tournament. The rankings below determine the final tournament winners, champion podium spots, and official completion certificates. No further stage advancement is required.
+                This is the culminating round of the tournament. The rankings below determine the final tournament winners and champion podium spots. No further stage advancement is required.
               </p>
             </div>
           </div>

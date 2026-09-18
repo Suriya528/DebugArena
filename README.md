@@ -6,43 +6,11 @@ DebugArena is an enterprise-grade, multi-tenant competition and assessment platf
 
 ## 🌟 Visual Showcase & Key Innovations
 
-### 1. Standardized Official QR Certificates with Dynamic College Color Combinations
-Issued certificates adhere to an authentic educational and government credential standard (aligned with NSDC / Skill India / PMKVY formats) featuring:
-- **Ivory Parchment Canvas (`#fffdfa`) with Guilloche Watermark**: Tamper-evident aesthetic with 100% visible, high-contrast dark slate text (`#0f172a` / `#1e293b`).
-- **Dynamic Institutional Brand Combination**: Double/triple borders, medal ribbons, and accent lines automatically adopt the host college's primary and secondary color palette.
-- **Verification Trio**: Cryptographic HMAC-SHA256 QR code on the left, dual-color official rosette medal seal in the center, and digital fountain-pen signature with Chairman signatory attribution on the right.
-- **Public Verification Portal (`/verify-cert/:certificateId`)**: Instant cryptographic ledger verification accessible by scanning the physical or digital QR code.
-
-<p align="center">
-  <img src="docs/screenshots/admin_certificate_modal.png" alt="Official Standard Certificate Modal with College Colors" width="850" />
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/public_certificate_verification.png" alt="Public Certificate Verification Portal" width="850" />
-</p>
-
----
-
-### 2. Optional Certificate Architecture on Event Creation & Lifecycle
-Event creators maintain complete control over whether certificates are issued for each tournament:
-- **Explicit Creator Opt-In**: Certificate issuance is strictly optional and defaults to **OFF**. Certificate template and signatory settings remain collapsed unless activated.
-- **On-Demand Customization**: When enabled, creators configure official vs custom templates, attestation headings, and authority signatory details.
-- **Post-Creation Lifecycle Toggle**: Organizers can activate or deactivate certificates at any stage directly from the Event Manager action bar.
-- **Adaptive Leaderboard Integration**: The standings table adapts automatically, displaying the `"Verify & Issue"` action for enabled events or a muted `"Certs Disabled"` badge when certificates are turned off.
-- **Ironclad Server Enforcement**: Backend endpoints strictly validate event association and reject issuance attempts on disabled events with `HTTP 400 Bad Request`.
-
-<p align="center">
-  <img src="docs/screenshots/admin_event_builder_cert_toggle_off.png" alt="Event Creation with Certificates Optional (OFF by Default)" width="850" />
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/admin_event_builder_cert_toggle_on.png" alt="Event Creation with Certificates Activated (ON)" width="850" />
-</p>
-
----
-
-### 3. Dynamic Event Pipeline Designer & Automated Round Quotas
+### 1. Dynamic Event Pipeline Designer & Automated Round Quotas
 Before launching an event, college administrators customize every stage of the tournament:
+- **Modular Round Types**: MCQ Debugging rounds, Algorithmic Coding rounds, and Sudden-Death Tiebreakers.
+- **Language & Runtime Selection**: Per-round configuration for Python, JavaScript, C, C++, and Java with custom time limits and penalty rules.
+- **Automated Advancement Quotas**: Set exact qualification thresholds upfront (e.g., *Round 1: 25 teams → Round 2: Top 15 → Final: Top 10*). The system handles ranking, cutoffs, and locked access automatically.
 - **Modular Round Types**: MCQ Debugging rounds, Algorithmic Coding rounds, and Sudden-Death Tiebreakers.
 - **Language & Runtime Selection**: Per-round configuration for Python, JavaScript, C, C++, and Java with custom time limits and penalty rules.
 - **Automated Advancement Quotas**: Set exact qualification thresholds upfront (e.g., *Round 1: 25 teams → Round 2: Top 15 → Final: Top 10*). The system handles ranking, cutoffs, and locked access automatically.
@@ -123,9 +91,8 @@ Host colleges enjoy completely private, tenant-isolated experiences:
 
 ---
 
-### 8. Custom Testcase Stdin Playground & Participant Direct Certificate Portal
+### 7. Custom Testcase Stdin Playground & Extended Bulk Ingestion
 - **LeetCode-Style Arbitrary Stdin Playground**: In the coding assessment shell, participants can toggle between official test cases and an interactive **"Custom Testcase"** terminal tab. Candidates can provide arbitrary standard input (`stdin`) to test algorithms with edge cases, inspecting standard output (`stdout`), compilation/runtime error stacks, and execution time (ms) in real-time without affecting leaderboard scoring.
-- **Participant Direct Certificate Portal**: When institutional credentials are awarded, participants receive an official gold attestation banner on their **Round Summary** portal. Candidates can review their verified credential, inspect the cryptographic HMAC-SHA256 signature, and print high-resolution PDF certificates directly without administrative intervention.
 - **Native File Upload & Extended Bulk CSV Ingestion**: Organizers can drag-and-drop or browse `.csv` roster files directly with automated UTF-8 BOM (`\uFEFF`) sanitization, header auto-detection, and extended schema support (`username, team_name, password, department, year, regNo`), rendering student identifiers directly onto participant tables.
 
 ---
@@ -176,7 +143,7 @@ npm run client
 
 | Role | Username | Password | Purpose & Scope |
 | :--- | :--- | :--- | :--- |
-| **Host College Admin** | `admin` | `admin123` | College Alpha Command Center (Events, Control Room, Certificates) |
+| **Host College Admin** | `admin` | `admin123` | College Alpha Command Center (Events, Control Room, Standings) |
 | **Participant 1** | `team1` | `debug123` | Demo Team 1 (Binary Beasts) |
 | **Participant 2** | `team2` | `debug123` | Demo Team 2 (Null Pointers) |
 | **Participant 3** | `team3` | `debug123` | Demo Team 3 (Stack Overflows) |
@@ -197,7 +164,7 @@ npx --prefix server tsx src/scripts/verify_production_hardening.ts
 # Zero-Flaw Architectural Hardening & Multi-Subsystem Integrity (34/34 tests)
 npx --prefix server tsx src/scripts/verify_architectural_hardening.ts
 
-# High-Impact Features Verification (Custom Stdin, Direct Certs, Bulk CSV)
+# High-Impact Features Verification (Custom Stdin, Bulk CSV)
 npx --prefix server tsx src/scripts/verify_new_features.ts
 
 # Multi-Tenant Privacy & Isolation (15/15 tests)
@@ -224,9 +191,8 @@ DebugArena/
 ├── client/                    # Vite + React 19 + TypeScript + Tailwind CSS
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── admin/         # ControlRoom, EventBuilder, CertificateModal, Leaderboard, etc.
-│   │   │   ├── participant/   # ProctoredShell, CodingShell, McqShell, TieBreakShell, etc.
-│   │   │   └── public/        # CertificateVerifyView (Public QR Ledger)
+│   │   │   ├── admin/         # ControlRoom, EventBuilder, Leaderboard, etc.
+│   │   │   └── participant/   # ProctoredShell, CodingShell, McqShell, TieBreakShell, etc.
 │   │   ├── context/           # AuthContext, SocketContext
 │   │   ├── hooks/             # useFullscreen, useTimer, useOfflineQueue
 │   │   └── services/          # api.ts (with offline queue), socket.ts
@@ -234,9 +200,9 @@ DebugArena/
 ├── server/                    # Express + TypeScript + Mongoose + Socket.io
 │   ├── src/
 │   │   ├── config/            # db.ts (MemoryServer fallback), env.ts
-│   │   ├── models/            # College, Event, Round, Question, Attempt, Certificate, etc.
+│   │   ├── models/            # College, Event, Round, Question, Attempt, etc.
 │   │   ├── middleware/        # auth.ts (tenant isolation, role guards, proctoring checks)
-│   │   ├── routes/            # admin.ts, participant.ts, certificate.ts, auth.ts
+│   │   ├── routes/            # admin.ts, participant.ts, auth.ts
 │   │   ├── services/          # judgeService.ts, scoringService.ts, timerService.ts
 │   │   └── scripts/           # seed.ts, test scripts, screenshot capture utilities
 │   └── tsconfig.json

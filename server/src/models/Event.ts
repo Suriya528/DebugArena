@@ -31,19 +31,8 @@ export interface IEvent extends Document {
   };
   branding: {
     customTitle?: string;
-    certificateTitle?: string;
     signatoryName?: string;
     signatoryTitle?: string;
-  };
-  certificateConfig: {
-    enabled: boolean;
-    useDefaultTemplate: boolean;
-    customTemplateUrl?: string;
-    textColorMode?: 'light' | 'dark' | 'auto';
-    primaryColor?: string;
-    issuerName?: string;
-    issuerTitle?: string;
-    includeQrVerification?: boolean;
   };
   // Lifecycle & Retention
   finalizedAt?: Date;
@@ -103,19 +92,8 @@ const EventSchema = new Schema<IEvent>(
     },
     branding: {
       customTitle: { type: String, default: '' },
-      certificateTitle: { type: String, default: 'Certificate of Excellence' },
       signatoryName: { type: String, default: 'Head of Department' },
       signatoryTitle: { type: String, default: 'Coordinator, DebugArena' }
-    },
-    certificateConfig: {
-      enabled: { type: Boolean, default: false },
-      useDefaultTemplate: { type: Boolean, default: true },
-      customTemplateUrl: { type: String, default: '' },
-      textColorMode: { type: String, enum: ['light', 'dark', 'auto'], default: 'auto' },
-      primaryColor: { type: String, default: '#f59e0b' },
-      issuerName: { type: String, default: 'Head of Department' },
-      issuerTitle: { type: String, default: 'DebugArena Organizing Committee' },
-      includeQrVerification: { type: Boolean, default: true }
     },
     finalizedAt: { type: Date },
     retentionDays: { type: Number, default: 30 },

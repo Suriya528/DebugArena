@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Download, Award, Clock, RefreshCw, Medal, Search, Layers, Lock, Eye, EyeOff, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { LeaderboardRow, DynamicRound } from '../../types/index.js';
 import { api, lockDynamicRound } from '../../services/api.js';
-import { CertificateModal } from './CertificateModal.js';
 
 interface LeaderboardViewProps {
   eventId?: string;
@@ -14,7 +13,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
   const [eventRounds, setEventRounds] = useState<any[]>(propRounds || []);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedCertRow, setSelectedCertRow] = useState<LeaderboardRow | null>(null);
   const [activeCollege, setActiveCollege] = useState<any>(null);
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [eventsList, setEventsList] = useState<any[]>([]);
@@ -207,18 +205,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
               <span>Official Admin Standings</span>
             </div>
 
-            {/* Certificate Feature Status Indicator */}
-            {activeEvent?.certificateConfig?.enabled ? (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                <Award className="w-3.5 h-3.5 text-amber-400" />
-                <span>Certificates: Active</span>
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
-                <Award className="w-3.5 h-3.5 text-slate-500" />
-                <span>Certificates: Disabled</span>
-              </div>
-            )}
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">
             Final Tournament Leaderboard
@@ -552,7 +538,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
                     <th className="p-4 text-center">Total Score</th>
                     <th className="p-4 text-center">Total Time</th>
                     <th className="p-4 text-center">Outcome</th>
-                    <th className="p-4 text-right">Certificate</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-slate-300 font-mono">
@@ -664,26 +649,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
                             </span>
                           )}
                         </td>
-
-                        <td className="p-4 text-right font-sans">
-                          {activeEvent?.certificateConfig?.enabled ? (
-                            <button
-                              onClick={() => setSelectedCertRow(r)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 flex items-center gap-1.5 ml-auto cursor-pointer transition-colors shadow-sm shadow-amber-500/10"
-                            >
-                              <Award className="w-3.5 h-3.5" />
-                              <span>Verify & Issue</span>
-                            </button>
-                          ) : (
-                            <span
-                              title="Certificates are disabled for this event"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-500 bg-slate-900/80 border border-slate-800 cursor-not-allowed ml-auto"
-                            >
-                              <Award className="w-3 h-3 text-slate-600" />
-                              <span>Certs Disabled</span>
-                            </span>
-                          )}
-                        </td>
                       </tr>
                     ))
                   )}
@@ -692,24 +657,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ eventId: propE
             </div>
           </div>
         </>
-      )}
-
-      {/* Certificate Modal */}
-      {selectedCertRow && (
-        <CertificateModal
-          userId={selectedCertRow.userId}
-          username={selectedCertRow.username}
-          name={selectedCertRow.name}
-          rank={selectedCertRow.rank}
-          score={selectedCertRow.totalScore}
-          eventId={activeEvent?._id}
-          eventTitle={activeEvent?.name || 'DebugX Championship 2026'}
-          collegeName={activeCollege?.name || 'ABC Institute of Technology'}
-          collegeCode={activeCollege?.code || 'ABC-TECH'}
-          primaryColor={activeCollege?.primaryColor || '#b8860b'}
-          secondaryColor={activeCollege?.secondaryColor || '#d97706'}
-          onClose={() => setSelectedCertRow(null)}
-        />
       )}
     </div>
   );

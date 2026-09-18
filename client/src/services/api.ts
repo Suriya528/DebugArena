@@ -231,11 +231,6 @@ export async function autoAdvanceParticipants(roundNumber: number, data?: { quot
   return res.data;
 }
 
-export async function verifyCertificatePublic(certificateId: string) {
-  const res = await api.get(`/certificates/verify/${certificateId}`);
-  return res.data;
-}
-
 export async function deleteEvent(eventId: string) {
   const res = await api.delete(`/admin/events/${eventId}`);
   return res.data;

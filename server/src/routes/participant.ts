@@ -74,9 +74,6 @@ participantRouter.get('/access/:participantToken', async (req: Request, res: Res
         rules: event.rules,
         scoringConfig: event.scoringConfig,
         branding: event.branding,
-        certificateConfig: {
-          enabled: event.certificateConfig?.enabled || false
-        },
         college: college
           ? {
               _id: college._id,
@@ -268,9 +265,6 @@ participantRouter.get('/event-info/:eventCode', async (req: Request, res: Respon
         status: event.status,
         rules: event.rules,
         scoringConfig: event.scoringConfig,
-        certificateConfig: {
-          enabled: event.certificateConfig?.enabled || false
-        },
         college: college ? {
           _id: college._id,
           name: college.name,

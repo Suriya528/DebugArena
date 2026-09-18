@@ -60,19 +60,8 @@ export interface Event {
   };
   branding: {
     customTitle?: string;
-    certificateTitle?: string;
     signatoryName?: string;
     signatoryTitle?: string;
-  };
-  certificateConfig?: {
-    enabled?: boolean;
-    useDefaultTemplate: boolean;
-    customTemplateUrl?: string;
-    textColorMode?: 'light' | 'dark' | 'auto';
-    primaryColor?: string;
-    issuerName?: string;
-    issuerTitle?: string;
-    includeQrVerification?: boolean;
   };
   rounds?: DynamicRound[];
   createdAt: string;
@@ -234,21 +223,4 @@ export interface LeaderboardRow {
   totalTimeSeconds: number;
   lastStatus: string;
   tieBreakRank?: number;
-}
-
-export interface Certificate {
-  certificateId: string;
-  userId: string;
-  participantName: string;
-  username: string;
-  eventTitle: string;
-  collegeName: string;
-  rank: number;
-  totalScore: number;
-  issueDate: string;
-  verificationHash: string;
-  templateUrl?: string;
-  useCustomTemplate?: boolean;
-  textColorMode?: 'light' | 'dark' | 'auto';
-  cryptographicStatus?: string;
 }

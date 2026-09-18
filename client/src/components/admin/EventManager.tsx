@@ -266,25 +266,6 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
     }
   };
 
-  const handleToggleCertificates = async () => {
-    if (!activeEvent) return;
-    const isCurrentlyEnabled = activeEvent.certificateConfig?.enabled === true;
-    const confirmMsg = isCurrentlyEnabled
-      ? `Disable certificates for "${activeEvent.name}"? No new certificates can be issued while disabled.`
-      : `Activate certificate issuance for "${activeEvent.name}"? Leaders and top participants can then receive verifiable credentials.`;
-
-    if (window.confirm(confirmMsg)) {
-      try {
-        await api.patch(`/admin/events/${activeEvent._id}/toggle-certificates`, {
-          enabled: !isCurrentlyEnabled
-        });
-        await fetchData();
-      } catch (err: any) {
-        alert(err.response?.data?.error || 'Failed to toggle certificates');
-      }
-    }
-  };
-
   const filteredEvents = events.filter(ev => {
     const q = searchQuery.trim().toLowerCase();
     const matchesQuery = !q ||
@@ -745,24 +726,6 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-              {/* Certificate Lifecycle Quick Toggle */}
-              <button
-                onClick={handleToggleCertificates}
-                className={`py-2 px-3.5 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
-                  activeEvent.certificateConfig?.enabled
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25 shadow-sm shadow-amber-500/10'
-                    : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-750'
-                }`}
-                title={
-                  activeEvent.certificateConfig?.enabled
-                    ? 'Certificates are enabled. Click to disable for this tournament.'
-                    : 'Certificates are currently off. Click to activate certificate issuance.'
-                }
-              >
-                <Award className="w-3.5 h-3.5" />
-                <span>{activeEvent.certificateConfig?.enabled ? 'Certs: Active' : 'Certs: Off'}</span>
-              </button>
-
               {/* Event Freeze Toggle */}
               <button
                 onClick={handleToggleFreeze}
