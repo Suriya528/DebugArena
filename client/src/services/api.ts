@@ -216,6 +216,11 @@ export async function startDynamicRound(eventId: string, roundNumber: number) {
   return res.data;
 }
 
+export async function lockDynamicRound(eventId: string, roundNumber: number) {
+  const res = await api.post(`/admin/events/${eventId}/rounds/${roundNumber}/lock`);
+  return res.data;
+}
+
 export async function getEventAuditLogs(eventId: string) {
   const res = await api.get(`/admin/events/${eventId}/audit-logs`);
   return res.data.logs;

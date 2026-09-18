@@ -34,7 +34,7 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       await seedDefaultQuestionTemplates();
     }
 
-    const { topic, language, difficulty, type, search, eventId } = req.query;
+    const { topic, language, difficulty, type, search, eventId, stageNumber, exactEventLanguages } = req.query;
     const filter: Record<string, any> = {};
 
     if (topic) filter.topic = topic;
@@ -47,6 +47,45 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
         { prompt: { $regex: search, $options: 'i' } },
         { skillTags: { $in: [new RegExp(search as string, 'i')] } }
       ];
+    }
+
+    // Inspect event languages if eventId is provided
+    let eventLanguages: string[] = [];
+    if (eventId) {
+      const cleanEventId = mongoose.Types.ObjectId.isValid(eventId as string)
+        ? new mongoose.Types.ObjectId(eventId as string)
+        : eventId;
+
+      const roundFilter: any = { eventId: { $in: [eventId, cleanEventId] } };
+      if (stageNumber) {
+        const parsedStage = parseInt(stageNumber as string, 10);
+        if (!isNaN(parsedStage)) {
+          roundFilter.roundNumber = parsedStage;
+        }
+      }
+      const dynRounds = await DynamicRound.find(roundFilter);
+      const langSet = new Set<string>();
+      for (const r of dynRounds) {
+        if (Array.isArray(r.allowedLanguages)) {
+          for (const l of r.allowedLanguages) {
+            if (l && typeof l === 'string') langSet.add(l.toLowerCase().trim());
+          }
+        }
+      }
+      eventLanguages = Array.from(langSet);
+    }
+
+    // Exact event language filtering
+    if (exactEventLanguages === 'true' && eventLanguages.length > 0) {
+      const langRegexList = eventLanguages.map(l => new RegExp(`^${l}$`, 'i'));
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { language: { $in: langRegexList } },
+          { allowedLanguages: { $in: langRegexList } },
+          { type: 'aptitude' }
+        ]
+      });
     }
 
     const questions = await QuestionTemplate.find(filter).sort({ topic: 1, difficulty: 1 });
@@ -91,6 +130,15 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     const enrichedQuestions = questions.map(q => {
       const obj: any = q.toObject();
       obj.deployedInRounds = deployedMap[q.title] || [];
+
+      let matches = true;
+      if (eventLanguages.length > 0) {
+        const qLang = (q.language || '').toLowerCase().trim();
+        const hasLangMatch = qLang ? eventLanguages.includes(qLang) : false;
+        const hasAllowedMatch = Array.isArray(q.allowedLanguages) && q.allowedLanguages.some(al => eventLanguages.includes(al.toLowerCase().trim()));
+        matches = hasLangMatch || hasAllowedMatch || q.type === 'aptitude';
+      }
+      obj.matchesEventLanguages = matches;
       return obj;
     });
 
@@ -102,7 +150,8 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       countsByType,
       totalCount: grandTotal,
       roundCounts,
-      deployedMap
+      deployedMap,
+      eventLanguages
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch question bank' });
@@ -349,6 +398,20 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
     const maxOrder = await Question.findOne(orderFilter).sort({ orderIndex: -1 });
     const nextOrder = maxOrder ? maxOrder.orderIndex + 1 : 1;
 
+    let targetRoundLanguages: string[] = [];
+    if (targetEventId) {
+      const targetRound = await DynamicRound.findOne({ eventId: targetEventId, roundNumber });
+      if (targetRound && Array.isArray(targetRound.allowedLanguages) && targetRound.allowedLanguages.length > 0) {
+        targetRoundLanguages = targetRound.allowedLanguages;
+      }
+    }
+
+    const resolvedAllowedLanguages = (template.allowedLanguages && template.allowedLanguages.length > 0)
+      ? template.allowedLanguages
+      : (template.language && template.language !== 'general'
+          ? [template.language]
+          : (targetRoundLanguages.length > 0 ? targetRoundLanguages : ['python', 'cpp', 'java', 'javascript', 'c']));
+
     const isMcqType = template.type === 'mcq' || (template.type === 'aptitude' && template.options && template.options.length > 0);
     const deployedQuestion = await Question.create({
       roundNumber,
@@ -362,7 +425,7 @@ adminQuestionBankRouter.post('/:templateId/deploy-to-round', async (req: Authent
       options: template.options?.map(o => o.text) || [],
       correctOptionIndex: template.options?.findIndex(o => o.isCorrect) ?? 0,
       explanation: template.explanation,
-      allowedLanguages: template.allowedLanguages,
+      allowedLanguages: resolvedAllowedLanguages,
       starterCode: template.starterCode instanceof Map ? Object.fromEntries(template.starterCode) : template.starterCode,
       testCases: (template.testCases || []).map(tc => ({
         input: tc.input,

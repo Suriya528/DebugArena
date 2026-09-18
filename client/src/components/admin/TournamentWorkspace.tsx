@@ -33,6 +33,7 @@ import {
   Code2
 } from 'lucide-react';
 import { Event, DynamicRound } from '../../types/index.js';
+import { useRealtime } from '../../context/SocketContext.js';
 import {
   getEventDetails,
   getEvents,
@@ -41,6 +42,7 @@ import {
   freezeEvent,
   unfreezeEvent,
   startDynamicRound,
+  lockDynamicRound,
   regenerateAdminLink,
   api
 } from '../../services/api.js';
@@ -125,11 +127,37 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
     onBack();
   };
 
+  const { socket } = useRealtime();
+
   useEffect(() => {
     if (eventId) {
       fetchWorkspaceData();
     }
   }, [eventId]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRoundUpdate = (data: any) => {
+      if (!data?.eventId || data.eventId === eventId) {
+        fetchWorkspaceData();
+      }
+    };
+
+    socket.on('round:started', handleRoundUpdate);
+    socket.on('round:completed', handleRoundUpdate);
+    socket.on('round:locked', handleRoundUpdate);
+    socket.on('admin:round_locked', handleRoundUpdate);
+    socket.on('admin:participant_submitted', handleRoundUpdate);
+
+    return () => {
+      socket.off('round:started', handleRoundUpdate);
+      socket.off('round:completed', handleRoundUpdate);
+      socket.off('round:locked', handleRoundUpdate);
+      socket.off('admin:round_locked', handleRoundUpdate);
+      socket.off('admin:participant_submitted', handleRoundUpdate);
+    };
+  }, [socket, eventId]);
 
   const participantJoinUrl = event
     ? `${window.location.origin}/join/${event.code}`
@@ -620,7 +648,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                   className={`p-2.5 rounded-xl border transition-all ${
                     r.status === 'active'
                       ? 'bg-emerald-950/30 border-emerald-500/50 shadow-sm shadow-emerald-900/20'
-                      : r.status === 'completed'
+                      : r.status === 'completed' || r.status === 'locked'
                       ? 'bg-slate-900/40 border-slate-800/80 opacity-75'
                       : 'bg-slate-900/80 border-slate-800'
                   }`}
@@ -632,11 +660,11 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
                       r.status === 'active'
                         ? 'bg-emerald-500/20 text-emerald-300 animate-pulse'
-                        : r.status === 'completed'
+                        : r.status === 'completed' || r.status === 'locked'
                         ? 'bg-slate-700/50 text-slate-400'
                         : 'bg-amber-500/10 text-amber-400'
                     }`}>
-                      {r.status || 'pending'}
+                      {r.status === 'locked' ? 'completed' : (r.status || 'pending')}
                     </span>
                   </div>
                   <div className="font-bold text-xs text-white truncate" title={r.title}>
@@ -792,11 +820,11 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
                         r.status === 'active'
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : r.status === 'completed'
-                          ? 'bg-slate-800 text-slate-400'
+                          : r.status === 'completed' || r.status === 'locked'
+                          ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20'
                           : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                       }`}>
-                        {r.status || 'pending'}
+                        {r.status === 'locked' ? 'completed' : (r.status || 'pending')}
                       </span>
                     </div>
                   ))}
@@ -967,6 +995,8 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                   className={`p-4 rounded-2xl border transition-all ${
                     r.status === 'active'
                       ? 'bg-indigo-950/30 border-indigo-500/50 shadow-lg shadow-indigo-950/40'
+                      : r.status === 'completed' || r.status === 'locked'
+                      ? 'bg-emerald-950/20 border-emerald-500/30 shadow-sm shadow-emerald-950/20'
                       : 'bg-slate-950/60 border-slate-800'
                   }`}
                 >
@@ -975,15 +1005,22 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                       STAGE {r.roundNumber}
                     </span>
                     <span
-                      className={`text-[10px] font-mono font-bold uppercase ${
+                      className={`text-[10px] font-mono font-bold uppercase flex items-center gap-1 ${
                         r.status === 'active'
                           ? 'text-emerald-400'
-                          : r.status === 'locked'
-                          ? 'text-rose-400'
+                          : r.status === 'completed' || r.status === 'locked'
+                          ? 'text-emerald-400'
                           : 'text-slate-500'
                       }`}
                     >
-                      {r.status || 'Draft'}
+                      {r.status === 'completed' || r.status === 'locked' ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span>COMPLETED</span>
+                        </>
+                      ) : (
+                        r.status || 'Draft'
+                      )}
                     </span>
                   </div>
                   <h4 className="font-bold text-white text-sm truncate">{r.title}</h4>
@@ -991,7 +1028,47 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                     {r.type.toUpperCase()} • {r.durationMinutes} Mins
                   </div>
                   <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between">
-                    {r.status !== 'active' ? (
+                    {r.status === 'completed' || r.status === 'locked' ? (
+                      <div className="w-full flex items-center justify-between gap-2">
+                        <span className="text-xs text-emerald-400 font-mono font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Completed</span>
+                        </span>
+                        <button
+                          onClick={() => {
+                            setActiveTab('leaderboard');
+                            setLeaderboardSubView('standings');
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Trophy className="w-3 h-3" />
+                          <span>Leaderboard</span>
+                        </button>
+                      </div>
+                    ) : r.status === 'active' ? (
+                      <div className="w-full flex items-center justify-between gap-2">
+                        <span className="text-xs text-emerald-400 font-mono font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          Live Now
+                        </span>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Finish and LOCK Round ${r.roundNumber} now? This will conclude the round, finalize contestant attempts, and display the official leaderboard.`)) {
+                              try {
+                                await lockDynamicRound(eventId, r.roundNumber);
+                                fetchWorkspaceData();
+                              } catch (e: any) {
+                                alert(e.response?.data?.error || 'Failed to lock round');
+                              }
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Lock className="w-3 h-3" />
+                          <span>End Round</span>
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         onClick={async () => {
                           if (window.confirm(`Start Round ${r.roundNumber} now for all active contestants?`)) {
@@ -1008,11 +1085,6 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                         <Play className="w-3.5 h-3.5 fill-current" />
                         <span>Start Round {r.roundNumber}</span>
                       </button>
-                    ) : (
-                      <span className="text-xs text-emerald-400 font-mono font-bold flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                        Round Live Now
-                      </span>
                     )}
                   </div>
                 </div>
@@ -1038,7 +1110,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Live Standings
+              Final Leaderboard
             </button>
             <button
               onClick={() => setLeaderboardSubView('advance')}

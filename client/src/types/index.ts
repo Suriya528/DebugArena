@@ -217,6 +217,7 @@ export interface LeaderboardRow {
   r2Score?: number;
   r3Score?: number;
   roundScores?: Record<number, number>;
+  roundTimes?: Record<number, number>;
   roundBreakdown?: Record<number, {
     roundNumber: number;
     title: string;

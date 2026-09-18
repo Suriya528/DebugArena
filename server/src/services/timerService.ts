@@ -31,7 +31,7 @@ export function startServerTimerSweep(): void {
 
         if (remaining <= 0) {
           console.log(`⏱️ Round ${round.roundNumber} deadline reached. Auto-locking and sweeping submissions.`);
-          round.status = 'locked';
+          round.status = 'completed';
           round.endedAt = new Date();
           await round.save();
 
@@ -70,7 +70,7 @@ export function startServerTimerSweep(): void {
 
         if (remaining <= 0) {
           console.log(`⏱️ Dynamic Round ${dynRound.roundNumber} (Event: ${dynRound.eventId}) deadline reached. Auto-locking.`);
-          dynRound.status = 'locked';
+          dynRound.status = 'completed';
           dynRound.endedAt = new Date();
           await dynRound.save();
 

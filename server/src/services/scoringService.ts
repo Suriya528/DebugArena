@@ -66,10 +66,13 @@ export async function finalizeParticipantRoundScore(
   if (!progress) {
     progress = new RoundProgress({
       userId,
+      eventId: user?.eventId,
       roundNumber,
       status: 'submitted',
       startedAt: effectiveRound?.startedAt || new Date()
     });
+  } else if (!progress.eventId && user?.eventId) {
+    progress.eventId = user.eventId as any;
   }
 
   // Calculate sum of attempts for this round

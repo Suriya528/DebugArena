@@ -178,13 +178,13 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
 adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const roundNumber = parseInt(req.params.roundNumber, 10);
-    const eventId = (req.query.eventId as string) || req.user?.eventId;
+    const eventId = (req.query.eventId as string) || (req.body && req.body.eventId) || req.user?.eventId;
 
     let dynamicRound = null;
     if (eventId) {
       dynamicRound = await DynamicRound.findOne({ eventId, roundNumber });
       if (dynamicRound) {
-        dynamicRound.status = 'locked';
+        dynamicRound.status = 'completed';
         dynamicRound.endedAt = new Date();
         await dynamicRound.save();
       }
@@ -192,7 +192,7 @@ adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, 
 
     const round = await Round.findOne({ roundNumber });
     if (round) {
-      round.status = 'locked';
+      round.status = 'completed';
       round.endedAt = new Date();
       await round.save();
     }
@@ -206,8 +206,11 @@ adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, 
 
     // Auto-grade/sweep in_progress participants for this tenant
     const userFilter: any = { role: 'participant' };
-    if (req.user?.collegeId) userFilter.collegeId = req.user.collegeId;
-    if (req.user?.eventId) userFilter.eventId = req.user.eventId;
+    if (eventId) {
+      userFilter.eventId = eventId;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
+    }
     const tenantUsers = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantUsers.map(u => u._id);
 

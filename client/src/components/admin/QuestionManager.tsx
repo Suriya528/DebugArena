@@ -81,6 +81,8 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
   const [selectedType, setSelectedType] = useState<string>('');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const [filterByEventLangs, setFilterByEventLangs] = useState<boolean>(true);
+  const [eventLanguages, setEventLanguages] = useState<string[]>([]);
   const [countsByType, setCountsByType] = useState<Record<string, number>>({});
   const [totalBankCount, setTotalBankCount] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -264,12 +266,17 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
       if (selectedType) params.type = selectedType;
       if (selectedLanguage) params.language = selectedLanguage;
       if (debouncedSearch) params.search = debouncedSearch;
-      if (selectedEventId) params.eventId = selectedEventId;
+      if (selectedEventId) {
+        params.eventId = selectedEventId;
+        if (selectedStageNumber) params.stageNumber = selectedStageNumber;
+        if (filterByEventLangs) params.exactEventLanguages = 'true';
+      }
 
       const res = await api.get('/admin/questions/bank', { params });
       setBankQuestions(res.data.questions || []);
       setTopics(res.data.topics || []);
       if (res.data.languages) setAvailableLanguages(res.data.languages || []);
+      if (res.data.eventLanguages) setEventLanguages(res.data.eventLanguages || []);
       if (res.data.countsByType) setCountsByType(res.data.countsByType || {});
       if (res.data.totalCount !== undefined) setTotalBankCount(res.data.totalCount);
       if (res.data.roundCounts) {
@@ -289,7 +296,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     } else {
       fetchQuestionBank();
     }
-  }, [activeView, selectedRound, selectedEventId, selectedTopic, selectedDifficulty, selectedType, selectedLanguage, debouncedSearch]);
+  }, [activeView, selectedRound, selectedEventId, selectedStageNumber, selectedTopic, selectedDifficulty, selectedType, selectedLanguage, debouncedSearch, filterByEventLangs]);
 
   // Seed single round questions
   const handleSeedRoundQuestions = async (roundNum: number = selectedRound) => {
@@ -717,6 +724,27 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
               />
             </div>
 
+            {selectedEventId && eventLanguages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterByEventLangs(!filterByEventLangs)}
+                className={`px-3 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 border ${
+                  filterByEventLangs
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-500/10'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+                title={filterByEventLangs ? 'Filtering by event configured languages. Click to view all languages.' : 'Showing all languages. Click to filter by event languages.'}
+              >
+                <Code2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Event Languages ({eventLanguages.map(l => l.toUpperCase()).join(', ')})</span>
+                {filterByEventLangs ? (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                ) : (
+                  <span className="text-[10px] text-slate-500 ml-0.5 font-normal">(Off)</span>
+                )}
+              </button>
+            )}
+
             <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto">
               <select
                 value={selectedLanguage}
@@ -724,15 +752,22 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none cursor-pointer"
               >
                 <option value="">All Languages</option>
-                {availableLanguages.length > 0 ? (
-                  availableLanguages.map(l => (
-                    <option key={l} value={l}>{l.toUpperCase()}</option>
-                  ))
-                ) : (
-                  ['python', 'sql', 'java', 'cpp', 'javascript', 'c'].map(l => (
-                    <option key={l} value={l}>{l.toUpperCase()}</option>
-                  ))
+                {eventLanguages.length > 0 && (
+                  <optgroup label="Event Preferred">
+                    {eventLanguages.map(l => (
+                      <option key={`ev-${l}`} value={l}>
+                        ★ {l.toUpperCase()} (Event Spec)
+                      </option>
+                    ))}
+                  </optgroup>
                 )}
+                <optgroup label="Other Available">
+                  {(availableLanguages.length > 0 ? availableLanguages : ['python', 'sql', 'java', 'cpp', 'javascript', 'c'])
+                    .filter(l => !eventLanguages.includes(l.toLowerCase()))
+                    .map(l => (
+                      <option key={l} value={l}>{l.toUpperCase()}</option>
+                    ))}
+                </optgroup>
               </select>
 
               <select
@@ -841,6 +876,16 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                           {item.language && (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
                               {item.language}
+                            </span>
+                          )}
+                          {selectedEventId && eventLanguages.length > 0 && item.matchesEventLanguages && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                              <Sparkles className="w-3 h-3 text-emerald-400" /> Matches Event Spec
+                            </span>
+                          )}
+                          {selectedEventId && eventLanguages.length > 0 && !item.matchesEventLanguages && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono text-[10px] bg-slate-800 text-slate-400 border border-slate-700/60">
+                              Other Language
                             </span>
                           )}
                           <span

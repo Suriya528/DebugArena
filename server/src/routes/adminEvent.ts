@@ -20,6 +20,7 @@ import { seedEventRoundQuestions } from '../services/defaultQuestions.js';
 import { executeCleanupJob } from '../services/cleanupEngine.js';
 import { runTestCases, executeSingleTestCase } from '../services/judgeService.js';
 import { generateSecureToken, hashToken, encryptToken, decryptToken } from '../utils/tokenUtils.js';
+import { finalizeParticipantRoundScore } from '../services/scoringService.js';
 
 export const adminEventRouter = Router();
 
@@ -471,7 +472,7 @@ adminEventRouter.post('/control-enter', async (req: AuthenticatedRequest, res: R
       if (!event.startedAt) event.startedAt = new Date();
       await event.save();
       const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (r1 && r1.status !== 'active') {
+      if (r1 && r1.status !== 'active' && r1.status !== 'completed' && r1.status !== 'locked') {
         r1.status = 'active';
         if (!r1.startedAt) r1.startedAt = new Date();
         await r1.save();
@@ -530,7 +531,7 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
       if (!event.startedAt) event.startedAt = new Date();
       await event.save();
       const r1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (r1 && r1.status !== 'active') {
+      if (r1 && r1.status !== 'active' && r1.status !== 'completed' && r1.status !== 'locked') {
         r1.status = 'active';
         if (!r1.startedAt) r1.startedAt = new Date();
         await r1.save();
@@ -752,7 +753,7 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
       if (!event.startedAt) event.startedAt = new Date();
       await event.save();
       const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
-      if (round1 && round1.status !== 'active') {
+      if (round1 && round1.status !== 'active' && round1.status !== 'completed' && round1.status !== 'locked') {
         round1.status = 'active';
         if (!round1.startedAt) round1.startedAt = new Date();
         await round1.save();
@@ -1243,6 +1244,71 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
     res.status(500).json({ error: 'Failed to start round' });
   }
 });
+
+// POST /api/admin/events/:eventId/rounds/:roundNumber/lock (or /finish)
+const lockRoundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId, roundNumber } = req.params;
+    const parsedRound = parseInt(roundNumber, 10);
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    if (req.user?.collegeId && event.collegeId.toString() !== req.user.collegeId.toString()) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    const round = await DynamicRound.findOne({ eventId, roundNumber: parsedRound });
+    if (!round) {
+      res.status(404).json({ error: 'Round not found' });
+      return;
+    }
+
+    round.status = 'completed';
+    round.endedAt = new Date();
+    await round.save();
+
+    // Auto-grade/sweep in_progress or not_started participants for this event
+    const userFilter: any = { role: 'participant', eventId };
+    const eventParticipants = await User.find(userFilter).select('_id');
+    const participantIds = eventParticipants.map(u => u._id);
+
+    const activeParticipants = await RoundProgress.find({
+      roundNumber: parsedRound,
+      userId: { $in: participantIds },
+      status: { $in: ['in_progress', 'not_started'] }
+    });
+
+    for (const p of activeParticipants) {
+      await finalizeParticipantRoundScore(p.userId.toString(), parsedRound);
+    }
+
+    await recordAudit(req, 'ROUND_COMPLETED', 'DynamicRound', round._id.toString(), { roundNumber: parsedRound }, 'Round concluded and marked completed by admin', event.collegeId, eventId);
+
+    broadcastToAll('round:locked', {
+      eventId,
+      roundNumber: parsedRound,
+      message: `Round ${parsedRound} has concluded.`
+    });
+    broadcastToAll('round:completed', {
+      eventId,
+      roundNumber: parsedRound
+    });
+    broadcastToAdmins('admin:round_locked', { eventId, roundNumber: parsedRound, status: 'completed' });
+
+    res.json({ message: `Round ${parsedRound} completed and finalized successfully`, round });
+  } catch (err) {
+    console.error('Lock round error:', err);
+    res.status(500).json({ error: 'Failed to lock round' });
+  }
+};
+
+adminEventRouter.post('/:eventId/rounds/:roundNumber/lock', lockRoundHandler);
+adminEventRouter.post('/:eventId/rounds/:roundNumber/finish', lockRoundHandler);
 
 // -------------------- AUDIT LOGS --------------------
 

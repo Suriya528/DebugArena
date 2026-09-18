@@ -18,7 +18,7 @@ import { DynamicRound } from '../models/DynamicRound.js';
 import { getRemainingSeconds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
-import { broadcastToAdmins } from '../services/socketService.js';
+import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
 import { User } from '../models/User.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { generateQuestionVariant } from '../services/dnaService.js';
@@ -695,7 +695,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     }
 
     const isQualifiedWaitingNextRound = roundNumber > 1 && round.status !== 'active';
-    const nextRoundAvailable = roundNumber > 1 && round.status === 'active' && currentProgress.status !== 'submitted';
+    const nextRoundAvailable = roundNumber > 1 && round.status === 'active' && currentProgress?.status !== 'submitted';
 
     res.json({
       competition: {
@@ -714,11 +714,11 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         remainingSeconds
       },
       progress: {
-        status: currentProgress.status,
-        totalScore: currentProgress.totalScore,
-        markedForReview: currentProgress.markedForReview,
-        violationCount: currentProgress.violationCount,
-        timeTakenSeconds: currentProgress.timeTakenSeconds,
+        status: currentProgress?.status || 'not_started',
+        totalScore: currentProgress?.totalScore || 0,
+        markedForReview: currentProgress?.markedForReview || [],
+        violationCount: currentProgress?.violationCount || 0,
+        timeTakenSeconds: currentProgress?.timeTakenSeconds || 0,
         isQualifiedWaitingNextRound,
         nextRoundAvailable,
         isFinalRound
@@ -1278,6 +1278,44 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
     }
 
     const { totalScore, timeTakenSeconds } = await finalizeParticipantRoundScore(userId, roundNumber);
+
+    // Auto-complete round if all active participants in this event have finished/submitted
+    if (req.user?.eventId) {
+      try {
+        const eventParticipants = await User.find({
+          role: 'participant',
+          eventId: req.user.eventId,
+          isDisqualified: false
+        }).select('_id');
+
+        const totalParticipants = eventParticipants.length;
+        const participantIds = eventParticipants.map(u => u._id);
+
+        const finishedParticipants = await RoundProgress.countDocuments({
+          userId: { $in: participantIds },
+          roundNumber,
+          status: { $in: ['submitted', 'eliminated'] }
+        });
+
+        if (totalParticipants > 0 && finishedParticipants >= totalParticipants) {
+          const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
+          if (dynRound && dynRound.status !== 'completed') {
+            dynRound.status = 'completed';
+            dynRound.endedAt = new Date();
+            await dynRound.save();
+            broadcastToAll('round:locked', {
+              eventId: req.user.eventId,
+              roundNumber,
+              message: `Round ${roundNumber} has concluded.`
+            });
+            broadcastToAll('round:completed', { eventId: req.user.eventId, roundNumber });
+            broadcastToAdmins('admin:round_locked', { eventId: req.user.eventId, roundNumber, status: 'completed' });
+          }
+        }
+      } catch (checkErr) {
+        console.error('Auto-round completion check error:', checkErr);
+      }
+    }
 
     const responsePayload = {
       success: true,
