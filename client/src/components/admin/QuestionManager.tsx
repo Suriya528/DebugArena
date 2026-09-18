@@ -36,6 +36,7 @@ import { VariantPreviewModal } from './VariantPreviewModal.js';
 import { AddQuestionModal } from './AddQuestionModal.js';
 import { QuestionImportModal } from './QuestionImportModal.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { CodingProblemDetails } from '../common/CodingProblemDetails.js';
 
 // Helper to render markdown bolding and inline code
 const renderInlineMarkdown = (text: string) => {
@@ -1272,94 +1273,76 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                       {/* EXPANDED ACCORDION VIEW */}
                       {isExpanded && (
                         <div className="my-4 pt-4 border-t border-slate-800/80 space-y-4 animate-in fade-in duration-150 text-left">
-                          {/* Full Problem Prompt */}
-                          <div>
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
-                              <BookOpen className="w-3.5 h-3.5 text-purple-400" /> Full Problem Prompt:
-                            </div>
-                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
-                              {item.prompt}
-                            </div>
-                          </div>
-
-                          {/* Explanation if present */}
-                          {item.explanation && (
-                            <div className="p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 text-xs text-indigo-300">
-                              <span className="font-bold text-indigo-200">💡 Explanation / Notes: </span>
-                              {item.explanation}
-                            </div>
-                          )}
-
-                          {/* MCQ Options Inspector */}
-                          {item.type === 'mcq' && item.options && item.options.length > 0 && (
-                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Multiple Choice Options & Key:
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {item.options.map((opt: any, optIdx: number) => {
-                                  const optText = typeof opt === 'string' ? opt : opt.text;
-                                  const isCorrect = typeof opt === 'object' ? opt.isCorrect : optIdx === 0;
-                                  return (
-                                    <div
-                                      key={optIdx}
-                                      className={`text-xs p-3 rounded-xl flex items-center gap-2.5 border font-mono ${
-                                        isCorrect
-                                          ? 'bg-emerald-500/10 text-emerald-200 border-emerald-500/40 font-bold'
-                                          : 'bg-slate-900/70 text-slate-300 border-slate-800'
-                                      }`}
-                                    >
-                                      <span
-                                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                                          isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
-                                        }`}
-                                      >
-                                        {String.fromCharCode(65 + optIdx)}
-                                      </span>
-                                      <span className="flex-1 break-words">{optText}</span>
-                                      {isCorrect && (
-                                        <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 flex items-center gap-1">
-                                          <Check className="w-3 h-3" /> Correct
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Coding / Debugging / SQL Starter Code Inspector */}
-                          {(item.type === 'coding' || item.type === 'debugging' || item.type === 'sql') && (
-                            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                                  <FileCode className="w-3.5 h-3.5 text-indigo-400" /> Starter Code Template:
+                          {item.type === 'mcq' ? (
+                            <>
+                              {/* Full Problem Prompt */}
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                                  <BookOpen className="w-3.5 h-3.5 text-purple-400" /> Full Problem Prompt:
                                 </div>
-                                {starterLanguages.length > 1 && (
-                                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                                    {starterLanguages.map(lang => (
-                                      <button
-                                        key={lang}
-                                        onClick={() => setActiveCodeLangTab(prev => ({ ...prev, [item._id]: lang }))}
-                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                                          currentLang === lang
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'text-slate-400 hover:text-white'
-                                        }`}
-                                      >
-                                        {lang.toUpperCase()}
-                                      </button>
-                                    ))}
+                                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
+                                  {item.prompt}
+                                </div>
+                              </div>
+
+                              {/* Explanation if present */}
+                              {item.explanation && (
+                                <div className="p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30 text-xs text-indigo-300">
+                                  <span className="font-bold text-indigo-200">💡 Explanation / Notes: </span>
+                                  {item.explanation}
+                                </div>
+                              )}
+
+                              {/* MCQ Options Inspector */}
+                              {item.options && item.options.length > 0 && (
+                                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Multiple Choice Options & Key:
                                   </div>
-                                )}
-                              </div>
-                              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800/80 overflow-x-auto max-h-56">
-                                <pre className="text-xs text-indigo-200/90 font-mono whitespace-pre-wrap leading-relaxed">
-                                  {currentStarterCode || '// No starter code configured for this language.'}
-                                </pre>
-                              </div>
-                            </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {item.options.map((opt: any, optIdx: number) => {
+                                      const optText = typeof opt === 'string' ? opt : opt.text;
+                                      const isCorrect = typeof opt === 'object' ? opt.isCorrect : optIdx === 0;
+                                      return (
+                                        <div
+                                          key={optIdx}
+                                          className={`text-xs p-3 rounded-xl flex items-center gap-2.5 border font-mono ${
+                                            isCorrect
+                                              ? 'bg-emerald-500/10 text-emerald-200 border-emerald-500/40 font-bold'
+                                              : 'bg-slate-900/70 text-slate-300 border-slate-800'
+                                          }`}
+                                        >
+                                          <span
+                                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                              isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
+                                            }`}
+                                          >
+                                            {String.fromCharCode(65 + optIdx)}
+                                          </span>
+                                          <span className="flex-1 break-words">{optText}</span>
+                                          {isCorrect && (
+                                            <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 flex items-center gap-1">
+                                              <Check className="w-3 h-3" /> Correct
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <CodingProblemDetails
+                              question={{
+                                ...item,
+                                starterCode: starterCodeObj,
+                                allowedLanguages: starterLanguages.length > 0 ? starterLanguages : undefined
+                              }}
+                              activeLanguage={currentLang}
+                              onLanguageChange={(lang) => setActiveCodeLangTab(prev => ({ ...prev, [item._id]: lang }))}
+                              showSampleCases={false}
+                            />
                           )}
 
                           {/* Test Cases Table */}
@@ -1853,11 +1836,12 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                             </div>
                           </div>
                         ) : (
-                          <div>
-                            <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-1">Problem Statement</h4>
-                            <div className="text-slate-300 font-mono whitespace-pre-wrap bg-slate-950 p-4 rounded-xl border border-slate-800/60 leading-relaxed">
-                              {q.prompt}
-                            </div>
+                          <div className="space-y-4">
+                            <CodingProblemDetails
+                              question={q}
+                              activeLanguage={(q as any).language || (q.allowedLanguages && q.allowedLanguages[0]) || 'python'}
+                              showSampleCases={false}
+                            />
                           </div>
                         )}
 

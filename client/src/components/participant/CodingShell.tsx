@@ -18,6 +18,7 @@ import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
 import { useTheme } from '../../context/ThemeContext.js';
+import { CodingProblemDetails } from '../common/CodingProblemDetails.js';
 
 interface CodingShellProps {
   questions: Question[];
@@ -387,45 +388,14 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               </h1>
             </div>
 
-            {/* Markdown / Prompt Body */}
-            <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-sans space-y-3">
-              {currentQ.prompt}
-            </div>
-
-            {/* Sample Test Cases (Visible) */}
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                Sample Test Cases
-              </h3>
-              <div className="space-y-3">
-                {(currentQ.testCases || [])
-                  .filter(tc => !tc.isHidden)
-                  .map((tc, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono space-y-2"
-                    >
-                      <div className="text-slate-400 font-semibold flex justify-between">
-                        <span>Sample Case #{idx + 1}</span>
-                        <span className="text-slate-500 font-normal">Weight: {tc.weight} pts</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Input:</span>
-                        <pre className="bg-slate-900 p-2 rounded text-slate-200 overflow-x-auto whitespace-pre">
-                          {tc.input || '(no input)'}
-                        </pre>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[11px]">Expected Output:</span>
-                        <pre className="bg-slate-900 p-2 rounded text-emerald-400 overflow-x-auto whitespace-pre">
-                          {tc.expectedOutput}
-                        </pre>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
+            {/* Structured Problem Breakdown: Scenario, Input, Output, Error Code, Sample Cases */}
+            <CodingProblemDetails
+              question={currentQ}
+              activeLanguage={currentLang}
+              onLanguageChange={handleLanguageChange}
+              onResetToErrorCode={handleResetToStarter}
+              showSampleCases={true}
+            />
           </div>
         </div>
 

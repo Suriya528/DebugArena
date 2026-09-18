@@ -506,13 +506,14 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
           {/* Problem Statement Prompt */}
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1.5">
-              Problem Statement / Prompt (Markdown supported)
+            <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
+              <span>Problem Statement / Prompt</span>
+              <span className="text-[10px] text-slate-400 font-normal">Supports ### Scenario, ### Input Format, ### Output Format, ### Error Code</span>
             </label>
             <textarea
-              rows={4}
+              rows={5}
               required
-              placeholder="Describe the problem, input/output formats, and the buggy behavior..."
+              placeholder={`### Scenario\nDescribe the problem background and requirements...\n\n### Input Format\n- Line 1: Integer N...\n\n### Output Format\n- Print the computed result...\n\n### Error Code (Bug to Debug)\nExplain the defect or bug in the starter code...`}
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-purple-500 leading-relaxed resize-y"
@@ -598,15 +599,15 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
               {/* Starter Code */}
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
-                  <span>Starter Code ({language})</span>
-                  <span className="text-[10px] text-slate-500">Provide the baseline code containing the bug</span>
+                  <span>Error Code / Starter Code ({language})</span>
+                  <span className="text-[10px] text-rose-400 font-semibold">Flawed code that participant needs to debug</span>
                 </label>
                 <textarea
                   rows={6}
-                  placeholder={`// Starter code in ${language}\n#include <iostream>\n...`}
+                  placeholder={`// Error code in ${language} containing the defect that participants must debug\n...`}
                   value={starterCode}
                   onChange={e => setStarterCode(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-emerald-300 font-mono focus:outline-none focus:border-purple-500 leading-relaxed resize-y"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-rose-200 font-mono focus:outline-none focus:border-purple-500 leading-relaxed resize-y"
                 />
               </div>
 

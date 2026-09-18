@@ -654,7 +654,7 @@ export const DEFAULT_ROUND_2_CODING = [
     orderIndex: 1,
     type: 'coding' as const,
     title: 'Fix Array Reversal with Subarray Indices',
-    prompt: `### Problem Description
+    prompt: `### Scenario
 You are given a list of integers and two 0-based indices \`start\` and \`end\`.
 Reverse only the subarray between \`start\` and \`end\` (inclusive) and print the resulting array as space-separated integers.
 
@@ -666,8 +666,8 @@ Reverse only the subarray between \`start\` and \`end\` (inclusive) and print th
 ### Output Format
 - Print the modified array elements separated by spaces.
 
-### Bug in Starter Code
-The provided code contains an off-by-one error and index swap bug. Fix it!`,
+### Error Code (Bug to Debug)
+The provided starter code contains an off-by-one index bound error and overwrites elements without proper temporary swapping.`,
     marks: 30,
     allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
@@ -801,17 +801,20 @@ public class Solution {
     orderIndex: 2,
     type: 'coding' as const,
     title: 'Fix Target Sum Pair Finder',
-    prompt: `### Problem Description
-Given a sorted array of distinct integers and a target value \`target\`, determine if there exist two indices such that \`arr[i] + arr[j] == target\`.
+    prompt: `### Scenario
+Given a sorted array of distinct integers and a target value \`target\`, determine if there exist two distinct indices such that \`arr[i] + arr[j] == target\`.
 Print \`YES\` if such a pair exists, otherwise \`NO\`.
 
 ### Input Format
-- Line 1: Integer \`N\`
+- Line 1: Integer \`N\` (number of elements)
 - Line 2: \`N\` space-separated sorted integers
 - Line 3: Integer \`target\`
 
-### Bug in Starter Code
-The two-pointer search incorrectly increments/decrements pointers in the wrong direction.`,
+### Output Format
+- Print \`YES\` if two elements sum to target, otherwise print \`NO\`.
+
+### Error Code (Bug to Debug)
+The two-pointer search incorrectly increments and decrements pointers in inverted directions, causing the search window to collapse improperly.`,
     marks: 35,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
     starterCode: {
@@ -920,7 +923,7 @@ public class Solution {
     orderIndex: 3,
     type: 'coding' as const,
     title: 'Fix Longest Consecutive Sequence Counter',
-    prompt: `### Problem Description
+    prompt: `### Scenario
 Given an unsorted array of integers, output the length of the longest consecutive elements sequence.
 For example, in \`[100, 4, 200, 1, 3, 2]\`, the longest consecutive elements sequence is \`[1, 2, 3, 4]\`, with length \`4\`.
 
@@ -929,7 +932,10 @@ For example, in \`[100, 4, 200, 1, 3, 2]\`, the longest consecutive elements seq
 - Line 2: \`N\` space-separated integers
 
 ### Output Format
-- Single integer representing the max consecutive length (0 if empty).`,
+- Single integer representing the max consecutive length (0 if empty).
+
+### Error Code (Bug to Debug)
+The sequence start detector incorrectly checks for \`num + 1\` instead of verifying that \`num - 1\` is absent, disrupting the consecutive sequence chain.`,
     marks: 35,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
     starterCode: {
@@ -1058,14 +1064,16 @@ export const DEFAULT_ROUND_3_CODING = [
     orderIndex: 1,
     type: 'coding' as const,
     title: 'Fix Valid Parentheses Stack Underflow',
-    prompt: `### Problem Description
-Given a string \`s\` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.
-Print \`VALID\` if valid, or \`INVALID\` if invalid.
+    prompt: `### Scenario
+Given a string \`s\` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the brackets in the input string are balanced and valid.
 
 ### Input Format
 - Single line containing the string \`s\`.
 
-### Bug in Starter Code
+### Output Format
+- Print \`VALID\` if all brackets are properly paired and closed in correct order, otherwise print \`INVALID\`.
+
+### Error Code (Bug to Debug)
 The stack popping code does not guard against stack underflow when an extra closing bracket appears, throwing an unchecked exception.`,
     marks: 50,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
@@ -1171,15 +1179,19 @@ public class Solution {
     orderIndex: 2,
     type: 'coding' as const,
     title: 'Fix Matrix Transpose Dimension Flipping',
-    prompt: `### Problem Description
-Given an \`R x C\` matrix of integers, output its transpose of dimensions \`C x R\`.
+    prompt: `### Scenario
+Given an \`R x C\` matrix of integers, output its transpose with dimensions \`C x R\`.
+Each row in the transposed matrix corresponds to a column in the original matrix.
 
 ### Input Format
 - Line 1: Two integers \`R\` and \`C\`
 - Next \`R\` lines: \`C\` space-separated integers
 
 ### Output Format
-- \`C\` lines with \`R\` space-separated integers per line.`,
+- \`C\` lines with \`R\` space-separated integers per line.
+
+### Error Code (Bug to Debug)
+The iteration loops invert row and column dimension bounds during printing, causing out-of-bounds index errors for non-square matrices.`,
     marks: 50,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
     starterCode: {
@@ -1291,16 +1303,19 @@ export const DEFAULT_TIE_BREAKER_QUESTION = {
   orderIndex: 1,
   type: 'coding' as const,
   title: 'Sudden-Death: Maximum Subarray Difference',
-  prompt: `### Tie-Breaker Problem Description
-Given an array of integers of length \`N\`, compute the maximum difference \`arr[j] - arr[i]\` such that \`j > i\`.
-If no pair exists where \`j > i\` yields a positive profit, output \`0\`.
+  prompt: `### Scenario
+Given an array of integers of length \`N\`, compute the maximum difference \`arr[j] - arr[i]\` such that \`j > i\` (e.g. max profit from buying on day i and selling on day j).
+If no pair exists where \`j > i\` yields a positive difference, output \`0\`.
 
 ### Input Format
 - Line 1: Integer \`N\`
 - Line 2: \`N\` space-separated integers
 
 ### Output Format
-- Single integer representing the maximum positive difference (or 0).`,
+- Single integer representing the maximum positive difference (or 0 if no positive difference is possible).
+
+### Error Code (Bug to Debug)
+The algorithm inverts the difference subtraction (calculating \`min_val - x\` instead of \`x - min_val\`) and incorrectly updates the prefix tracker with max instead of min.`,
   marks: 100,
   allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
   starterCode: {
@@ -1317,16 +1332,84 @@ def solve():
         print(0)
         return
     
-    # O(N) single pass tracking min_element
+    # BUGGY: inverts subtraction (min_val - x) and tracks max instead of min
     min_val = arr[0]
     max_diff = 0
     for x in arr[1:]:
-        max_diff = max(max_diff, x - min_val)
-        min_val = min(min_val, x)
+        max_diff = max(max_diff, min_val - x) # BUG: should be x - min_val
+        min_val = max(min_val, x)             # BUG: should be min(min_val, x)
     print(max_diff)
 
 if __name__ == '__main__':
     solve()
+`,
+    javascript: `const fs = require('fs');
+const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+if (input.length > 0) {
+  const n = parseInt(input[0]);
+  const arr = input.slice(1, n + 1).map(Number);
+  if (n < 2) {
+    console.log(0);
+    process.exit(0);
+  }
+  let minVal = arr[0];
+  let maxDiff = 0;
+  for (let i = 1; i < arr.length; i++) {
+    const x = arr[i];
+    maxDiff = Math.max(maxDiff, minVal - x); // BUG: inverted subtraction
+    minVal = Math.max(minVal, x);           // BUG: should be Math.min
+  }
+  console.log(maxDiff);
+}
+`,
+    cpp: `#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> arr(n);
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    if (n < 2) {
+        cout << 0 << endl;
+        return 0;
+    }
+    int min_val = arr[0];
+    int max_diff = 0;
+    for (int i = 1; i < n; i++) {
+        int x = arr[i];
+        max_diff = max(max_diff, min_val - x); // BUG: inverted subtraction
+        min_val = max(min_val, x);             // BUG: should be min
+    }
+    cout << max_diff << endl;
+    return 0;
+}
+`,
+    java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        int[] arr = new int[n];
+        for (int i = 0; i < n; i++) arr[i] = sc.nextInt();
+        if (n < 2) {
+            System.out.println(0);
+            return;
+        }
+        int minVal = arr[0];
+        int maxDiff = 0;
+        for (int i = 1; i < n; i++) {
+            int x = arr[i];
+            maxDiff = Math.max(maxDiff, minVal - x); // BUG: inverted subtraction
+            minVal = Math.max(minVal, x);           // BUG: should be min
+        }
+        System.out.println(maxDiff);
+    }
+}
 `
   },
   testCases: [

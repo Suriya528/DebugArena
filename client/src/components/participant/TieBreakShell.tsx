@@ -4,6 +4,7 @@ import { Play, Send, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api } from '../../services/api.js';
 import { useTheme } from '../../context/ThemeContext.js';
+import { CodingProblemDetails } from '../common/CodingProblemDetails.js';
 
 interface TieBreakShellProps {
   question: Question;
@@ -29,6 +30,20 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [score, setScore] = useState<number>(attempt?.score || 0);
   const [mobileTab, setMobileTab] = useState<'problem' | 'code' | 'results'>('problem');
+
+  const handleLanguageChange = (newLang: string) => {
+    setLanguage(newLang);
+    const prevStarter = (question.starterCode && (question.starterCode as any)[language]) || '';
+    const newStarter = (question.starterCode && (question.starterCode as any)[newLang]) || '';
+    if (!code || code === prevStarter) {
+      setCode(newStarter);
+    }
+  };
+
+  const handleResetToStarter = () => {
+    const starter = (question.starterCode && (question.starterCode as any)[language]) || '';
+    setCode(starter);
+  };
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -128,23 +143,14 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
         <div className={`lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 overflow-y-auto space-y-4 ${
           mobileTab === 'problem' ? 'block' : 'hidden lg:block'
         }`}>
-          <h1 className="text-xl font-bold text-white">{question.title}</h1>
-          <div className="text-sm text-slate-300 whitespace-pre-wrap font-sans">
-            {question.prompt}
-          </div>
-
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Sample Cases
-            </h3>
-            {(question.testCases || []).map((tc, idx) => (
-              <div key={idx} className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono mb-2">
-                <div className="text-slate-400 mb-1">Sample #{idx + 1}</div>
-                <div>Input: <span className="text-slate-200">{tc.input}</span></div>
-                <div>Expected: <span className="text-emerald-400">{tc.expectedOutput}</span></div>
-              </div>
-            ))}
-          </div>
+          <h1 className="text-xl font-bold text-white mb-2">{question.title}</h1>
+          <CodingProblemDetails
+            question={question}
+            activeLanguage={language}
+            onLanguageChange={handleLanguageChange}
+            onResetToErrorCode={handleResetToStarter}
+            showSampleCases={true}
+          />
         </div>
 
         <div className={`lg:col-span-7 flex flex-col bg-[#1e1e1e] border border-slate-800 rounded-2xl overflow-hidden ${
