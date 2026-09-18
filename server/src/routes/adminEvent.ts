@@ -296,8 +296,8 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
       adminAccessTokenHash,
       participantTokenCipher,
       adminTokenCipher,
-      status: 'live',
-      startedAt: new Date(),
+      status: 'draft',
+      startedAt: null,
       rules: rules || [
         'Full-screen proctoring is strictly enforced throughout the competition.',
         'Zero negative marking on all debugging challenges.',
@@ -373,29 +373,14 @@ adminEventRouter.post('/', async (req: AuthenticatedRequest, res: Response): Pro
         advancementQuota: resolvedQuota,
         advancementRule: r.advancementRule || 'top_n',
         tieResolutionStrategy: r.tieResolutionStrategy || 'expand',
-        status: sequentialRoundNum === 1 ? 'active' : 'pending',
-        startedAt: sequentialRoundNum === 1 ? new Date() : null
+        status: 'pending',
+        startedAt: null,
+        endedAt: null
       });
       createdRounds.push(newRound);
     }
 
-    // Auto-seed standard curated questions for this event's rounds (Round 1 MCQs, Round 2 Coding, Round 3 Coding, Tie-Breaker)
-    await seedEventRoundQuestions(event._id, effectiveCollegeId);
-
-    // Keep Competition model in sync with latest event
-    await Competition.findOneAndUpdate(
-      {},
-      {
-        title: event.name,
-        currentRoundNumber: 1,
-        status: 'active',
-        violationLimit: event.scoringConfig?.violationLimit || 3,
-        autoSubmitOnViolation: true
-      },
-      { upsert: true }
-    );
-
-    await recordAudit(req, 'EVENT_CREATED', 'Event', event._id.toString(), { name, code: cleanCode, roundsCount: createdRounds.length }, '', effectiveCollegeId, event._id);
+    await recordAudit(req, 'EVENT_CREATED', 'Event', event._id.toString(), { name, code: cleanCode, roundsCount: createdRounds.length }, 'Event created in draft status. Admin must select questions before starting competition.', effectiveCollegeId, event._id);
 
     const eventObj = event.toObject();
     delete (eventObj as any).participantAccessTokenHash;
@@ -666,26 +651,37 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
     if (rounds.length === 0) {
-      res.status(400).json({ error: 'Cannot start event. At least one round must be configured.' });
+      res.status(400).json({ error: 'Cannot start event. At least one competition round must be configured.' });
       return;
     }
+
+    const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number }> = [];
     for (const r of rounds) {
       const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
       const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
       if (qCount < targetCount) {
-        res.status(400).json({
-          error: `Cannot start event. Round ${r.roundNumber} requires ${targetCount} questions but only ${qCount} are assigned.`,
-          incompleteRound: r.roundNumber,
-          requiredCount: targetCount,
-          assignedCount: qCount
+        incompleteRounds.push({
+          roundNumber: r.roundNumber,
+          title: r.title,
+          assignedCount: qCount,
+          requiredCount: targetCount
         });
-        return;
       }
+    }
+
+    if (incompleteRounds.length > 0) {
+      const summaryList = incompleteRounds.map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected`).join('; ');
+      res.status(400).json({
+        error: `Cannot start event. The administrator must select questions for every round before the competition can go live. Incomplete rounds: ${summaryList}`,
+        incompleteRounds
+      });
+      return;
     }
 
     const now = new Date();
     event.status = 'live';
     event.startedAt = now;
+    event.isSetupValid = true;
     await event.save();
 
     const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
@@ -695,8 +691,32 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
       await round1.save();
     }
 
+    // Keep Competition model in sync with live event
+    await Competition.findOneAndUpdate(
+      {},
+      {
+        title: event.name,
+        currentRoundNumber: 1,
+        status: 'active',
+        violationLimit: event.scoringConfig?.violationLimit || 3,
+        autoSubmitOnViolation: true
+      },
+      { upsert: true }
+    );
+
     broadcastToAll('event:started', { eventId: event._id, startedAt: now, currentRound: 1 });
-    await recordAudit(req, 'EVENT_STARTED', 'Event', event._id.toString(), { startedAt: now }, '', event.collegeId, event._id);
+    if (round1) {
+      broadcastToAll('round:started', {
+        eventId: event._id.toString(),
+        roundNumber: 1,
+        title: round1.title,
+        type: round1.type,
+        durationMinutes: round1.durationMinutes,
+        startedAt: now
+      });
+    }
+
+    await recordAudit(req, 'EVENT_STARTED', 'Event', event._id.toString(), { startedAt: now, roundsCount: rounds.length }, '', event.collegeId, event._id);
 
     res.json({ message: 'Event is now LIVE!', event, startedAt: now });
   } catch (err) {
@@ -747,6 +767,31 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
 
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
 
+    let allRoundsQuestionsReady = rounds.length > 0;
+    const unreadyRounds: Array<{ roundNumber: number; title: string; assignedQuestionCount: number; targetQuestionCount: number }> = [];
+    const enrichedRounds = await Promise.all(
+      rounds.map(async (r) => {
+        const assignedQuestionCount = await Question.countDocuments({ eventId: r.eventId, roundNumber: r.roundNumber });
+        const targetQuestionCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+        const isQuestionReady = assignedQuestionCount >= targetQuestionCount;
+        if (!isQuestionReady) {
+          allRoundsQuestionsReady = false;
+          unreadyRounds.push({
+            roundNumber: r.roundNumber,
+            title: r.title,
+            assignedQuestionCount,
+            targetQuestionCount
+          });
+        }
+        return {
+          ...r.toObject(),
+          assignedQuestionCount,
+          targetQuestionCount,
+          isQuestionReady
+        };
+      })
+    );
+
     const eventObj = event.toObject();
     let adminToken: string | null = null;
     if (event.adminTokenCipher) {
@@ -763,7 +808,9 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
 
     res.json({
       event: eventObj,
-      rounds,
+      rounds: enrichedRounds,
+      allRoundsQuestionsReady,
+      unreadyRounds,
       participantLink: `/join/${event.code}`,
       adminLink: (eventObj as any).adminLink
     });
@@ -1152,12 +1199,41 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
       return;
     }
 
+    // Strict question presence & quota check
+    const qCount = await Question.countDocuments({ eventId, roundNumber: parsedRound });
+    const targetCount = round.questionCount || (round.type === 'mcq' ? 10 : 3);
+    if (qCount < targetCount) {
+      res.status(400).json({
+        error: `Cannot start Round ${parsedRound}. Admin must select questions before starting this round. Current: ${qCount}/${targetCount} questions selected.`,
+        roundNumber: parsedRound,
+        requiredCount: targetCount,
+        assignedCount: qCount
+      });
+      return;
+    }
+
     round.status = 'active';
     round.startedAt = new Date();
     await round.save();
 
     event.status = 'live';
+    if (!event.startedAt) {
+      event.startedAt = new Date();
+    }
     await event.save();
+
+    // Sync Competition model
+    await Competition.findOneAndUpdate(
+      {},
+      {
+        title: event.name,
+        currentRoundNumber: parsedRound,
+        status: 'active',
+        violationLimit: event.scoringConfig?.violationLimit || 3,
+        autoSubmitOnViolation: true
+      },
+      { upsert: true }
+    );
 
     await recordAudit(req, 'ROUND_STARTED', 'DynamicRound', round._id.toString(), { roundNumber: parsedRound }, '', event.collegeId, eventId);
 

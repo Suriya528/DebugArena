@@ -128,6 +128,7 @@ const FormattedPrompt: React.FC<{ content: string }> = ({ content }) => {
 
 interface QuestionManagerProps {
   eventId?: string;
+  defaultRound?: number;
   defaultView?: 'round_questions' | 'question_bank';
   rounds?: DynamicRound[];
   event?: Event | any;
@@ -135,6 +136,7 @@ interface QuestionManagerProps {
 
 export const QuestionManager: React.FC<QuestionManagerProps> = ({
   eventId: propEventId,
+  defaultRound,
   defaultView = 'round_questions',
   rounds: propRounds,
   event: propEvent
@@ -156,7 +158,16 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
 
   // Round questions state
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [selectedRound, setSelectedRound] = useState<number>(1);
+  const [selectedRound, setSelectedRound] = useState<number>(defaultRound || 1);
+
+  // Sync selectedRound if defaultRound prop changes externally
+  useEffect(() => {
+    if (defaultRound) {
+      setSelectedRound(defaultRound);
+      if (propEventId) setActiveView('round_questions');
+    }
+  }, [defaultRound, propEventId]);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [seedingRound, setSeedingRound] = useState<boolean>(false);
   const [populatingAll, setPopulatingAll] = useState<boolean>(false);

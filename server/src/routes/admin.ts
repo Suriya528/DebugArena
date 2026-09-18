@@ -81,21 +81,9 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
     let dynamicRound = null;
     if (eventId) {
       dynamicRound = await DynamicRound.findOne({ eventId, roundNumber });
-      if (dynamicRound) {
-        dynamicRound.status = 'active';
-        dynamicRound.startedAt = new Date();
-        dynamicRound.endedAt = null;
-        await dynamicRound.save();
-      }
     }
 
     const round = await Round.findOne({ roundNumber });
-    if (round) {
-      round.status = 'active';
-      round.startedAt = new Date();
-      round.endedAt = null;
-      await round.save();
-    }
 
     if (!round && !dynamicRound) {
       res.status(404).json({ error: 'Round not found' });
@@ -103,6 +91,35 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
     }
 
     const effectiveRound = dynamicRound || round!;
+
+    // Verify question presence & quota before starting round
+    const qFilter: Record<string, any> = { roundNumber };
+    if (eventId) qFilter.eventId = eventId;
+    const qCount = await Question.countDocuments(qFilter);
+    const targetCount = (dynamicRound ? dynamicRound.questionCount : null) || (roundNumber === 1 ? 10 : 3);
+    if (qCount < targetCount) {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}. Admin must select questions before starting this round. Current: ${qCount}/${targetCount} questions selected.`,
+        roundNumber,
+        requiredCount: targetCount,
+        assignedCount: qCount
+      });
+      return;
+    }
+
+    if (dynamicRound) {
+      dynamicRound.status = 'active';
+      dynamicRound.startedAt = new Date();
+      dynamicRound.endedAt = null;
+      await dynamicRound.save();
+    }
+
+    if (round) {
+      round.status = 'active';
+      round.startedAt = new Date();
+      round.endedAt = null;
+      await round.save();
+    }
 
     // Update competition currentRoundNumber
     await Competition.updateOne({}, { currentRoundNumber: roundNumber, status: 'active' });

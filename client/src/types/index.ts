@@ -87,6 +87,9 @@ export interface DynamicRound {
   startedAt: string | null;
   endedAt?: string | null;
   isFrozen?: boolean;
+  assignedQuestionCount?: number;
+  targetQuestionCount?: number;
+  isQuestionReady?: boolean;
 }
 
 export interface AuditLog {

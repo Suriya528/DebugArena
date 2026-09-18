@@ -5,16 +5,17 @@ import { api } from '../../services/api.js';
 interface PreEventCheckModalProps {
   isOpen: boolean;
   onClose: () => void;
+  eventId?: string;
 }
 
-export const PreEventCheckModal: React.FC<PreEventCheckModalProps> = ({ isOpen, onClose }) => {
+export const PreEventCheckModal: React.FC<PreEventCheckModalProps> = ({ isOpen, onClose, eventId }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   const runCheck = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/admin/control-room/readiness');
+      const res = await api.get(`/admin/control-room/readiness${eventId ? `?eventId=${eventId}` : ''}`);
       setData(res.data);
     } catch (err) {
       console.error('Failed to run readiness check:', err);

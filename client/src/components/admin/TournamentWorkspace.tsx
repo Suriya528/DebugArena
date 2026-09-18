@@ -78,6 +78,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedQuestionRound, setSelectedQuestionRound] = useState<number | undefined>(undefined);
 
   // Link copy states
   const [copiedParticipantLink, setCopiedParticipantLink] = useState(false);
@@ -96,6 +97,13 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
   // Leaderboard subview state
   const [leaderboardSubView, setLeaderboardSubView] = useState<'standings' | 'advance' | 'tiebreak'>('standings');
+
+  // Auto-refresh data when switching back to overview or control tab
+  useEffect(() => {
+    if (activeTab === 'overview' || activeTab === 'control') {
+      fetchWorkspaceData();
+    }
+  }, [activeTab]);
 
   const fetchWorkspaceData = async () => {
     try {
@@ -229,6 +237,18 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
   const handleStartEvent = async () => {
     if (!event) return;
+
+    // Check question readiness across all rounds
+    const unready = rounds.filter(r => !r.isQuestionReady);
+    if (unready.length > 0) {
+      const msg = `Cannot start tournament. The administrator must select questions for all rounds before going live.\n\nIncomplete rounds:\n${unready.map(r => `• Stage ${r.roundNumber} ("${r.title}"): ${r.assignedQuestionCount || 0}/${r.targetQuestionCount || r.questionCount} questions selected`).join('\n')}\n\nWould you like to open Question Manager now to select questions for Stage ${unready[0].roundNumber}?`;
+      if (window.confirm(msg)) {
+        setSelectedQuestionRound(unready[0].roundNumber);
+        setActiveTab('questions');
+      }
+      return;
+    }
+
     if (
       !window.confirm(
         `Start the tournament "${event.name}" and begin the live timer now? Eligible participants will immediately receive Round 1 challenges.`
@@ -926,6 +946,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
       {activeTab === 'questions' && (
         <QuestionManager
           eventId={eventId}
+          defaultRound={selectedQuestionRound}
           defaultView="round_questions"
           rounds={rounds}
           event={event}
@@ -998,9 +1019,18 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                       )}
                     </span>
                   </div>
-                  <h4 className="font-bold text-white text-sm truncate">{r.title}</h4>
-                  <div className="text-[11px] text-slate-400 font-mono mt-1">
-                    {r.type.toUpperCase()} • {r.durationMinutes} Mins
+                  <h4 className="font-bold text-white text-sm truncate" title={r.title}>{r.title}</h4>
+                  <div className="text-[11px] text-slate-400 font-mono mt-1 flex items-center justify-between">
+                    <span>{r.type.toUpperCase()} • {r.durationMinutes}m</span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                        r.isQuestionReady
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {r.assignedQuestionCount ?? 0} / {r.targetQuestionCount || r.questionCount} Qs
+                    </span>
                   </div>
                   <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between">
                     {r.status === 'completed' || r.status === 'locked' ? (
@@ -1043,23 +1073,48 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                           <span>End Round</span>
                         </button>
                       </div>
-                    ) : (
+                    ) : !r.isQuestionReady ? (
                       <button
-                        onClick={async () => {
-                          if (window.confirm(`Start Round ${r.roundNumber} now for all active contestants?`)) {
-                            try {
-                              await startDynamicRound(eventId, r.roundNumber);
-                              fetchWorkspaceData();
-                            } catch (e: any) {
-                              alert(e.response?.data?.error || 'Failed to start round');
-                            }
-                          }
+                        onClick={() => {
+                          setSelectedQuestionRound(r.roundNumber);
+                          setActiveTab('questions');
                         }}
-                        className="w-full py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold flex items-center justify-center gap-1 cursor-pointer"
+                        className="w-full py-1.5 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Select questions for this round before starting"
                       >
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Start Round {r.roundNumber}</span>
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        <span>Select Questions ({r.assignedQuestionCount ?? 0}/{r.targetQuestionCount || r.questionCount})</span>
                       </button>
+                    ) : (
+                      <div className="w-full flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedQuestionRound(r.roundNumber);
+                            setActiveTab('questions');
+                          }}
+                          className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition-all"
+                          title="Review or edit questions"
+                        >
+                          <HelpCircle className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Start Round ${r.roundNumber} now for all active contestants?`)) {
+                              try {
+                                await startDynamicRound(eventId, r.roundNumber);
+                                fetchWorkspaceData();
+                              } catch (e: any) {
+                                alert(e.response?.data?.error || 'Failed to start round');
+                              }
+                            }
+                          }}
+                          className="flex-1 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Start Round {r.roundNumber}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1143,6 +1198,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
       <PreEventCheckModal
         isOpen={isPreCheckModalOpen}
         onClose={() => setIsPreCheckModalOpen(false)}
+        eventId={event._id}
       />
 
       {/* Unfreeze Rationale Modal */}

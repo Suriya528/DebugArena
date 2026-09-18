@@ -579,16 +579,12 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       await currentProgress.save();
     }
 
-    // Fetch questions for this round (Prioritize event-specific deployed questions)
+    // Fetch questions for this round (Strictly isolated to candidate's event)
     let questions: any[] = [];
     if (req.user?.eventId) {
       questions = await Question.find({ eventId: req.user.eventId, roundNumber }).sort({ orderIndex: 1 });
-    }
-    if (questions.length === 0) {
+    } else {
       questions = await Question.find({ roundNumber, eventId: null }).sort({ orderIndex: 1 });
-    }
-    if (questions.length === 0) {
-      questions = await Question.find({ roundNumber }).sort({ orderIndex: 1 });
     }
 
     // Lookup dynamic round for event-specific allowed languages
@@ -765,6 +761,16 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
       return;
     }
 
+    const targetQuestion = await Question.findById(questionId);
+    if (!targetQuestion) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (req.user?.eventId && targetQuestion.eventId && targetQuestion.eventId.toString() !== req.user.eventId.toString()) {
+      res.status(403).json({ error: 'Question does not belong to this competition event' });
+      return;
+    }
+
     const isTieBreak = roundNumber === 99;
     if (isTieBreak) {
       const activeTie = await TieBreak.findOne({ tiedUserIds: userId, status: 'active' });
@@ -911,6 +917,11 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     const question = await Question.findById(questionId);
     if (!question || question.type !== 'coding') {
       res.status(404).json({ error: 'Coding question not found' });
+      return;
+    }
+
+    if (req.user?.eventId && question.eventId && question.eventId.toString() !== req.user.eventId.toString()) {
+      res.status(403).json({ error: 'Question does not belong to this competition event' });
       return;
     }
 
@@ -1067,6 +1078,11 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     const question = await Question.findById(questionId);
     if (!question || question.type !== 'coding') {
       res.status(404).json({ error: 'Coding question not found' });
+      return;
+    }
+
+    if (req.user?.eventId && question.eventId && question.eventId.toString() !== req.user.eventId.toString()) {
+      res.status(403).json({ error: 'Question does not belong to this competition event' });
       return;
     }
 

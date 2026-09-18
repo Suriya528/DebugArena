@@ -7,6 +7,7 @@ import { RoundProgress } from '../models/RoundProgress.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { Question } from '../models/Question.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
+import { DynamicRound } from '../models/DynamicRound.js';
 import { executeSingleTestCase } from '../services/judgeService.js';
 import { getQuestionFairnessMetrics, executeAnomalyAction } from '../services/anomalyService.js';
 
@@ -120,9 +121,10 @@ adminControlRoomRouter.post('/anomaly-action', async (req: AuthenticatedRequest,
 });
 
 // GET /api/admin/control-room/readiness (Pre-Event System Health Inspector)
-adminControlRoomRouter.get('/readiness', async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+adminControlRoomRouter.get('/readiness', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const startTime = Date.now();
+    const eventId = req.query.eventId as string;
 
     // 1. Check Database
     const dbState = mongoose.connection.readyState === 1 ? 'OK' : 'ERROR';
@@ -135,13 +137,38 @@ adminControlRoomRouter.get('/readiness', async (_req: AuthenticatedRequest, res:
     const judgeHealthy = judgeTest.stdout.includes('HEALTH_CHECK_OK');
 
     // 3. Check Questions & Bank
-    const questionsCount = await Question.countDocuments();
     const bankCount = await QuestionTemplate.countDocuments();
+    let questionsReady = false;
+    let questionsDetail = '';
+    let participantCount = 0;
 
-    // 4. Check Participants
-    const participantCount = await User.countDocuments({ role: 'participant' });
+    if (eventId && mongoose.Types.ObjectId.isValid(eventId)) {
+      const dynamicRounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+      if (dynamicRounds.length === 0) {
+        questionsReady = false;
+        questionsDetail = 'No competition rounds configured for this event';
+      } else {
+        const roundStatuses = [];
+        let allMet = true;
+        for (const dr of dynamicRounds) {
+          const qCount = await Question.countDocuments({ eventId, roundNumber: dr.roundNumber });
+          const targetCount = dr.questionCount || (dr.type === 'mcq' ? 10 : 3);
+          const isMet = qCount >= targetCount;
+          if (!isMet) allMet = false;
+          roundStatuses.push(`R${dr.roundNumber}: ${qCount}/${targetCount}${isMet ? ' ✅' : ' ⚠️'}`);
+        }
+        questionsReady = allMet;
+        questionsDetail = roundStatuses.join(' | ');
+      }
+      participantCount = await User.countDocuments({ eventId, role: 'participant' });
+    } else {
+      const questionsCount = await Question.countDocuments();
+      questionsReady = questionsCount > 0;
+      questionsDetail = `${questionsCount} total questions active`;
+      participantCount = await User.countDocuments({ role: 'participant' });
+    }
 
-    const allPassed = dbState === 'OK' && judgeHealthy && questionsCount > 0 && participantCount > 0;
+    const allPassed = dbState === 'OK' && judgeHealthy && questionsReady && participantCount > 0;
 
     res.json({
       ready: allPassed,
@@ -149,7 +176,7 @@ adminControlRoomRouter.get('/readiness', async (_req: AuthenticatedRequest, res:
       checks: [
         { name: 'Database Connectivity', passed: dbState === 'OK', detail: `${dbPing}ms latency` },
         { name: 'Code Judge Sandbox', passed: judgeHealthy, detail: `${judgeLatencyMs}ms execution time` },
-        { name: 'Competition Questions', passed: questionsCount > 0, detail: `${questionsCount} questions active` },
+        { name: 'Round Questions Selection', passed: questionsReady, detail: questionsDetail },
         { name: 'Question Bank Library', passed: bankCount > 0, detail: `${bankCount} templates ready` },
         { name: 'Participant Accounts', passed: participantCount > 0, detail: `${participantCount} candidates registered` },
         { name: 'Timer Service', passed: true, detail: 'Server-authoritative clock active' },

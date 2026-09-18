@@ -130,6 +130,13 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
 
   const handleStartEvent = async () => {
     if (!activeEvent) return;
+
+    const unready = rounds.filter(r => !r.isQuestionReady);
+    if (unready.length > 0) {
+      alert(`Cannot start event. Questions must be selected for all rounds before starting.\n\nIncomplete rounds:\n${unready.map(r => `• Round ${r.roundNumber} ("${r.title}"): ${r.assignedQuestionCount || 0}/${r.targetQuestionCount || r.questionCount} questions selected`).join('\n')}`);
+      return;
+    }
+
     if (!window.confirm(`Start the event "${activeEvent.name}" and begin the live timer now? Contestants will immediately receive Round 1 challenges.`)) {
       return;
     }
@@ -847,16 +854,39 @@ export const EventManager: React.FC<EventManagerProps> = ({ onSelectEvent }) => 
                       <span className="flex items-center gap-1">
                         <Award className="w-3.5 h-3.5 text-slate-500" /> {r.totalMarks} pts
                       </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        r.isQuestionReady
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {r.assignedQuestionCount ?? 0}/{r.targetQuestionCount || r.questionCount} Qs
+                      </span>
                     </div>
 
                     {r.status !== 'active' && r.status !== 'completed' && (
-                      <button
-                        onClick={() => handleStartRound(r.roundNumber)}
-                        disabled={activeEvent.status === 'frozen'}
-                        className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <Play className="w-3.5 h-3.5" /> Start Round
-                      </button>
+                      !r.isQuestionReady ? (
+                        <button
+                          onClick={() => {
+                            if (typeof onSelectEvent === 'function') {
+                              (onSelectEvent as (id: string) => void)(activeEvent._id);
+                            } else {
+                              alert(`Please navigate to the 'Questions' tab to select and assign questions for Round ${r.roundNumber}.`);
+                            }
+                          }}
+                          className="py-2 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                          title="Open workspace to select questions for this round"
+                        >
+                          <span>Select Questions ({r.assignedQuestionCount ?? 0}/{r.targetQuestionCount || r.questionCount})</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleStartRound(r.roundNumber)}
+                          disabled={activeEvent.status === 'frozen'}
+                          className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <Play className="w-3.5 h-3.5" /> Start Round
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
