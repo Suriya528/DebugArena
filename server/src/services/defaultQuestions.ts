@@ -9,204 +9,540 @@ export const DEFAULT_ROUND_1_MCQS = [
   {
     orderIndex: 1,
     type: 'mcq' as const,
-    title: 'Python Mutable Default Arguments',
-    prompt: `What will be the output of the following Python snippet?
+    title: '1. Off-by-One Error',
+    prompt: `A program should print all numbers from **1 to 10**.
 
-\`\`\`python
-def append_item(x, items=[]):
-    items.append(x)
-    return items
+\`\`\`text
+i = 1
 
-print(append_item(1))
-print(append_item(2))
-\`\`\``,
+while i < 10:
+    print(i)
+    i = i + 1
+\`\`\`
+
+What is the bug?`,
     marks: 10,
     options: [
-      '[1] followed by [2]',
-      '[1] followed by [1, 2]',
-      '[1] followed by [2, 1]',
-      'SyntaxError or TypeError'
+      'i should start from 0',
+      'i < 10 should be i <= 10',
+      'i should increase by 2',
+      'The print statement should come after incrementing'
     ],
     correctOptionIndex: 1,
-    explanation: 'In Python, default arguments are evaluated once when the function is defined, not each time it is called. Thus, the list is shared across calls.'
+    explanation: '`i < 10` stops before printing 10. This is a classic off-by-one error.'
   },
   {
     orderIndex: 2,
     type: 'mcq' as const,
-    title: 'JavaScript Type Coercion Bug',
-    prompt: `What does the following JavaScript expression evaluate to?
+    title: '2. Incorrect Logical Operator',
+    prompt: `A college allows a student to register only when:
 
-\`\`\`javascript
-const res = [] + {} + ![] + +[0];
-console.log(typeof res, res);
-\`\`\``,
+* age is at least 18
+* AND the student has a valid ID
+
+The programmer writes:
+
+\`\`\`text
+if age >= 18 OR hasValidID:
+    allow registration
+\`\`\`
+
+What is the bug?`,
     marks: 10,
     options: [
-      'string "[object Object]false0"',
-      'object NaN',
-      'number 0',
-      'TypeError: Cannot convert object to primitive value'
+      '>= should be >',
+      'OR should be AND',
+      'The ID should be checked first',
+      'No bug'
     ],
-    correctOptionIndex: 0,
-    explanation: '[] + {} yields "[object Object]", ![] is false so coerced to "false", and +[0] is 0 coerced to "0", making "[object Object]false0".'
+    correctOptionIndex: 1,
+    explanation: 'Both conditions must be true, so `AND` is required.'
   },
   {
     orderIndex: 3,
     type: 'mcq' as const,
-    title: 'C Pointer Arithmetic Pitfall',
-    prompt: `What is the value printed by this C program?
+    title: '3. Counter Update Bug',
+    prompt: `The program should count numbers greater than 10.
 
-\`\`\`c
-#include <stdio.h>
-int main() {
-    int arr[] = {10, 20, 30, 40, 50};
-    int *ptr = arr;
-    printf("%d\\n", *(ptr + 3) - *(ptr + 1));
-    return 0;
-}
-\`\`\``,
+\`\`\`text
+count = 0
+
+for each number:
+    if number > 10:
+        count = 1
+\`\`\`
+
+For:
+\`\`\`text
+12, 15, 4, 20
+\`\`\`
+the expected answer is \`3\`.
+
+What should replace \`count = 1\`?`,
     marks: 10,
     options: [
-      '2',
-      '20',
-      '30',
-      '8'
+      'count = 0',
+      'count = count + 1',
+      'count = number',
+      'count = count - 1'
     ],
     correctOptionIndex: 1,
-    explanation: '*(ptr + 3) is arr[3] = 40. *(ptr + 1) is arr[1] = 20. 40 - 20 = 20.'
+    explanation: 'Every matching number should increase the existing count.'
   },
   {
     orderIndex: 4,
     type: 'mcq' as const,
-    title: 'Java String Pool vs Operator ==',
-    prompt: `What is the output of the following Java snippet?
+    title: '4. Wrong Initial Value',
+    prompt: `A program finds the largest number:
 
-\`\`\`java
-String s1 = "Debug";
-String s2 = new String("Debug");
-String s3 = s2.intern();
-System.out.println((s1 == s2) + " " + (s1 == s3));
-\`\`\``,
+\`\`\`text
+largest = 0
+
+for each number:
+    if number > largest:
+        largest = number
+\`\`\`
+
+Input:
+\`\`\`text
+-8, -3, -12
+\`\`\`
+
+What is the problem?`,
     marks: 10,
     options: [
-      'true true',
-      'false true',
-      'false false',
-      'true false'
+      'The loop cannot process negative numbers',
+      'largest should initially be the first number',
+      'The comparison should use <',
+      'Negative numbers should be ignored'
     ],
     correctOptionIndex: 1,
-    explanation: 's1 == s2 compares references (constant pool vs heap, false). s2.intern() returns the string from the intern pool which matches s1 reference (true).'
+    explanation: 'Starting with 0 incorrectly makes 0 the largest even though it isn\'t in the input.'
   },
   {
     orderIndex: 5,
     type: 'mcq' as const,
-    title: 'C++ Dangling Reference in Lambda',
-    prompt: `What is the defect in the following C++ snippet?
+    title: '5. Infinite Loop',
+    prompt: `Consider:
 
-\`\`\`cpp
-auto get_greeter() {
-    std::string name = "Arena";
-    return [&]() { std::cout << "Hello " << name; };
-}
-\`\`\``,
+\`\`\`text
+i = 1
+
+while i <= 5:
+    if i == 3:
+        continue
+    print(i)
+    i = i + 1
+\`\`\`
+
+What happens?`,
     marks: 10,
     options: [
-      'No defect; lambda copies "Arena" by value.',
-      'Dangling reference: "name" is captured by reference and destroyed upon return.',
-      'Compile error: Lambdas cannot be returned from functions in C++.',
-      'Memory leak: "name" is allocated on heap and never freed.'
+      'Prints 1 2 3 4 5',
+      'Prints 1 2 and stops',
+      'Gets stuck when i becomes 3',
+      'Produces an error immediately'
     ],
-    correctOptionIndex: 1,
-    explanation: 'The lambda captures local variable "name" by reference [&]. When get_greeter returns, "name" goes out of scope and the reference dangles.'
+    correctOptionIndex: 2,
+    explanation: 'When `i = 3`, `continue` skips the increment, so `i` remains 3 forever.'
   },
   {
     orderIndex: 6,
     type: 'mcq' as const,
-    title: 'Integer Overflow in Binary Search',
-    prompt: 'In classical binary search on an array of length N, why is `mid = (low + high) / 2` considered a bug for large arrays?',
+    title: '6. Wrong Condition Order',
+    prompt: `A program checks whether a person can enter an exam:
+
+\`\`\`text
+if hasHallTicket AND hasPaidFee:
+    allow entry
+else:
+    reject
+\`\`\`
+
+A participant says they have **no hall ticket but did pay the fee**.
+
+What should happen?`,
     marks: 10,
     options: [
-      'It calculates float instead of integer in C/Java.',
-      'If low + high exceeds 2^31 - 1, it overflows to a negative number causing IndexOutOfBounds.',
-      'It always fails when N is an odd number.',
-      'It causes division by zero when high is zero.'
+      'Allow entry',
+      'Reject entry',
+      'Ask for age',
+      'Enter only if payment is recent'
     ],
     correctOptionIndex: 1,
-    explanation: 'When low + high exceeds maximum 32-bit signed integer value (2,147,483,647), it wraps around to negative. The safe formula is low + (high - low) / 2.'
+    explanation: 'Both conditions are required.'
   },
   {
     orderIndex: 7,
     type: 'mcq' as const,
-    title: 'JavaScript Event Loop Microtask Ordering',
-    prompt: `In what sequence will the numbers be logged in the console?
+    title: '7. Missing Case',
+    prompt: `A program categorizes marks:
 
-\`\`\`javascript
-console.log(1);
-setTimeout(() => console.log(2), 0);
-Promise.resolve().then(() => console.log(3));
-console.log(4);
-\`\`\``,
+\`\`\`text
+if marks >= 90:
+    grade = "A"
+else if marks >= 75:
+    grade = "B"
+else if marks >= 50:
+    grade = "C"
+\`\`\`
+
+What happens when \`marks = 42\`?`,
     marks: 10,
     options: [
-      '1, 2, 3, 4',
-      '1, 4, 2, 3',
-      '1, 4, 3, 2',
-      '1, 3, 4, 2'
+      'Grade C',
+      'Grade D automatically',
+      'No grade is assigned',
+      'Program always crashes'
     ],
     correctOptionIndex: 2,
-    explanation: 'Synchronous logs (1, 4) execute first. Microtask queue (Promise 3) executes before macrotask queue (setTimeout 2).'
+    explanation: 'There is no condition covering marks below 50.'
   },
   {
     orderIndex: 8,
     type: 'mcq' as const,
-    title: 'Python Shallow vs Deep Copy Bug',
-    prompt: `What will \`b[0][0]\` and \`a[0][0]\` be after this code runs?
+    title: '8. Wrong Variable Updated',
+    prompt: `A program should add all values:
 
-\`\`\`python
-import copy
-a = [[10, 20], [30, 40]]
-b = list(a)
-b[0][0] = 99
-\`\`\``,
+\`\`\`text
+sum = 0
+
+for each number:
+    temp = sum + number
+
+print(sum)
+\`\`\`
+
+What is the bug?`,
     marks: 10,
     options: [
-      'b[0][0] is 99, a[0][0] is 10',
-      'b[0][0] is 99, a[0][0] is 99',
-      'b[0][0] is 10, a[0][0] is 99',
-      'TypeError: list is not subscriptable'
+      'sum should start at 1',
+      'temp should be printed',
+      'The calculated value is never assigned back to sum',
+      'The loop should run backwards'
     ],
-    correctOptionIndex: 1,
-    explanation: 'list(a) creates a shallow copy. The outer list is duplicated, but the inner list references remain identical. Modifying b[0][0] modifies a[0][0].'
+    correctOptionIndex: 2,
+    explanation: 'The calculation is stored in `temp`, but `sum` never changes.'
   },
   {
     orderIndex: 9,
     type: 'mcq' as const,
-    title: 'C Memory Leak with realloc',
-    prompt: 'What is the risk with the statement `ptr = realloc(ptr, new_size);`?',
+    title: '9. Boundary Condition',
+    prompt: `A list contains exactly 5 elements.
+
+Valid positions are:
+\`\`\`text
+0, 1, 2, 3, 4
+\`\`\`
+
+A loop processes:
+
+\`\`\`text
+position = 0
+while position <= 5:
+    process(position)
+    position = position + 1
+\`\`\`
+
+What is the problem?`,
     marks: 10,
     options: [
-      'If realloc fails and returns NULL, the original memory block is orphaned and leaked.',
-      'realloc always frees the old pointer even if it succeeds.',
-      'realloc cannot increase buffer size in modern C standards.',
-      'It causes undefined behaviour if ptr is not void*.'
+      'Position 0 is invalid',
+      'Position 5 is outside the valid range',
+      'The loop should start at 1',
+      'Nothing is wrong'
     ],
-    correctOptionIndex: 0,
-    explanation: 'If realloc fails, it returns NULL without freeing the original block. Assigning directly to ptr overwrites the pointer, leaking the memory.'
+    correctOptionIndex: 1,
+    explanation: 'For five elements, the last valid index is 4.'
   },
   {
     orderIndex: 10,
     type: 'mcq' as const,
-    title: 'Java Concurrency: Double-Checked Locking',
-    prompt: 'In Java, what keyword is strictly necessary on the instance variable for Double-Checked Locking singleton pattern to be thread-safe?',
+    title: '10. Accumulator Bug',
+    prompt: `A program should calculate:
+\`\`\`text
+2 + 4 + 6 + 8 = 20
+\`\`\`
+
+But the logic is:
+
+\`\`\`text
+sum = 0
+
+for each number:
+    sum = number
+\`\`\`
+
+What is wrong?`,
     marks: 10,
     options: [
-      'final',
-      'synchronized',
-      'volatile',
-      'transient'
+      'The loop should start with 1',
+      'sum should accumulate previous values',
+      'Even numbers cannot be added',
+      'The final value should be multiplied by 2'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'Assignment replaces the previous value. An accumulator needs something like: `sum = sum + number`.'
+  },
+  {
+    orderIndex: 11,
+    type: 'mcq' as const,
+    title: '11. Incorrect Search Logic',
+    prompt: `A program searches for \`25\`:
+
+\`\`\`text
+found = false
+
+for each number:
+    if number == 25:
+        found = true
+    else:
+        found = false
+\`\`\`
+
+Input:
+\`\`\`text
+10, 25, 40, 50
+\`\`\`
+
+What can cause the final result to incorrectly become \`false\`?`,
+    marks: 10,
+    options: [
+      'The loop is too short',
+      'The search value is incorrect',
+      'Later iterations overwrite an earlier true result',
+      'found should start as true'
     ],
     correctOptionIndex: 2,
-    explanation: 'volatile prevents instruction reordering during object instantiation (allocate memory -> assign pointer -> initialize fields).'
+    explanation: 'Once 25 is found, a later non-matching value sets `found` back to false.'
+  },
+  {
+    orderIndex: 12,
+    type: 'mcq' as const,
+    title: '12. Order-Dependent Bug',
+    prompt: `A program should check whether a number is between **10 and 20 inclusive**.
+
+Which condition is correct?`,
+    marks: 10,
+    options: [
+      'number >= 10 OR number <= 20',
+      'number > 10 AND number < 20',
+      'number >= 10 AND number <= 20',
+      'number < 10 AND number > 20'
+    ],
+    correctOptionIndex: 2,
+    explanation: '"Between 10 and 20 inclusive" includes both 10 and 20, requiring both boundaries.'
+  },
+  {
+    orderIndex: 13,
+    type: 'mcq' as const,
+    title: '13. State Tracking',
+    prompt: `A program processes:
+\`\`\`text
+5, 5, 7, 7, 7
+\`\`\`
+
+It should count how many times the value \`7\` appears.
+
+The programmer writes:
+
+\`\`\`text
+count = 0
+
+for each number:
+    if number == 7:
+        count = 1
+\`\`\`
+
+What is the actual logic error?`,
+    marks: 10,
+    options: [
+      '7 cannot be compared',
+      'Count must increase for every match',
+      'Count should start at 7',
+      'The loop should stop after the first match'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'There are three occurrences of 7, so the counter must increment three times.'
+  },
+  {
+    orderIndex: 14,
+    type: 'mcq' as const,
+    title: '14. Wrong Assumption About Input',
+    prompt: `A program calculates the average:
+
+\`\`\`text
+sum = 100
+count = 4
+
+average = sum / count
+\`\`\`
+
+The programmer assumes the answer is always an integer.
+
+What is the debugging concern?`,
+    marks: 10,
+    options: [
+      'sum cannot be 100',
+      'The result may require fractional precision',
+      'count must be 100',
+      'Average cannot be calculated this way'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'Some averages are fractional, so integer-only arithmetic can produce incorrect results depending on the implementation.'
+  },
+  {
+    orderIndex: 15,
+    type: 'mcq' as const,
+    title: '15. Duplicate Processing',
+    prompt: `A program should process each item exactly once.
+
+Input:
+\`\`\`text
+A, B, C, D
+\`\`\`
+
+But the loop processes:
+\`\`\`text
+A, B, B, C, D
+\`\`\`
+
+What type of bug is most likely?`,
+    marks: 10,
+    options: [
+      'Missing initialization',
+      'Duplicate processing',
+      'Integer overflow',
+      'Incorrect data type'
+    ],
+    correctOptionIndex: 1,
+    explanation: '`B` is processed twice, indicating an iteration/index/state problem.'
+  },
+  {
+    orderIndex: 16,
+    type: 'mcq' as const,
+    title: '16. Missing Update',
+    prompt: `Consider:
+
+\`\`\`text
+balance = 100
+
+if withdrawal <= balance:
+    approved = true
+\`\`\`
+
+After approval, the program does not change the balance.
+
+A customer withdraws 30.
+
+What is the bug?`,
+    marks: 10,
+    options: [
+      'The approval condition is always false',
+      'Balance should become 70 after a successful withdrawal',
+      'Withdrawal should be doubled',
+      'Balance should always remain 100'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The state is not updated after the operation. This is a common **state consistency bug**.'
+  },
+  {
+    orderIndex: 17,
+    type: 'mcq' as const,
+    title: '17. Debugging From Output',
+    prompt: `Expected output:
+\`\`\`text
+1 2 3 4 5
+\`\`\`
+
+Actual output:
+\`\`\`text
+1 2 4 5
+\`\`\`
+
+The program uses a loop that increases the value each iteration.
+
+What is the most likely problem?`,
+    marks: 10,
+    options: [
+      'The loop starts too late',
+      'The value 3 is being skipped by the loop/update logic',
+      'The program cannot print 3',
+      'The final condition is always wrong'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'When one value is missing in an otherwise correct sequence, inspect the **increment/update and boundary conditions** first.'
+  },
+  {
+    orderIndex: 18,
+    type: 'mcq' as const,
+    title: '18. Incorrect Flag Logic',
+    prompt: `A program should report whether **at least one** number is negative.
+
+\`\`\`text
+hasNegative = false
+
+for each number:
+    if number < 0:
+        hasNegative = true
+    else:
+        hasNegative = false
+\`\`\`
+
+Input:
+\`\`\`text
+-5, 10, 20
+\`\`\`
+
+What is the bug?`,
+    marks: 10,
+    options: [
+      'Negative numbers cannot be detected',
+      'The flag is reset to false after a negative number is found',
+      'The initial value should be true',
+      'The loop should stop immediately'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'Once a negative number has been found, later non-negative numbers should not erase that fact.'
+  },
+  {
+    orderIndex: 19,
+    type: 'mcq' as const,
+    title: '19. Debugging With Invariants',
+    prompt: `A program maintains a counter that should **never decrease**.
+
+During testing, the values are:
+\`\`\`text
+0 → 1 → 2 → 3 → 1 → 2
+\`\`\`
+
+At which point should debugging focus first?`,
+    marks: 10,
+    options: [
+      'Between 0 and 1',
+      'Between 1 and 2',
+      'Between 2 and 3',
+      'Between 3 and 1'
+    ],
+    correctOptionIndex: 3,
+    explanation: 'The invariant is violated when the counter changes from 3 to 1. That transition is the most useful place to inspect the logic.'
+  },
+  {
+    orderIndex: 20,
+    type: 'mcq' as const,
+    title: '20. Best Debugging Reasoning',
+    prompt: `A program sometimes produces an incorrect result, but only for certain inputs.
+
+What is generally the **best first debugging approach**?`,
+    marks: 10,
+    options: [
+      'Rewrite the entire program immediately',
+      'Add random changes until the result looks correct',
+      'Reproduce the failure with a small input and trace the program state step by step',
+      'Assume the compiler/runtime is wrong'
+    ],
+    correctOptionIndex: 2,
+    explanation: 'A minimal reproducible case and step-by-step state tracing help isolate the actual faulty condition or state transition instead of masking the bug.'
   }
 ];
 
@@ -1361,38 +1697,32 @@ print([f(1) for f in funcs])
  * Seed Default Question Bank Templates (upserts all curated templates into QuestionTemplate collection)
  */
 export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false): Promise<number> {
-  const existingCount = await QuestionTemplate.countDocuments();
-  if (existingCount >= 25 && !forceRefresh) {
-    return existingCount;
+  const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
+  const totalCount = await QuestionTemplate.countDocuments();
+  if (mcqCount >= 20 && totalCount >= 38 && !forceRefresh) {
+    return totalCount;
   }
 
-  console.log('🌱 Seeding Central Question Bank with default debugging challenges & MCQs...');
+  console.log('🌱 Seeding Central Question Bank with 20 logic debugging challenges & MCQs...');
 
   // Convert Round 1 MCQs to Question Bank Templates
   const mcqTemplates = DEFAULT_ROUND_1_MCQS.map(m => {
-    let lang = 'general';
-    if (m.title.toLowerCase().includes('python')) lang = 'python';
-    else if (m.title.toLowerCase().includes('javascript')) lang = 'javascript';
-    else if (m.title.toLowerCase().includes('c++') || m.title.toLowerCase().includes('cpp')) lang = 'cpp';
-    else if (m.title.toLowerCase().includes('java')) lang = 'java';
-    else if (m.title.toLowerCase().includes('c ')) lang = 'c';
-
     return {
       title: m.title,
-      topic: 'Code Debugging & Semantics',
-      language: lang,
+      topic: 'Logic-Based Debugging',
+      language: 'general',
       type: 'mcq' as const,
       difficulty: 'medium' as const,
-      expectedSolveTimeMinutes: 5,
+      expectedSolveTimeMinutes: 3,
       marks: m.marks || 10,
-      skillTags: ['Debugging', 'Code Semantics', 'Syntax & Logic'],
+      skillTags: ['Logic Debugging', 'Code Tracing', 'Bug Identification'],
       prompt: m.prompt,
       explanation: m.explanation || '',
       options: m.options.map((optText, idx) => ({
         text: optText,
         isCorrect: idx === m.correctOptionIndex
       })),
-      allowedLanguages: [],
+      allowedLanguages: ['python', 'c', 'cpp', 'java', 'javascript'],
       starterCode: {},
       testCases: [],
       hasDnaMutation: false,

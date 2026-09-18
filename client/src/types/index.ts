@@ -151,6 +151,8 @@ export interface Question {
   marks: number;
   // MCQ
   options?: string[];
+  correctOptionIndex?: number;
+  explanation?: string;
   // Coding
   allowedLanguages?: string[];
   starterCode?: Record<string, string>;

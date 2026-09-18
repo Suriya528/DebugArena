@@ -28,10 +28,11 @@ adminQuestionBankRouter.use(authenticate, requireAnyAdmin);
 // GET /api/admin/questions/bank
 adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Auto-seed if question bank is currently empty or missing newly added categories
+    // Auto-seed if question bank is currently empty or missing the 20 logic debugging MCQs
     const totalCount = await QuestionTemplate.countDocuments();
-    if (totalCount < 25) {
-      await seedDefaultQuestionTemplates();
+    const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
+    if (totalCount < 25 || mcqCount < 20) {
+      await seedDefaultQuestionTemplates(true);
     }
 
     const { topic, language, difficulty, type, search, eventId, stageNumber, exactEventLanguages } = req.query;
@@ -83,7 +84,9 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
         $or: [
           { language: { $in: langRegexList } },
           { allowedLanguages: { $in: langRegexList } },
-          { type: 'aptitude' }
+          { type: 'aptitude' },
+          { type: 'mcq' },
+          { language: 'general' }
         ]
       });
     }
@@ -136,7 +139,7 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
         const qLang = (q.language || '').toLowerCase().trim();
         const hasLangMatch = qLang ? eventLanguages.includes(qLang) : false;
         const hasAllowedMatch = Array.isArray(q.allowedLanguages) && q.allowedLanguages.some(al => eventLanguages.includes(al.toLowerCase().trim()));
-        matches = hasLangMatch || hasAllowedMatch || q.type === 'aptitude';
+        matches = hasLangMatch || hasAllowedMatch || q.type === 'aptitude' || q.type === 'mcq' || qLang === 'general';
       }
       obj.matchesEventLanguages = matches;
       return obj;

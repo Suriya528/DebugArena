@@ -37,6 +37,94 @@ import { AddQuestionModal } from './AddQuestionModal.js';
 import { QuestionImportModal } from './QuestionImportModal.js';
 import { useAuth } from '../../context/AuthContext.js';
 
+// Helper to render markdown bolding and inline code
+const renderInlineMarkdown = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code key={i} className="px-1.5 py-0.5 mx-0.5 rounded bg-slate-800 text-amber-300 font-mono text-xs border border-slate-700/60">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <strong key={i} className="font-bold text-white">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return part;
+  });
+};
+
+// Formatted prompt renderer supporting code blocks and markdown
+const FormattedPrompt: React.FC<{ content: string }> = ({ content }) => {
+  if (!content) return null;
+  const blocks = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-3 text-xs leading-relaxed text-slate-200 font-sans">
+      {blocks.map((block, bIdx) => {
+        if (block.startsWith('```') && block.endsWith('```')) {
+          const raw = block.slice(3, -3).trim();
+          const firstLineEnd = raw.indexOf('\n');
+          let lang = 'code';
+          let code = raw;
+          if (firstLineEnd !== -1) {
+            const firstLine = raw.slice(0, firstLineEnd).trim();
+            if (/^[a-zA-Z0-9_-]+$/.test(firstLine)) {
+              lang = firstLine;
+              code = raw.slice(firstLineEnd + 1).trim();
+            }
+          }
+          return (
+            <div key={bIdx} className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950 font-mono my-2.5 shadow-inner">
+              <div className="flex items-center justify-between px-3.5 py-1 bg-slate-900/90 border-b border-slate-800/80 text-[10px] text-slate-400 font-mono">
+                <span className="uppercase font-bold tracking-wider text-cyan-400">{lang}</span>
+                <span className="text-[10px] text-slate-500">Snippet</span>
+              </div>
+              <pre className="p-3.5 text-cyan-300 font-mono text-xs overflow-x-auto leading-relaxed whitespace-pre">
+                {code}
+              </pre>
+            </div>
+          );
+        }
+
+        const paragraphs = block.split(/\n\n+/);
+        return (
+          <div key={bIdx} className="space-y-2">
+            {paragraphs.map((p, pIdx) => {
+              const trimmed = p.trim();
+              if (!trimmed) return null;
+              const lines = trimmed.split('\n');
+              const isList = lines.length > 1 && lines.every(l => l.trim().startsWith('* ') || l.trim().startsWith('- ') || l.trim() === '');
+              if (isList) {
+                return (
+                  <ul key={pIdx} className="list-disc list-inside space-y-1 pl-1 text-slate-300">
+                    {lines.map((l, lIdx) => {
+                      const cleanL = l.trim().replace(/^[\*\-]\s+/, '');
+                      if (!cleanL) return null;
+                      return <li key={lIdx}>{renderInlineMarkdown(cleanL)}</li>;
+                    })}
+                  </ul>
+                );
+              }
+              return (
+                <p key={pIdx} className="text-slate-300 whitespace-pre-line">
+                  {renderInlineMarkdown(trimmed)}
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 interface QuestionManagerProps {
   eventId?: string;
   defaultView?: 'round_questions' | 'question_bank';
@@ -829,6 +917,200 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {bankQuestions.map(item => {
+                if (item.type === 'mcq') {
+                  const normalizedOptions = (item.options || []).map((opt: any, optIdx: number) => {
+                    const isString = typeof opt === 'string';
+                    const optText = isString ? opt : (opt.text || '');
+                    const isCorrect = isString
+                      ? optIdx === (item.correctOptionIndex ?? 0)
+                      : Boolean(opt.isCorrect);
+                    return {
+                      letter: String.fromCharCode(65 + optIdx),
+                      text: optText,
+                      isCorrect
+                    };
+                  });
+                  const correctOption = normalizedOptions.find((o: any) => o.isCorrect) || normalizedOptions[0];
+
+                  return (
+                    <div
+                      key={item._id}
+                      className="rounded-3xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all shadow-xl shadow-slate-950/40 p-6 space-y-4"
+                    >
+                      {/* Top Badges & Actions Bar */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-mono">
+                            <CheckCircle2 className="w-3 h-3" /> MCQ Question
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300">
+                            {item.topic}
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              item.difficulty === 'easy'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : item.difficulty === 'hard'
+                                ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                            }`}
+                          >
+                            {item.difficulty}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-mono">
+                            {item.marks} Marks
+                          </span>
+
+                          {item.deployedInRounds && item.deployedInRounds.length > 0 && (
+                            item.deployedInRounds.map((rNum: number) => {
+                              const rInfo = dynamicRounds.find(dr => dr.roundNumber === rNum);
+                              return (
+                                <span
+                                  key={rNum}
+                                  className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 font-mono shadow-sm"
+                                  title={`Deployed to Stage ${rNum}: ${rInfo?.title || `Round ${rNum}`}`}
+                                >
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span>In Stage {rNum}</span>
+                                </span>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Action Controls */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {selectedStageNumber && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeployToRound(item._id, selectedStageNumber)}
+                              className="py-1.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 transition-all cursor-pointer active:scale-95"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Deploy to Stage {selectedStageNumber}</span>
+                            </button>
+                          )}
+
+                          <select
+                            onChange={e => {
+                              if (e.target.value) {
+                                handleDeployToRound(item._id, parseInt(e.target.value, 10));
+                                e.target.value = '';
+                              }
+                            }}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-1.5 px-2.5 rounded-xl cursor-pointer focus:outline-none border border-slate-700 transition-all shadow-sm"
+                          >
+                            <option value="">Deploy to Stage ▼</option>
+                            {dynamicRounds.length > 0 ? (
+                              dynamicRounds.map(dr => (
+                                <option key={dr.roundNumber} value={dr.roundNumber}>
+                                  Stage {dr.roundNumber}: {dr.title}
+                                </option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="1">Stage 1 (MCQ)</option>
+                                <option value="2">Stage 2 (Bug Hunting)</option>
+                                <option value="3">Stage 3 (Advanced)</option>
+                              </>
+                            )}
+                          </select>
+
+                          <button
+                            onClick={() => handleEditTemplate(item)}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-slate-800 cursor-pointer"
+                            title="Edit Question Template"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-amber-400" />
+                          </button>
+                          <button
+                            onClick={() => handleDuplicateTemplate(item)}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-slate-800 cursor-pointer"
+                            title="Duplicate Question"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTemplate(item._id, item.title)}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-slate-800 cursor-pointer"
+                            title="Delete Question"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 1. QUESTION: Title & Formatted Prompt */}
+                      <div className="space-y-2">
+                        <h3 className="text-base font-black text-white flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>
+                          <span>{item.title}</span>
+                        </h3>
+                        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                          <FormattedPrompt content={item.prompt} />
+                        </div>
+                      </div>
+
+                      {/* 2. OPTIONS: Grid with Correct Answer Highlighted */}
+                      {normalizedOptions.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Options:
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {normalizedOptions.map((opt: any) => (
+                              <div
+                                key={opt.letter}
+                                className={`p-3 rounded-xl border text-xs flex items-start gap-3 transition-all ${
+                                  opt.isCorrect
+                                    ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200 ring-1 ring-emerald-500/20 shadow-sm'
+                                    : 'bg-slate-950/40 border-slate-800 text-slate-300'
+                                }`}
+                              >
+                                <span
+                                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-mono text-xs font-black shrink-0 ${
+                                    opt.isCorrect
+                                      ? 'bg-emerald-500 text-white shadow-sm'
+                                      : 'bg-slate-800 text-slate-400'
+                                  }`}
+                                >
+                                  {opt.letter}
+                                </span>
+                                <div className="flex-1 pt-0.5 leading-relaxed font-sans">
+                                  {renderInlineMarkdown(opt.text)}
+                                </div>
+                                {opt.isCorrect && (
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 flex items-center gap-1 font-mono">
+                                    <Check className="w-3 h-3" /> Correct
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. ANSWER & EXPLANATION */}
+                      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/30 via-slate-950/50 to-slate-950/40 border border-emerald-500/30 space-y-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500 text-white font-mono text-xs font-black flex items-center gap-1 shadow-sm">
+                            <Check className="w-3.5 h-3.5" /> Answer: {correctOption?.letter}
+                          </span>
+                          <span className="text-xs font-bold text-emerald-300 truncate">
+                            {correctOption?.text}
+                          </span>
+                        </div>
+                        {item.explanation && (
+                          <div className="text-xs text-slate-300 leading-relaxed pt-2 border-t border-slate-800/80 font-sans">
+                            <strong className="text-emerald-400">Explanation: </strong>
+                            {renderInlineMarkdown(item.explanation)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 const isExpanded = expandedBankId === item._id;
                 const starterCodeObj = typeof item.starterCode === 'object' && item.starterCode !== null
                   ? item.starterCode
@@ -1484,25 +1766,79 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
 
                     {isExpanded && (
                       <div className="p-5 border-t border-slate-800/80 bg-slate-950/50 space-y-4 text-xs">
-                        <div>
-                          <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-1">Problem Statement</h4>
-                          <div className="text-slate-300 font-mono whitespace-pre-wrap bg-slate-950 p-4 rounded-xl border border-slate-800/60 leading-relaxed">
-                            {q.prompt}
-                          </div>
-                        </div>
+                        {q.type === 'mcq' ? (
+                          <div className="space-y-4">
+                            <div>
+                              <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-1.5 flex items-center gap-1.5">
+                                <BookOpen className="w-3.5 h-3.5 text-emerald-400" /> Question Prompt
+                              </h4>
+                              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80">
+                                <FormattedPrompt content={q.prompt} />
+                              </div>
+                            </div>
 
-                        {q.type === 'mcq' && q.options && (
-                          <div>
-                            <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-2">Options</h4>
-                            <div className="grid sm:grid-cols-2 gap-2">
-                              {q.options.map((opt, oIdx) => (
-                                <div key={oIdx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 flex items-start gap-2">
-                                  <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-400 font-mono text-[10px] flex items-center justify-center shrink-0">
-                                    {String.fromCharCode(65 + oIdx)}
-                                  </span>
-                                  <span>{opt}</span>
+                            {q.options && q.options.length > 0 && (
+                              <div>
+                                <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-2 flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Options:
+                                </h4>
+                                <div className="grid sm:grid-cols-2 gap-2">
+                                  {q.options.map((opt, oIdx) => {
+                                    const isCorrect = oIdx === (q.correctOptionIndex ?? 0);
+                                    return (
+                                      <div
+                                        key={oIdx}
+                                        className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 transition-all ${
+                                          isCorrect
+                                            ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200 ring-1 ring-emerald-500/20'
+                                            : 'bg-slate-900 border-slate-800 text-slate-300'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`w-5 h-5 rounded-md font-mono text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                                            isCorrect ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-800 text-slate-400'
+                                          }`}
+                                        >
+                                          {String.fromCharCode(65 + oIdx)}
+                                        </span>
+                                        <span className="flex-1 leading-relaxed font-sans">{renderInlineMarkdown(opt)}</span>
+                                        {isCorrect && (
+                                          <span className="px-1.5 py-0.5 rounded text-[9px] uppercase font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                                            Correct
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              ))}
+                              </div>
+                            )}
+
+                            {/* Answer & Explanation */}
+                            <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/30 via-slate-950 to-slate-950 border border-emerald-500/30 space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded bg-emerald-500 text-white font-mono text-[11px] font-bold">
+                                  Answer: {String.fromCharCode(65 + (q.correctOptionIndex ?? 0))}
+                                </span>
+                                {q.options && q.options[q.correctOptionIndex ?? 0] && (
+                                  <span className="text-xs font-semibold text-emerald-300 truncate">
+                                    {q.options[q.correctOptionIndex ?? 0]}
+                                  </span>
+                                )}
+                              </div>
+                              {q.explanation && (
+                                <div className="text-xs text-slate-300 leading-relaxed pt-1.5 border-t border-slate-800/60 font-sans">
+                                  <strong className="text-emerald-400">Explanation: </strong>
+                                  {renderInlineMarkdown(q.explanation)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <h4 className="font-bold text-slate-400 uppercase tracking-wider text-[11px] mb-1">Problem Statement</h4>
+                            <div className="text-slate-300 font-mono whitespace-pre-wrap bg-slate-950 p-4 rounded-xl border border-slate-800/60 leading-relaxed">
+                              {q.prompt}
                             </div>
                           </div>
                         )}
