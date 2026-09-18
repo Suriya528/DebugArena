@@ -119,12 +119,12 @@ export async function seedData() {
     {
       eventId: defaultEvent._id,
       roundNumber: 1,
-      title: 'Round 1: Rapid-Fire Code Debugging MCQs',
-      description: 'Find subtle bugs in C, C++, Java, JavaScript, and Python snippets. 10 questions, strictly no negative marking.',
+      title: 'Round 1: Logic-Based Debugging MCQs',
+      description: 'Identify algorithmic defects, off-by-one errors, infinite loops, and state tracking bugs across 20 logic debugging challenges.',
       type: 'mcq',
-      durationMinutes: 15,
-      questionCount: 10,
-      totalMarks: 100,
+      durationMinutes: 20,
+      questionCount: 20,
+      totalMarks: 200,
       status: 'active',
       startedAt: new Date()
     },
@@ -179,169 +179,18 @@ export async function seedData() {
     }
   ]);
 
-  console.log('❓ Seeding Round 1 MCQs (10 Questions)...');
-  await Question.create([
-    {
+  console.log('❓ Seeding Round 1 Logic-Based Debugging MCQs (20 Questions)...');
+  const { DEFAULT_ROUND_1_MCQS } = await import('../services/defaultQuestions.js');
+  await Question.create(
+    DEFAULT_ROUND_1_MCQS.map(q => ({
+      ...q,
+      eventId: defaultEvent._id,
+      collegeId: defaultCollege._id,
       roundNumber: 1,
-      orderIndex: 1,
-      type: 'mcq',
-      title: 'Python Mutable Default Arguments',
-      prompt: 'What will be the output of the following Python snippet?\n\n```python\ndef append_item(x, items=[]):\n    items.append(x)\n    return items\n\nprint(append_item(1))\nprint(append_item(2))\n```',
-      marks: 10,
-      options: [
-        '[1] followed by [2]',
-        '[1] followed by [1, 2]',
-        '[1] followed by [2, 1]',
-        'SyntaxError or TypeError'
-      ],
-      correctOptionIndex: 1,
-      explanation: 'In Python, default arguments are evaluated once when the function is defined, not each time it is called. Thus, the list is shared across calls.'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 2,
-      type: 'mcq',
-      title: 'JavaScript Type Coercion Bug',
-      prompt: 'What does the following JavaScript expression evaluate to?\n\n```javascript\nconst res = [] + {} + ![] + +[0];\nconsole.log(typeof res, res);\n```',
-      marks: 10,
-      options: [
-        'string "[object Object]false0"',
-        'object NaN',
-        'number 0',
-        'TypeError: Cannot convert object to primitive value'
-      ],
-      correctOptionIndex: 0,
-      explanation: '[] + {} yields "[object Object]", ![] is false so coerced to "false", and +[0] is 0 coerced to "0", making "[object Object]false0".'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 3,
-      type: 'mcq',
-      title: 'C Pointer Arithmetic Pitfall',
-      prompt: 'What is the value printed by this C program?\n\n```c\n#include <stdio.h>\nint main() {\n    int arr[] = {10, 20, 30, 40, 50};\n    int *ptr = arr;\n    printf("%d\\n", *(ptr + 3) - *(ptr + 1));\n    return 0;\n}\n```',
-      marks: 10,
-      options: [
-        '2',
-        '20',
-        '30',
-        '8'
-      ],
-      correctOptionIndex: 1,
-      explanation: '*(ptr + 3) is arr[3] = 40. *(ptr + 1) is arr[1] = 20. 40 - 20 = 20.'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 4,
-      type: 'mcq',
-      title: 'Java String Pool vs Operator ==',
-      prompt: 'What is the output of the following Java snippet?\n\n```java\nString s1 = "Debug";\nString s2 = new String("Debug");\nString s3 = s2.intern();\nSystem.out.println((s1 == s2) + " " + (s1 == s3));\n```',
-      marks: 10,
-      options: [
-        'true true',
-        'false true',
-        'false false',
-        'true false'
-      ],
-      correctOptionIndex: 1,
-      explanation: 's1 == s2 compares references (constant pool vs heap, false). s2.intern() returns the string from the intern pool which matches s1 reference (true).'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 5,
-      type: 'mcq',
-      title: 'C++ Dangling Reference in Lambda',
-      prompt: 'What is the defect in the following C++ snippet?\n\n```cpp\nauto get_greeter() {\n    std::string name = "Arena";\n    return [&]() { std::cout << "Hello " << name; };\n}\n```',
-      marks: 10,
-      options: [
-        'No defect; lambda copies "Arena" by value.',
-        'Dangling reference: "name" is captured by reference and destroyed upon return.',
-        'Compile error: Lambdas cannot be returned from functions in C++.',
-        'Memory leak: "name" is allocated on heap and never freed.'
-      ],
-      correctOptionIndex: 1,
-      explanation: 'The lambda captures local variable "name" by reference [&]. When get_greeter returns, "name" goes out of scope and the reference dangles.'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 6,
-      type: 'mcq',
-      title: 'Integer Overflow in Binary Search',
-      prompt: 'In classical binary search on an array of length N, why is `mid = (low + high) / 2` considered a bug for large arrays?',
-      marks: 10,
-      options: [
-        'It calculates float instead of integer in C/Java.',
-        'If low + high exceeds 2^31 - 1, it overflows to a negative number causing IndexOutOfBounds.',
-        'It always fails when N is an odd number.',
-        'It causes division by zero when high is zero.'
-      ],
-      correctOptionIndex: 1,
-      explanation: 'When low + high exceeds maximum 32-bit signed integer value (2,147,483,647), it wraps around to negative. The safe formula is low + (high - low) / 2.'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 7,
-      type: 'mcq',
-      title: 'JavaScript Event Loop Microtask Ordering',
-      prompt: 'In what sequence will the numbers be logged in the console?\n\n```javascript\nconsole.log(1);\nsetTimeout(() => console.log(2), 0);\nPromise.resolve().then(() => console.log(3));\nconsole.log(4);\n```',
-      marks: 10,
-      options: [
-        '1, 2, 3, 4',
-        '1, 4, 2, 3',
-        '1, 4, 3, 2',
-        '1, 3, 4, 2'
-      ],
-      correctOptionIndex: 2,
-      explanation: 'Synchronous logs (1, 4) execute first. Microtask queue (Promise 3) executes before macrotask queue (setTimeout 2).'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 8,
-      type: 'mcq',
-      title: 'Python Shallow vs Deep Copy Bug',
-      prompt: 'What will `b[0][0]` and `a[0][0]` be after this code runs?\n\n```python\nimport copy\na = [[10, 20], [30, 40]]\nb = list(a)\nb[0][0] = 99\n```',
-      marks: 10,
-      options: [
-        'b[0][0] is 99, a[0][0] is 10',
-        'b[0][0] is 99, a[0][0] is 99',
-        'b[0][0] is 10, a[0][0] is 99',
-        'TypeError: list is not subscriptable'
-      ],
-      correctOptionIndex: 1,
-      explanation: 'list(a) creates a shallow copy. The outer list is duplicated, but the inner list references remain identical. Modifying b[0][0] modifies a[0][0].'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 9,
-      type: 'mcq',
-      title: 'C Memory Leak with realloc',
-      prompt: 'What is the risk with the statement `ptr = realloc(ptr, new_size);`?',
-      marks: 10,
-      options: [
-        'If realloc fails and returns NULL, the original memory block is orphaned and leaked.',
-        'realloc always frees the old pointer even if it succeeds.',
-        'realloc cannot increase buffer size in modern C standards.',
-        'It causes undefined behaviour if ptr is not void*.'
-      ],
-      correctOptionIndex: 0,
-      explanation: 'If realloc fails, it returns NULL without freeing the original block. Assigning directly to ptr overwrites the pointer, leaking the memory.'
-    },
-    {
-      roundNumber: 1,
-      orderIndex: 10,
-      type: 'mcq',
-      title: 'Java Concurrency: Double-Checked Locking',
-      prompt: 'In Java, what keyword is strictly necessary on the instance variable for Double-Checked Locking singleton pattern to be thread-safe?',
-      marks: 10,
-      options: [
-        'final',
-        'synchronized',
-        'volatile',
-        'transient'
-      ],
-      correctOptionIndex: 2,
-      explanation: 'volatile prevents instruction reordering during object instantiation (allocate memory -> assign pointer -> initialize fields).'
-    }
-  ]);
+      language: 'general',
+      allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql']
+    }))
+  );
 
   console.log('💻 Seeding Round 2 Coding Questions (3 Questions)...');
   await Question.create([
@@ -1056,120 +905,9 @@ if __name__ == '__main__':
     timeLimitMs: 3000
   });
 
-  console.log('📚 Seeding Central Question Bank and Question DNA Templates...');
-  await QuestionTemplate.create([
-    {
-      title: 'Binary Search Boundary Bug (Question DNA)',
-      topic: 'Algorithms',
-      language: 'java',
-      type: 'debugging',
-      difficulty: 'medium',
-      expectedSolveTimeMinutes: 15,
-      marks: 25,
-      skillTags: ['Binary Search', 'Boundary Handling', 'Pointers', 'Off-by-One'],
-      prompt: 'Identify and fix the boundary bug in this binary search implementation. Pay close attention to loop termination condition and upper index limit.',
-      hasDnaMutation: true,
-      dnaConfig: {
-        bugCategory: 'off_by_one',
-        codeTemplate: `public class Solution {
-    public static int search(int[] {{VAR_1}}, int {{VAR_2}}) {
-        int {{VAR_3}} = 0;
-        int {{VAR_4}} = {{VAR_1}}.length; // BUG: Should be length - 1
-        while ({{VAR_3}} {{BOUNDARY_OP}} {{VAR_4}}) {
-            int mid = {{VAR_3}} + ({{VAR_4}} - {{VAR_3}}) / 2;
-            if ({{VAR_1}}[mid] == {{VAR_2}}) return mid;
-            else if ({{VAR_1}}[mid] < {{VAR_2}}) {{VAR_3}} = mid + 1;
-            else {{VAR_4}} = mid - 1;
-        }
-        return -1;
-    }
-}`,
-        mutationParams: {
-          varNames: [
-            ['arr', 'nums', 'dataList', 'sortedArr'],
-            ['target', 'key', 'searchVal'],
-            ['low', 'start', 'left'],
-            ['high', 'end', 'right']
-          ],
-          boundaryOps: ['<', '<=']
-        }
-      },
-      testCases: [
-        { input: '5\n1 3 5 7 9\n7', output: '3', isHidden: false, weight: 10 },
-        { input: '4\n2 4 6 8\n10', output: '-1', isHidden: false, weight: 10 },
-        { input: '6\n10 20 30 40 50 60\n10', output: '0', isHidden: true, weight: 5 }
-      ]
-    },
-    {
-      title: 'Linked List Cycle Detection Null Pointer (Question DNA)',
-      topic: 'Linked Lists',
-      language: 'python',
-      type: 'debugging',
-      difficulty: 'medium',
-      expectedSolveTimeMinutes: 20,
-      marks: 30,
-      skillTags: ['Linked Lists', 'Null Pointer Guard', 'Fast & Slow Pointers'],
-      prompt: 'The following two-pointer cycle detection algorithm crashes with an unchecked null reference when encountering short or acyclic lists. Fix the traversal logic.',
-      hasDnaMutation: true,
-      dnaConfig: {
-        bugCategory: 'null_pointer',
-        codeTemplate: `def has_cycle({{VAR_1}}):
-    {{VAR_2}} = {{VAR_1}}
-    {{VAR_3}} = {{VAR_1}}
-    # BUG: Missing null check for fast pointer
-    while {{VAR_3}}.next:
-        {{VAR_2}} = {{VAR_2}}.next
-        {{VAR_3}} = {{VAR_3}}.next.next
-        if {{VAR_2}} == {{VAR_3}}:
-            return True
-    return False`,
-        mutationParams: {
-          varNames: [
-            ['head', 'rootNode', 'listHead'],
-            ['slow', 'tortoise', 'slowPtr'],
-            ['fast', 'hare', 'fastPtr']
-          ]
-        }
-      },
-      testCases: [
-        { input: '3\n1 2 3\n1', output: 'True', isHidden: false, weight: 15 },
-        { input: '2\n1 2\n-1', output: 'False', isHidden: false, weight: 15 }
-      ]
-    },
-    {
-      title: 'Department Top Earners (SQL Aggregation)',
-      topic: 'SQL',
-      language: 'sql',
-      type: 'sql',
-      difficulty: 'hard',
-      expectedSolveTimeMinutes: 25,
-      marks: 35,
-      skillTags: ['SQL', 'Window Functions', 'DENSE_RANK', 'GROUP BY'],
-      prompt: 'Write an SQL query to find employees who earn the top 3 highest unique salaries in each of the department divisions.',
-      hasDnaMutation: false,
-      testCases: [
-        { input: 'Employees Table (7 rows)', output: 'IT: Alice ($90k), Bob ($85k)\nHR: Carol ($80k)', isHidden: false, weight: 35 }
-      ]
-    },
-    {
-      title: 'Python Variable Shadowing & Closures',
-      topic: 'Python',
-      language: 'python',
-      type: 'mcq',
-      difficulty: 'easy',
-      expectedSolveTimeMinutes: 5,
-      marks: 10,
-      skillTags: ['Python', 'Closures', 'Late Binding'],
-      prompt: 'What will be printed by the following snippet?\n\n```python\nfuncs = [lambda x: x + i for i in range(3)]\nprint([f(1) for f in funcs])\n```',
-      options: [
-        { text: '[1, 2, 3]', isCorrect: false },
-        { text: '[3, 3, 3]', isCorrect: true },
-        { text: '[2, 3, 4]', isCorrect: false },
-        { text: 'TypeError: late binding closure', isCorrect: false }
-      ],
-      explanation: 'Python closures bind variables by reference, not by value. When the lambdas execute, `i` has finalized to 2, so `1 + 2 = 3` for each.'
-    }
-  ]);
+  console.log('📚 Seeding Central Question Bank with comprehensive templates (MCQ, Coding, SQL, Debugging, Aptitude)...');
+  const { seedDefaultQuestionTemplates } = await import('../services/defaultQuestions.js');
+  await seedDefaultQuestionTemplates(true);
 
   console.log('🎉 Seeding successfully completed!');
 }

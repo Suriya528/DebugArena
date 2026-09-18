@@ -9,6 +9,11 @@ export const DEFAULT_ROUND_1_MCQS = [
   {
     orderIndex: 1,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Loop Boundary & Off-by-One',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '1. Off-by-One Error',
     prompt: `A program should print all numbers from **1 to 10**.
 
@@ -34,6 +39,11 @@ What is the bug?`,
   {
     orderIndex: 2,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Boolean Logic & Operators',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '2. Incorrect Logical Operator',
     prompt: `A college allows a student to register only when:
 
@@ -61,6 +71,11 @@ What is the bug?`,
   {
     orderIndex: 3,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Counter Variables & Increments',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '3. Counter Update Bug',
     prompt: `The program should count numbers greater than 10.
 
@@ -92,6 +107,11 @@ What should replace \`count = 1\`?`,
   {
     orderIndex: 4,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Accumulator Initialization',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '4. Wrong Initial Value',
     prompt: `A program finds the largest number:
 
@@ -122,6 +142,11 @@ What is the problem?`,
   {
     orderIndex: 5,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Control Flow & Loop Invariants',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '5. Infinite Loop',
     prompt: `Consider:
 
@@ -149,6 +174,11 @@ What happens?`,
   {
     orderIndex: 6,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Boolean Conjunction & Rules',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '6. Wrong Condition Order',
     prompt: `A program checks whether a person can enter an exam:
 
@@ -175,6 +205,11 @@ What should happen?`,
   {
     orderIndex: 7,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Branch Exhaustion & Range Coverage',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '7. Missing Case',
     prompt: `A program categorizes marks:
 
@@ -201,6 +236,11 @@ What happens when \`marks = 42\`?`,
   {
     orderIndex: 8,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Assignment Targets in Loops',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '8. Wrong Variable Updated',
     prompt: `A program should add all values:
 
@@ -227,6 +267,11 @@ What is the bug?`,
   {
     orderIndex: 9,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: '0-Indexed Array Limits',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '9. Boundary Condition',
     prompt: `A list contains exactly 5 elements.
 
@@ -258,6 +303,11 @@ What is the problem?`,
   {
     orderIndex: 10,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Accumulator Overwriting',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '10. Accumulator Bug',
     prompt: `A program should calculate:
 \`\`\`text
@@ -287,6 +337,11 @@ What is wrong?`,
   {
     orderIndex: 11,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Flag Retention in Searches',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '11. Incorrect Search Logic',
     prompt: `A program searches for \`25\`:
 
@@ -319,6 +374,11 @@ What can cause the final result to incorrectly become \`false\`?`,
   {
     orderIndex: 12,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Range Inclusivity Operators',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '12. Order-Dependent Bug',
     prompt: `A program should check whether a number is between **10 and 20 inclusive**.
 
@@ -336,6 +396,11 @@ Which condition is correct?`,
   {
     orderIndex: 13,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Frequency Counting State',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '13. State Tracking',
     prompt: `A program processes:
 \`\`\`text
@@ -368,6 +433,11 @@ What is the actual logic error?`,
   {
     orderIndex: 14,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Floating Point vs Integer Division',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '14. Wrong Assumption About Input',
     prompt: `A program calculates the average:
 
@@ -394,6 +464,11 @@ What is the debugging concern?`,
   {
     orderIndex: 15,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Iteration Index Integrity',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '15. Duplicate Processing',
     prompt: `A program should process each item exactly once.
 
@@ -421,6 +496,11 @@ What type of bug is most likely?`,
   {
     orderIndex: 16,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'State Mutation Consistency',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
     title: '16. Missing Update',
     prompt: `Consider:
 
@@ -449,6 +529,11 @@ What is the bug?`,
   {
     orderIndex: 17,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Sequence Discrepancy Analysis',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '17. Debugging From Output',
     prompt: `Expected output:
 \`\`\`text
@@ -476,6 +561,11 @@ What is the most likely problem?`,
   {
     orderIndex: 18,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Monotonic Flag Latching',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '18. Incorrect Flag Logic',
     prompt: `A program should report whether **at least one** number is negative.
 
@@ -508,6 +598,11 @@ What is the bug?`,
   {
     orderIndex: 19,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Invariant Anomaly Localization',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '19. Debugging With Invariants',
     prompt: `A program maintains a counter that should **never decrease**.
 
@@ -530,6 +625,11 @@ At which point should debugging focus first?`,
   {
     orderIndex: 20,
     type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Root Cause Isolation Strategy',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
     title: '20. Best Debugging Reasoning',
     prompt: `A program sometimes produces an incorrect result, but only for certain inputs.
 
@@ -1334,29 +1434,6 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     ]
   },
   {
-    title: 'Python Variable Shadowing & Closures',
-    topic: 'Python',
-    language: 'python',
-    type: 'mcq' as const,
-    difficulty: 'easy' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['Python', 'Closures', 'Late Binding'],
-    prompt: `What will be printed by the following snippet?
-
-\`\`\`python
-funcs = [lambda x: x + i for i in range(3)]
-print([f(1) for f in funcs])
-\`\`\``,
-    options: [
-      { text: '[1, 2, 3]', isCorrect: false },
-      { text: '[3, 3, 3]', isCorrect: true },
-      { text: '[2, 3, 4]', isCorrect: false },
-      { text: 'TypeError: late binding closure', isCorrect: false }
-    ],
-    explanation: 'Python closures bind variables by reference, not by value. When the lambdas execute, `i` has finalized to 2, so `1 + 2 = 3` for each.'
-  },
-  {
     title: 'Subarray Reversal Off-by-One Debugging',
     topic: 'Arrays',
     language: 'python',
@@ -1559,100 +1636,6 @@ print([f(1) for f in funcs])
   },
 
   // ==========================================
-  // MULTIPLE CHOICE QUESTIONS (type: 'mcq')
-  // ==========================================
-  {
-    title: 'SQL WHERE vs HAVING Execution Pipeline',
-    topic: 'SQL Semantics',
-    language: 'sql',
-    type: 'mcq' as const,
-    difficulty: 'medium' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['SQL', 'Query Lifecycle', 'Aggregates', 'WHERE vs HAVING'],
-    prompt: 'In SQL query processing order of operations, what is the architectural distinction between the WHERE and HAVING clauses?',
-    options: [
-      { text: 'WHERE filters individual row records before grouping; HAVING filters aggregated groups after the GROUP BY clause.', isCorrect: true },
-      { text: 'WHERE filters records after aggregate functions compute; HAVING filters rows before indexing.', isCorrect: false },
-      { text: 'WHERE applies exclusively to indexed primary keys; HAVING applies to non-indexed columns.', isCorrect: false },
-      { text: 'WHERE and HAVING are completely identical in ANSI SQL execution engines.', isCorrect: false }
-    ],
-    explanation: 'The SQL logical query processing order executes FROM -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY. WHERE eliminates rows prior to grouping, while HAVING evaluates group-level aggregate criteria.'
-  },
-  {
-    title: 'JavaScript Microtask vs Macrotask Event Loop',
-    topic: 'JavaScript Concurrency',
-    language: 'javascript',
-    type: 'mcq' as const,
-    difficulty: 'medium' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['JavaScript', 'V8 Engine', 'Event Loop', 'Microtasks'],
-    prompt: `What will be the console output order of the following JavaScript snippet?\n\n\`\`\`javascript\nconsole.log('1');\nsetTimeout(() => console.log('2'), 0);\nPromise.resolve().then(() => console.log('3'));\nconsole.log('4');\n\`\`\``,
-    options: [
-      { text: '1, 4, 3, 2', isCorrect: true },
-      { text: '1, 2, 3, 4', isCorrect: false },
-      { text: '1, 4, 2, 3', isCorrect: false },
-      { text: '1, 3, 4, 2', isCorrect: false }
-    ],
-    explanation: 'Synchronous code runs first (1, 4). Next, the microtask queue (Promise.then callbacks) is completely exhausted (3). Finally, macrotasks like setTimeout(..., 0) execute in the next tick (2).'
-  },
-  {
-    title: 'Java Volatile vs Synchronized Memory Barrier',
-    topic: 'Java Concurrency',
-    language: 'java',
-    type: 'mcq' as const,
-    difficulty: 'hard' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['Java', 'Multithreading', 'Memory Model', 'Volatile'],
-    prompt: 'What guarantee does the `volatile` keyword establish in Java regarding variable access across threads?',
-    options: [
-      { text: 'Guarantees direct main memory read/write visibility across CPU caches and prevents instruction reordering, but does NOT guarantee compound atomicity (such as count++).', isCorrect: true },
-      { text: 'Acquires an implicit monitor lock ensuring full atomicity and synchronized critical sections.', isCorrect: false },
-      { text: 'Copies the variable into local thread-local storage (TLS) exclusively.', isCorrect: false },
-      { text: 'Permanently disables garbage collection for that instance.', isCorrect: false }
-    ],
-    explanation: 'In the Java Memory Model, volatile ensures visibility (reads and writes go directly to RAM rather than CPU registers/L1 caches) and inserts memory fences, but does not provide mutual exclusion or compound atomicity.'
-  },
-  {
-    title: 'Database ACID: Dirty Reads & Isolation Levels',
-    topic: 'Database Transactions',
-    language: 'sql',
-    type: 'mcq' as const,
-    difficulty: 'medium' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['Databases', 'ACID', 'Isolation Levels', 'Concurrency'],
-    prompt: 'Which standard ANSI SQL transaction isolation level prevents Dirty Reads, but still allows Non-Repeatable Reads and Phantom Reads?',
-    options: [
-      { text: 'Read Committed', isCorrect: true },
-      { text: 'Read Uncommitted', isCorrect: false },
-      { text: 'Repeatable Read', isCorrect: false },
-      { text: 'Serializable', isCorrect: false }
-    ],
-    explanation: 'Read Uncommitted allows dirty reads. Read Committed guarantees that any data read was committed at the moment it is read, preventing dirty reads while still permitting non-repeatable reads.'
-  },
-  {
-    title: 'C++ RAII & Unique Pointer Move Semantics',
-    topic: 'C++ Memory',
-    language: 'cpp',
-    type: 'mcq' as const,
-    difficulty: 'medium' as const,
-    expectedSolveTimeMinutes: 5,
-    marks: 10,
-    skillTags: ['C++', 'RAII', 'Smart Pointers', 'Move Semantics'],
-    prompt: 'Why does compiling `std::unique_ptr<int> p2 = p1;` fail in modern C++?',
-    options: [
-      { text: '`std::unique_ptr` explicitly deletes its copy constructor to enforce strict single ownership; transfer requires `std::move(p1)`.', isCorrect: true },
-      { text: '`std::unique_ptr` cannot be pointed to heap memory.', isCorrect: false },
-      { text: 'C++ smart pointers do not support assignment operations.', isCorrect: false },
-      { text: 'A compiler warning is raised, but it compiles successfully into a shared reference.', isCorrect: false }
-    ],
-    explanation: '`std::unique_ptr` owns and manages another object through a pointer and disposes of that object when the unique_ptr goes out of scope. Its copy constructor is deleted (= delete), requiring explicit std::move() for ownership transfer.'
-  },
-
-  // ==========================================
   // APTITUDE & LOGICAL REASONING (type: 'aptitude')
   // ==========================================
   {
@@ -1706,23 +1689,54 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
   console.log('🌱 Seeding Central Question Bank with 20 logic debugging challenges & MCQs...');
 
   // Convert Round 1 MCQs to Question Bank Templates
+  // Purge obsolete language-prefixed MCQs so only the 20 logic debugging MCQs exist
+  await QuestionTemplate.deleteMany({
+    $or: [
+      {
+        title: {
+          $in: [
+            'Python Variable Shadowing & Closures',
+            'SQL WHERE vs HAVING Execution Pipeline',
+            'JavaScript Microtask vs Macrotask Event Loop',
+            'Java Volatile vs Synchronized Memory Barrier',
+            'Database ACID: Dirty Reads & Isolation Levels',
+            'C++ RAII & Unique Pointer Move Semantics',
+            'Python Mutable Default Arguments',
+            'JavaScript Type Coercion Bug',
+            'C Pointer Arithmetic Pitfall',
+            'Java String Pool vs Operator ==',
+            'C++ Dangling Reference in Lambda',
+            'Integer Overflow in Binary Search',
+            'JavaScript Event Loop Microtask Ordering',
+            'Python Shallow vs Deep Copy Bug',
+            'C Memory Leak with realloc',
+            'Java Concurrency: Double-Checked Locking'
+          ]
+        }
+      },
+      { type: 'mcq', language: { $in: ['python', 'javascript', 'java', 'cpp', 'c', 'sql'] } }
+    ]
+  });
+
+  // Convert Round 1 MCQs to Question Bank Templates
   const mcqTemplates = DEFAULT_ROUND_1_MCQS.map(m => {
     return {
       title: m.title,
-      topic: 'Logic-Based Debugging',
+      topic: (m as any).topic || 'Logic Debugging',
+      subtopic: (m as any).subtopic || 'Logic Debugging',
       language: 'general',
       type: 'mcq' as const,
-      difficulty: 'medium' as const,
+      difficulty: (m as any).difficulty || 'medium',
       expectedSolveTimeMinutes: 3,
       marks: m.marks || 10,
-      skillTags: ['Logic Debugging', 'Code Tracing', 'Bug Identification'],
+      skillTags: ['Universal Logic', 'Language-Agnostic', 'Code Tracing', 'Bug Identification', (m as any).subtopic || 'Logic Debugging'],
       prompt: m.prompt,
       explanation: m.explanation || '',
       options: m.options.map((optText, idx) => ({
         text: optText,
         isCorrect: idx === m.correctOptionIndex
       })),
-      allowedLanguages: ['python', 'c', 'cpp', 'java', 'javascript'],
+      allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
       starterCode: {},
       testCases: [],
       hasDnaMutation: false,

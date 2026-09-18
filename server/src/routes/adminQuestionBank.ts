@@ -38,8 +38,29 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     const { topic, language, difficulty, type, search, eventId, stageNumber, exactEventLanguages } = req.query;
     const filter: Record<string, any> = {};
 
-    if (topic) filter.topic = topic;
-    if (language) filter.language = language;
+    if (language) {
+      const cleanLang = (language as string).toLowerCase().trim();
+      filter.$and = filter.$and || [];
+      if (cleanLang === 'general' || cleanLang === 'universal' || cleanLang === 'logic') {
+        filter.$and.push({
+          $or: [
+            { language: 'general' },
+            { language: 'universal' },
+            { type: 'mcq' },
+            { type: 'aptitude' }
+          ]
+        });
+      } else {
+        filter.$and.push({
+          $or: [
+            { language: cleanLang },
+            { allowedLanguages: cleanLang },
+            { type: 'mcq' }, // Universal logic debugging MCQs apply to any language
+            { language: 'general' }
+          ]
+        });
+      }
+    }
     if (difficulty) filter.difficulty = difficulty;
     if (type) filter.type = type;
     if (search) {
