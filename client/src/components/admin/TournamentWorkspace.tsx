@@ -939,7 +939,15 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
 
       {/* Tab 2: Participants (Scoped to this tournament) */}
       {activeTab === 'participants' && (
-        <ParticipantManager eventId={eventId} />
+        <ParticipantManager
+          eventId={eventId}
+          isRound1Started={
+            event?.status === 'live' ||
+            event?.status === 'completed' ||
+            event?.status === 'archived' ||
+            rounds.some(r => r.roundNumber === 1 && (r.status !== 'pending' || Boolean((r as any).startedAt)))
+          }
+        />
       )}
 
       {/* Tab 3: Rounds & Questions (Scoped to this tournament) */}

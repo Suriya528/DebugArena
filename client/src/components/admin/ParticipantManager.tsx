@@ -18,18 +18,24 @@ import {
   Calendar,
   Sparkles,
   AlertCircle,
-  Copy
+  Copy,
+  Lock
 } from 'lucide-react';
 import { api } from '../../services/api.js';
+import { useRealtime } from '../../context/SocketContext.js';
 import { SuspicionEvidenceModal } from './SuspicionEvidenceModal.js';
 import { JourneyReplayModal } from './JourneyReplayModal.js';
 import { SkillRadarModal } from './SkillRadarModal.js';
 
 interface ParticipantManagerProps {
   eventId?: string;
+  isRound1Started?: boolean;
 }
 
-export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId: propEventId }) => {
+export const ParticipantManager: React.FC<ParticipantManagerProps> = ({
+  eventId: propEventId,
+  isRound1Started: propIsRound1Started
+}) => {
   const [participants, setParticipants] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string>(() => {
@@ -103,6 +109,8 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId:
     }
   };
 
+  const [round1StartedFromServer, setRound1StartedFromServer] = useState<boolean>(false);
+
   const fetchParticipants = async (targetEventId?: string) => {
     try {
       setLoading(true);
@@ -110,12 +118,56 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId:
       const url = evId ? `/admin/participants?eventId=${encodeURIComponent(evId)}` : '/admin/participants';
       const res = await api.get(url);
       setParticipants(res.data.participants || []);
+      if (res.data.isRound1Started !== undefined) {
+        setRound1StartedFromServer(Boolean(res.data.isRound1Started));
+      }
     } catch (err) {
       console.error('Failed to load participants:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const activeEvent = events.find((e: any) => e._id === selectedEventId);
+  const round1 = activeEvent?.rounds?.find((r: any) => r.roundNumber === 1);
+  const isRound1StartedFromEvent = Boolean(
+    activeEvent?.isRound1Started ||
+    activeEvent?.status === 'live' ||
+    activeEvent?.status === 'completed' ||
+    activeEvent?.status === 'archived' ||
+    (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt)))
+  );
+
+  const isRound1Started = Boolean(
+    propIsRound1Started ||
+    round1StartedFromServer ||
+    isRound1StartedFromEvent
+  );
+
+  const { socket } = useRealtime();
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleRoundStarted = (data: any) => {
+      if (data?.roundNumber === 1 || data?.round?.roundNumber === 1) {
+        setRound1StartedFromServer(true);
+        fetchParticipants(selectedEventId);
+        fetchEvents();
+      }
+    };
+    const handleEventStarted = () => {
+      setRound1StartedFromServer(true);
+      fetchParticipants(selectedEventId);
+      fetchEvents();
+    };
+
+    socket.on('round:started', handleRoundStarted);
+    socket.on('event:started', handleEventStarted);
+    return () => {
+      socket.off('round:started', handleRoundStarted);
+      socket.off('event:started', handleEventStarted);
+    };
+  }, [socket, selectedEventId]);
 
   useEffect(() => {
     fetchEvents();
@@ -131,6 +183,10 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId:
   }, [selectedEventId]);
 
   const handleOpenAddModal = () => {
+    if (isRound1Started) {
+      showToast('Participant registration is closed because Round 1 has started.');
+      return;
+    }
     setFormData({
       username: '',
       password: generatePassword(),
@@ -143,6 +199,10 @@ export const ParticipantManager: React.FC<ParticipantManagerProps> = ({ eventId:
 
   const handleAddSingle = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRound1Started) {
+      setAddError('Cannot add participant: Round 1 has already started for this tournament.');
+      return;
+    }
     setAddLoading(true);
     setAddError(null);
 
@@ -202,6 +262,10 @@ alex,secret456`;
   };
 
   const handleBulkImport = async () => {
+    if (isRound1Started) {
+      alert('Cannot import participants: Round 1 has already started for this tournament.');
+      return;
+    }
     if (!bulkCsvText.trim()) return;
     setBulkLoading(true);
 
@@ -348,20 +412,40 @@ alex,secret456`;
             />
           </div>
 
+          {isRound1Started && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium">
+              <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Registration Locked (Round 1 Started)</span>
+            </div>
+          )}
+
           <button
+            disabled={isRound1Started}
             onClick={handleOpenAddModal}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
+            title={isRound1Started ? "Participant registration is closed because Round 1 has already started" : "Add Participant"}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+              isRound1Started
+                ? 'bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-60 shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 cursor-pointer'
+            }`}
           >
             <UserPlus className="w-4 h-4" />
             <span>Add Participant</span>
           </button>
 
           <button
+            disabled={isRound1Started}
             onClick={() => {
+              if (isRound1Started) return;
               setBulkEventId(selectedEventId || (events[0]?._id || ''));
               setShowBulkModal(true);
             }}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+            title={isRound1Started ? "Participant registration is closed because Round 1 has already started" : "Bulk CSV Import"}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+              isRound1Started
+                ? 'bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-60'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer border border-slate-700'
+            }`}
           >
             <Upload className="w-4 h-4" />
             <span>Bulk CSV Import</span>
@@ -442,7 +526,19 @@ alex,secret456`;
               ) : filteredParticipants.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-slate-400 font-sans">
-                    No participants found. Click <span className="text-indigo-400 font-semibold">"Add Participant"</span> to issue a custom username & password.
+                    {isRound1Started ? (
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-4">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                          <Lock className="w-5 h-5" />
+                        </div>
+                        <span className="text-slate-200 font-bold text-sm">Participant Registration Locked</span>
+                        <span className="text-xs text-slate-500 max-w-md text-center">
+                          Round 1 has already started for this tournament. New participants cannot be added or imported after competition launch.
+                        </span>
+                      </div>
+                    ) : (
+                      <>No participants found. Click <span className="text-indigo-400 font-semibold">"Add Participant"</span> to issue a custom username & password.</>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -594,6 +690,13 @@ alex,secret456`;
               </div>
             )}
 
+            {isRound1Started && (
+              <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-800 text-amber-300 text-xs flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Round 1 has already started for this tournament. Adding participants is locked.</span>
+              </div>
+            )}
+
             {/* Target Tournament (if multiple) */}
             {events.length > 1 && (
               <div>
@@ -677,7 +780,7 @@ alex,secret456`;
               </button>
               <button
                 type="submit"
-                disabled={addLoading}
+                disabled={addLoading || isRound1Started}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-1.5"
               >
                 {addLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
@@ -710,6 +813,13 @@ alex,secret456`;
                 Sample CSV
               </button>
             </div>
+
+            {isRound1Started && (
+              <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-800 text-amber-300 text-xs flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Round 1 has already started for this tournament. Bulk participant import is locked.</span>
+              </div>
+            )}
 
             {/* Target Tournament */}
             {events.length > 1 && (
@@ -787,7 +897,7 @@ alex,secret456`;
               </button>
               <button
                 onClick={handleBulkImport}
-                disabled={!bulkCsvText.trim() || bulkLoading}
+                disabled={!bulkCsvText.trim() || bulkLoading || isRound1Started}
                 className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-1.5"
               >
                 {bulkLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}

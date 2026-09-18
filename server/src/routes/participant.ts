@@ -148,6 +148,19 @@ participantRouter.post('/join-by-token', async (req: Request, res: Response): Pr
         }
       }
     } else {
+      // New participant registration guard: blocked once Round 1 has started
+      const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+      const isRound1Started = Boolean(
+        (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt))) ||
+        event.status === 'live'
+      );
+      if (isRound1Started) {
+        res.status(403).json({
+          error: 'Registration is closed. New participants cannot register after Round 1 has started.'
+        });
+        return;
+      }
+
       // If user is trying to register explicitly
       if (mode === 'register' || Boolean(name && name.trim())) {
         const cleanReg = cleanUpper || cleanLower;
@@ -337,6 +350,19 @@ participantRouter.post('/join-by-code', async (req: Request, res: Response): Pro
         }
       }
     } else {
+      // New participant registration guard: blocked once Round 1 has started
+      const round1 = await DynamicRound.findOne({ eventId: event._id, roundNumber: 1 });
+      const isRound1Started = Boolean(
+        (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt))) ||
+        event.status === 'live'
+      );
+      if (isRound1Started) {
+        res.status(403).json({
+          error: 'Registration is closed. New participants cannot register after Round 1 has started.'
+        });
+        return;
+      }
+
       // New Student Registration (if explicitly registering)
       if (mode === 'register' || Boolean(name && name.trim())) {
         const cleanReg = cleanUpper || cleanLower;

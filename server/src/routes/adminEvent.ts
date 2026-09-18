@@ -176,7 +176,7 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
 
     const eventIds = events.map(e => e._id);
     const allRounds = await DynamicRound.find({ eventId: { $in: eventIds } })
-      .select('eventId roundNumber title type durationMinutes questionCount totalMarks status')
+      .select('eventId roundNumber title type durationMinutes questionCount totalMarks status startedAt')
       .sort({ roundNumber: 1 });
 
     const roundsByEventId: Record<string, any[]> = {};
@@ -218,9 +218,19 @@ adminEventRouter.get('/', async (req: AuthenticatedRequest, res: Response): Prom
         delete (obj as any).participantTokenCipher;
         delete (obj as any).adminTokenCipher;
 
+        const evRounds = roundsByEventId[ev._id.toString()] || [];
+        const r1 = evRounds.find((r: any) => r.roundNumber === 1);
+        const isRound1Started = Boolean(
+          (r1 && (r1.status !== 'pending' || Boolean(r1.startedAt))) ||
+          ev.status === 'live' ||
+          ev.status === 'completed' ||
+          ev.status === 'archived'
+        );
+
         return {
           ...obj,
-          rounds: roundsByEventId[ev._id.toString()] || [],
+          rounds: evRounds,
+          isRound1Started,
           participantLink: `/join/${ev.code}`,
           adminLink: `/control/${adminToken}`
         };
@@ -807,9 +817,19 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
     delete (eventObj as any).participantTokenCipher;
     delete (eventObj as any).adminTokenCipher;
 
+    const r1 = enrichedRounds.find((r: any) => r.roundNumber === 1);
+    const isRound1Started = Boolean(
+      (r1 && (r1.status !== 'pending' || Boolean(r1.startedAt))) ||
+      event.status === 'live' ||
+      event.status === 'completed' ||
+      event.status === 'archived'
+    );
+    (eventObj as any).isRound1Started = isRound1Started;
+
     res.json({
       event: eventObj,
       rounds: enrichedRounds,
+      isRound1Started,
       allRoundsQuestionsReady,
       unreadyRounds,
       participantLink: `/join/${event.code}`,

@@ -678,7 +678,35 @@ adminRouter.get('/participants', async (req: AuthenticatedRequest, res: Response
       };
     });
 
-    res.json({ participants: participantData });
+    let isRound1Started = false;
+    let targetEventId = req.query.eventId || req.user?.eventId;
+    if (!targetEventId) {
+      const latestEvent = await Event.findOne({
+        $or: [
+          { ownerId: req.user!.userId },
+          { collegeId: req.user?.collegeId }
+        ]
+      }).sort({ createdAt: -1 });
+      if (latestEvent) {
+        targetEventId = latestEvent._id.toString();
+      }
+    }
+
+    if (targetEventId) {
+      const round1 = await DynamicRound.findOne({ eventId: targetEventId, roundNumber: 1 });
+      const ev = await Event.findById(targetEventId);
+      isRound1Started = Boolean(
+        (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt))) ||
+        (ev && (ev.status === 'live' || ev.status === 'completed' || ev.status === 'archived'))
+      );
+    } else {
+      const competition = await Competition.findOne();
+      if (competition && competition.status !== 'not_started') {
+        isRound1Started = true;
+      }
+    }
+
+    res.json({ participants: participantData, isRound1Started });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch participants' });
   }
@@ -703,6 +731,30 @@ adminRouter.post('/participants', async (req: AuthenticatedRequest, res: Respons
       }).sort({ createdAt: -1 });
       if (latestEvent) {
         effectiveEventId = latestEvent._id.toString();
+      }
+    }
+
+    // Strict guard: Do not allow adding participants once Round 1 has started
+    if (effectiveEventId) {
+      const round1 = await DynamicRound.findOne({ eventId: effectiveEventId, roundNumber: 1 });
+      const ev = await Event.findById(effectiveEventId);
+      const isRound1Started = Boolean(
+        (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt))) ||
+        (ev && (ev.status === 'live' || ev.status === 'completed' || ev.status === 'archived'))
+      );
+      if (isRound1Started) {
+        res.status(400).json({
+          error: 'Cannot add participants: Round 1 has already started for this tournament. Participant registration is locked.'
+        });
+        return;
+      }
+    } else {
+      const competition = await Competition.findOne();
+      if (competition && competition.status !== 'not_started') {
+        res.status(400).json({
+          error: 'Cannot add participants: Competition has already started. Participant registration is locked.'
+        });
+        return;
       }
     }
 
@@ -778,6 +830,30 @@ adminRouter.post('/participants/bulk', async (req: AuthenticatedRequest, res: Re
       }).sort({ createdAt: -1 });
       if (latestEvent) {
         effectiveEventId = latestEvent._id.toString();
+      }
+    }
+
+    // Strict guard: Do not allow importing participants once Round 1 has started
+    if (effectiveEventId) {
+      const round1 = await DynamicRound.findOne({ eventId: effectiveEventId, roundNumber: 1 });
+      const ev = await Event.findById(effectiveEventId);
+      const isRound1Started = Boolean(
+        (round1 && (round1.status !== 'pending' || Boolean(round1.startedAt))) ||
+        (ev && (ev.status === 'live' || ev.status === 'completed' || ev.status === 'archived'))
+      );
+      if (isRound1Started) {
+        res.status(400).json({
+          error: 'Cannot import participants: Round 1 has already started for this tournament. Participant registration is locked.'
+        });
+        return;
+      }
+    } else {
+      const competition = await Competition.findOne();
+      if (competition && competition.status !== 'not_started') {
+        res.status(400).json({
+          error: 'Cannot import participants: Competition has already started. Participant registration is locked.'
+        });
+        return;
       }
     }
 
