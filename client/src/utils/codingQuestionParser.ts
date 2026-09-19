@@ -8,6 +8,7 @@ export interface ParsedCodingProblem {
   scenario: string;
   inputFormat: string;
   outputFormat: string;
+  constraints?: string;
   bugClue?: string;
   errorCode: string;
   sampleCases: ParsedTestCase[];
@@ -65,12 +66,13 @@ export function parseCodingQuestion(
 
   const lines = safePrompt.split('\n');
   let hasSections = false;
-  let activeSection: 'scenario' | 'input' | 'output' | 'bug' = 'scenario';
+  let activeSection: 'scenario' | 'input' | 'output' | 'constraints' | 'bug' = 'scenario';
 
-  const sectionBuckets: Record<'scenario' | 'input' | 'output' | 'bug', string[]> = {
+  const sectionBuckets: Record<'scenario' | 'input' | 'output' | 'constraints' | 'bug', string[]> = {
     scenario: [],
     input: [],
     output: [],
+    constraints: [],
     bug: []
   };
 
@@ -107,6 +109,14 @@ export function parseCodingQuestion(
         hasSections = true;
         continue;
       } else if (
+        headerText.includes('constraint') ||
+        headerText.includes('constraints') ||
+        headerText.includes('limits')
+      ) {
+        activeSection = 'constraints';
+        hasSections = true;
+        continue;
+      } else if (
         headerText.includes('bug') ||
         headerText.includes('error code') ||
         headerText.includes('error') ||
@@ -119,12 +129,15 @@ export function parseCodingQuestion(
       }
     }
 
-    sectionBuckets[activeSection].push(line);
+    if (activeSection in sectionBuckets) {
+      sectionBuckets[activeSection].push(line);
+    }
   }
 
   let scenario = sectionBuckets.scenario.join('\n').trim();
-  let inputFormat = sectionBuckets.input.join('\n').trim();
-  let outputFormat = sectionBuckets.output.join('\n').trim();
+  let inputFormat = ((question as any).inputFormat || '').trim() || sectionBuckets.input.join('\n').trim();
+  let outputFormat = ((question as any).outputFormat || '').trim() || sectionBuckets.output.join('\n').trim();
+  let constraints = ((question as any).constraints || '').trim() || (sectionBuckets as any).constraints?.join('\n').trim() || '';
   let bugClue = sectionBuckets.bug.join('\n').trim();
 
   // If no markdown sectioning was found, treat entire prompt as the Scenario

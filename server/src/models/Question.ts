@@ -13,9 +13,13 @@ export interface IQuestion extends Document {
   eventId?: mongoose.Types.ObjectId;
   roundNumber: number;
   type: 'mcq' | 'coding' | 'sql' | 'debugging' | 'aptitude' | 'custom';
+  codingMode?: 'standard' | 'debug';
   orderIndex: number;
   title: string;
   prompt: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  constraints?: string;
   marks: number;
   // MCQ specific
   options?: string[];
@@ -56,9 +60,18 @@ const QuestionSchema = new Schema<IQuestion>(
       enum: ['mcq', 'coding', 'sql', 'debugging', 'aptitude', 'custom'],
       required: true
     },
+    codingMode: {
+      type: String,
+      enum: ['standard', 'debug'],
+      default: 'standard',
+      index: true
+    },
     orderIndex: { type: Number, required: true, default: 0 },
     title: { type: String, required: true },
     prompt: { type: String, required: true },
+    inputFormat: { type: String, default: '' },
+    outputFormat: { type: String, default: '' },
+    constraints: { type: String, default: '' },
     marks: { type: Number, required: true, default: 10 },
     // MCQ
     options: [{ type: String }],

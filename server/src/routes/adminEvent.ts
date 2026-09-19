@@ -1273,12 +1273,11 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
       let isTypeMatch = false;
       if (round.type === 'mcq') {
         isTypeMatch = tmpl.type === 'mcq' || (tmpl.type === 'aptitude' && Array.isArray(tmpl.options) && tmpl.options.length > 0);
-      } else if (round.type === 'coding') {
-        isTypeMatch = tmpl.type === 'coding';
+      } else if (round.type === 'coding' || round.type === 'debugging') {
+        // Unified coding type: Coding rounds accept any coding problem (standard or debug mode) or legacy debugging
+        isTypeMatch = tmpl.type === 'coding' || tmpl.type === 'debugging';
       } else if (round.type === 'sql') {
         isTypeMatch = tmpl.type === 'sql';
-      } else if (round.type === 'debugging') {
-        isTypeMatch = tmpl.type === 'debugging' || tmpl.type === 'coding';
       } else {
         isTypeMatch = tmpl.type === round.type;
       }
@@ -1347,15 +1346,20 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
       const existing = existingByTmplId.get(qid.toString());
 
       const isMcq = tmpl.type === 'mcq' || (tmpl.type === 'aptitude' && tmpl.options && tmpl.options.length > 0);
+      const isCoding = tmpl.type === 'coding' || tmpl.type === 'debugging';
       const questionPayload: any = {
         roundNumber: parsedRound,
         orderIndex: order,
         eventId: event._id,
         collegeId: event.collegeId,
         templateId: tmpl._id,
-        type: isMcq ? 'mcq' : (tmpl.type === 'sql' ? 'sql' : tmpl.type === 'debugging' ? 'debugging' : 'coding'),
+        type: isMcq ? 'mcq' : (tmpl.type === 'sql' ? 'sql' : 'coding'),
+        codingMode: tmpl.codingMode || (tmpl.type === 'debugging' ? 'debug' : 'standard'),
         title: tmpl.title,
         prompt: tmpl.prompt,
+        inputFormat: tmpl.inputFormat || '',
+        outputFormat: tmpl.outputFormat || '',
+        constraints: tmpl.constraints || '',
         marks: tmpl.marks || (isMcq ? 10 : 25),
         options: tmpl.options?.map(o => o.text) || [],
         correctOptionIndex: tmpl.options?.findIndex(o => o.isCorrect) ?? 0,

@@ -142,9 +142,13 @@ export interface Question {
   templateId?: string;
   roundNumber: number;
   type: 'mcq' | 'coding' | 'sql' | 'debugging' | 'aptitude' | 'custom';
+  codingMode?: 'standard' | 'debug';
   orderIndex: number;
   title: string;
   prompt: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  constraints?: string;
   marks: number;
   // MCQ
   options?: string[];
@@ -167,6 +171,7 @@ export interface QuestionTemplate {
   topic: string;
   language?: string;
   type: 'mcq' | 'debugging' | 'coding' | 'sql' | 'aptitude' | 'custom';
+  codingMode?: 'standard' | 'debug';
   difficulty: 'easy' | 'medium' | 'hard';
   expectedSolveTimeMinutes?: number;
   marks?: number;

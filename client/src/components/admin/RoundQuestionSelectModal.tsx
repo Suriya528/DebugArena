@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   Search,
@@ -65,9 +65,27 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
   const isComplete = selectedCount === requiredCount;
   const missingCount = Math.max(0, requiredCount - selectedCount);
 
+  // Ref to track latest selected IDs without triggering fetchBankQuestions
+  const selectedIdsRef = useRef<string[]>(selectedIds);
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
+
+  // Track initialization to avoid wiping local selections on parent re-renders
+  const lastRoundKeyRef = useRef<string | null>(null);
+
   // Initialize selected IDs and load initial question data when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      lastRoundKeyRef.current = null;
+      return;
+    }
+
+    const currentRoundKey = `${round._id || ''}_${round.roundNumber}`;
+    if (lastRoundKeyRef.current === currentRoundKey) {
+      return;
+    }
+    lastRoundKeyRef.current = currentRoundKey;
 
     const initialIds = Array.isArray(round.selectedQuestionIds)
       ? round.selectedQuestionIds.map(id => id.toString())
@@ -97,7 +115,7 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
     } else {
       setSelectedMap(new Map());
     }
-  }, [isOpen, round]);
+  }, [isOpen, round._id, round.roundNumber, round.selectedQuestionIds]);
 
   // Fetch paginated bank questions matching round type
   const fetchBankQuestions = useCallback(async () => {
@@ -106,11 +124,11 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
       setLoading(true);
       setErrorMessage(null);
 
+      // Unified coding type: Coding rounds accept both standard & debug coding problems
       let queryType = round.type;
       if (round.type === 'mcq') queryType = 'mcq';
-      else if (round.type === 'coding') queryType = 'coding';
+      else if (round.type === 'coding' || round.type === 'debugging') queryType = 'coding';
       else if (round.type === 'sql') queryType = 'sql';
-      else if (round.type === 'debugging') queryType = 'debugging';
 
       const res = await getQuestionBank({
         page,
@@ -129,12 +147,14 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
       setGrandTotalType(res.countsByType?.[queryType] || res.totalCount || 0);
       if (res.topics) setAvailableTopics(res.topics);
 
+      // Hydrate selectedMap with full objects from fetched questions without triggering refetch
       setSelectedMap(prev => {
         const next = new Map(prev);
         if (Array.isArray(res.questions)) {
           res.questions.forEach((q: QuestionTemplate) => {
-            if (selectedIds.includes(q._id.toString())) {
-              next.set(q._id.toString(), q);
+            const qid = q._id.toString();
+            if (selectedIdsRef.current.includes(qid)) {
+              next.set(qid, q);
             }
           });
         }
@@ -145,7 +165,7 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
     } finally {
       setLoading(false);
     }
-  }, [isOpen, page, limit, round.type, round.roundNumber, difficultyFilter, topicFilter, searchQuery, eventId, selectedIds]);
+  }, [isOpen, page, limit, round.type, round.roundNumber, difficultyFilter, topicFilter, searchQuery, eventId]);
 
   useEffect(() => {
     fetchBankQuestions();
@@ -231,7 +251,7 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
                 SELECT QUESTIONS FOR ROUND {round.roundNumber}
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                {round.type}
+                {round.type === 'debugging' ? 'CODING' : round.type}
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono">
@@ -307,9 +327,8 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
 
           <div className="text-[11px] font-mono text-slate-400">
             {round.type === 'mcq' && 'Single-choice question library'}
-            {round.type === 'coding' && 'Algorithmic code assessment library'}
+            {(round.type === 'coding' || round.type === 'debugging') && 'Algorithmic code & debugging assessment library'}
             {round.type === 'sql' && 'Database queries library'}
-            {round.type === 'debugging' && 'Logic bug fixing library'}
           </div>
         </div>
 
@@ -320,7 +339,7 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
             <div>
               <strong className="text-rose-200">Insufficient Questions in Master Question Bank:</strong>
               <p className="mt-0.5 text-rose-300/90 leading-relaxed">
-                This round requires <strong>{requiredCount} {round.type.toUpperCase()}</strong> questions, but only <strong>{grandTotalType}</strong> questions of this type exist in the Master Question Bank. Please create or import more questions in the Master Question Bank before finalizing this round.
+                This round requires <strong>{requiredCount} {round.type === 'debugging' ? 'CODING' : round.type.toUpperCase()}</strong> questions, but only <strong>{grandTotalType}</strong> questions of this type exist in the Master Question Bank. Please create or import more questions in the Master Question Bank before finalizing this round.
               </p>
             </div>
           </div>
@@ -469,6 +488,28 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
                               >
                                 {q.title}
                               </span>
+
+                              {/* Unified Type & Mode Badges */}
+                              {(q.type === 'coding' || q.type === 'debugging') && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                  CODING
+                                </span>
+                              )}
+                              {(q.codingMode === 'debug' || q.type === 'debugging') && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20">
+                                  DEBUG
+                                </span>
+                              )}
+                              {q.type === 'mcq' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                  MCQ
+                                </span>
+                              )}
+                              {q.type === 'sql' && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  SQL
+                                </span>
+                              )}
 
                               {/* Difficulty Badge */}
                               <span
@@ -670,6 +711,9 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
                               {q?.title || `Question ID: ${qid}`}
                             </div>
                             <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                              {(q?.codingMode === 'debug' || q?.type === 'debugging') && (
+                                <span className="uppercase text-fuchsia-400 font-bold">DEBUG</span>
+                              )}
                               {q?.difficulty && (
                                 <span className="uppercase text-amber-400">{q.difficulty}</span>
                               )}

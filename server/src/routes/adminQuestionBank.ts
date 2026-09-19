@@ -95,12 +95,16 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     if (difficulty) filter.difficulty = difficulty;
 
     if (type && type !== 'all') {
-      // Coding and debugging are the same in the question bank
+      // Unified coding question type: coding & debugging are unified under 'coding'
       if (type === 'coding' || type === 'debugging' || type === 'coding_debugging') {
         filter.type = { $in: ['coding', 'debugging'] };
       } else {
         filter.type = type;
       }
+    }
+
+    if (req.query.codingMode && req.query.codingMode !== 'all') {
+      filter.codingMode = req.query.codingMode;
     }
 
     if (language) {
@@ -303,7 +307,8 @@ adminQuestionBankRouter.post('/', async (req: AuthenticatedRequest, res: Respons
       title: title.trim(),
       topic: topic.trim(),
       language: language || 'java',
-      type: type || 'debugging',
+      type: type === 'debugging' ? 'coding' : (type || 'coding'),
+      codingMode: req.body.codingMode || (type === 'debugging' ? 'debug' : 'standard'),
       difficulty: difficulty || 'medium',
       expectedSolveTimeMinutes: expectedSolveTimeMinutes || 15,
       marks: marks || 20,
@@ -597,7 +602,13 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
     template.title = title.trim();
     template.topic = topic.trim();
     if (language) template.language = language;
-    if (type) template.type = type;
+    if (type) {
+      template.type = type === 'debugging' ? 'coding' : type;
+      if (type === 'debugging') template.codingMode = 'debug';
+    }
+    if (req.body.codingMode) {
+      template.codingMode = req.body.codingMode;
+    }
     if (difficulty) template.difficulty = difficulty;
     if (expectedSolveTimeMinutes !== undefined) template.expectedSolveTimeMinutes = Number(expectedSolveTimeMinutes);
     if (marks !== undefined) template.marks = Number(marks);

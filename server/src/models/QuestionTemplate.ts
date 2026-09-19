@@ -29,6 +29,7 @@ export interface IQuestionTemplate extends Document {
   topic: string;
   language?: string;
   type: QuestionType;
+  codingMode?: 'standard' | 'debug';
   difficulty: DifficultyLevel;
   expectedSolveTimeMinutes: number;
   marks: number;
@@ -91,7 +92,13 @@ const QuestionTemplateSchema = new Schema<IQuestionTemplate>(
       type: String,
       enum: ['mcq', 'debugging', 'coding', 'sql', 'aptitude', 'custom'],
       required: true,
-      default: 'debugging'
+      default: 'coding'
+    },
+    codingMode: {
+      type: String,
+      enum: ['standard', 'debug'],
+      default: 'standard',
+      index: true
     },
     difficulty: {
       type: String,

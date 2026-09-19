@@ -537,10 +537,18 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           type: question.type,
           title: question.title,
           prompt: question.prompt,
+          inputFormat: question.inputFormat || '',
+          outputFormat: question.outputFormat || '',
+          constraints: question.constraints || '',
           marks: question.marks,
           allowedLanguages: question.allowedLanguages,
           starterCode: question.starterCode,
-          testCases: (question.testCases || []).filter(tc => !tc.isHidden),
+          testCases: (question.testCases || []).filter(tc => !tc.isHidden).map(tc => ({
+            input: tc.input,
+            expectedOutput: tc.expectedOutput,
+            weight: tc.weight,
+            isHidden: false
+          })),
           timeLimitMs: question.timeLimitMs
         } : null,
         attempt: attempt || null
@@ -687,6 +695,9 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           orderIndex: q.orderIndex,
           title: q.title,
           prompt,
+          inputFormat: q.inputFormat || '',
+          outputFormat: q.outputFormat || '',
+          constraints: q.constraints || '',
           marks: q.marks,
           allowedLanguages: roundAllowedLanguages || q.allowedLanguages || ['python', 'cpp', 'java', 'c', 'javascript'],
           starterCode,
@@ -1273,8 +1284,32 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       eventId: eventIdStr
     }, collegeIdStr, eventIdStr);
 
+    const hasCompileError = results.some(r => r.compileError);
+    const hasRuntimeError = results.filter(r => !r.isHidden).some(r => r.runtimeError);
+    const allPassed = results.length > 0 && results.every(r => r.passed);
+    const visibleResults = results.filter(r => !r.isHidden);
+    const visibleAllPassed = visibleResults.length > 0 && visibleResults.every(r => r.passed);
+
+    let status = 'Wrong Answer';
+    let message = 'Sample test cases failed.';
+    if (hasCompileError) {
+      status = 'Compilation Error';
+      message = 'Compilation Error';
+    } else if (hasRuntimeError) {
+      status = 'Runtime Error';
+      message = 'Runtime Error';
+    } else if (allPassed) {
+      status = 'Accepted';
+      message = 'Accepted! All test cases passed.';
+    } else if (visibleAllPassed) {
+      status = 'Wrong Answer';
+      message = 'Your solution failed one or more private test cases.';
+    }
+
     const responsePayload = {
       success: true,
+      status,
+      message,
       score: attempt.score,
       submissionScore: currentScore,
       results: sanitizeResultsForParticipant(results)

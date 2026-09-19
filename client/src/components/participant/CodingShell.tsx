@@ -63,6 +63,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<'problem' | 'code' | 'results'>('problem');
+  const [submissionFeedback, setSubmissionFeedback] = useState<Record<string, { status: string; message: string }>>({});
 
   // Initialize from attempts or default starter code
   useEffect(() => {
@@ -247,6 +248,12 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       if (res.data.success) {
         setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
         setScores(prev => ({ ...prev, [qId]: res.data.score }));
+        if (res.data.status && res.data.message) {
+          setSubmissionFeedback(prev => ({
+            ...prev,
+            [qId]: { status: res.data.status, message: res.data.message }
+          }));
+        }
       }
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to submit code.');
@@ -269,8 +276,6 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const currentScore = scores[currentQ._id] || 0;
 
   const visibleCases = currentResults.filter(r => !r.isHidden);
-  const hiddenCases = currentResults.filter(r => r.isHidden);
-  const hiddenPassed = hiddenCases.filter(r => r.passed).length;
   const totalScoreAcrossQuestions = Object.values(scores).reduce((sum, s) => sum + s, 0);
 
   // Map language key to Monaco editor language
@@ -525,11 +530,6 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <span className="text-slate-400">Score:</span>
                   <span className="font-bold text-emerald-400">{currentScore} pts</span>
-                  {hiddenCases.length > 0 && (
-                    <span className="text-slate-500 text-[11px]">
-                      ({hiddenPassed}/{hiddenCases.length} hidden tests passed)
-                    </span>
-                  )}
                 </div>
               )}
 
@@ -562,7 +562,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 {isSubmittingCode && (
                   <div className="flex items-center gap-2 text-cyan-400">
                     <span className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-                    <span>Evaluating code against all visible and hidden test cases...</span>
+                    <span>Evaluating code submission...</span>
                   </div>
                 )}
 
@@ -632,24 +632,23 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                         </div>
                       ))}
 
-                      {/* Hidden Results Summary Badge */}
-                      {hiddenCases.length > 0 && (
-                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-2 font-bold text-white">
-                            <span>Hidden Test Cases:</span>
-                            <span
-                              className={
-                                hiddenPassed === hiddenCases.length
-                                  ? 'text-emerald-400'
-                                  : 'text-amber-400'
-                              }
-                            >
-                              {hiddenPassed} of {hiddenCases.length} passed
+                      {/* Submission Overall Status Banner */}
+                      {submissionFeedback[currentQ._id] && (
+                        <div className={`p-3 rounded-xl border flex items-center justify-between font-mono ${
+                          submissionFeedback[currentQ._id].status === 'Accepted'
+                            ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                            : submissionFeedback[currentQ._id].status === 'Compilation Error'
+                            ? 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                            : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs">
+                              {submissionFeedback[currentQ._id].status}
+                            </span>
+                            <span className="text-xs text-slate-300">
+                              — {submissionFeedback[currentQ._id].message}
                             </span>
                           </div>
-                          <span className="text-[11px] text-slate-500">
-                            (Inputs & outputs hidden for test security)
-                          </span>
                         </div>
                       )}
                     </div>
@@ -670,7 +669,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                     <span className="text-[10px] text-slate-500">Arbitrary stdin payload</span>
                   </div>
                   <textarea
-                    value={customInputs[currentQ._id] ?? (currentQ.testCases?.find(tc => !tc.isHidden)?.input || '')}
+                    value={customInputs[currentQ._id] ?? (currentQ.testCases?.[0]?.input || '')}
                     onChange={(e) => {
                       const val = e.target.value;
                       setCustomInputs(prev => ({ ...prev, [currentQ._id]: val }));

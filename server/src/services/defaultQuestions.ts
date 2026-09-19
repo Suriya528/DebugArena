@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Question, IQuestion } from '../models/Question.js';
 import { QuestionTemplate, IQuestionTemplate } from '../models/QuestionTemplate.js';
+import { DynamicRound } from '../models/DynamicRound.js';
 import { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
 
 export { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
@@ -1290,20 +1291,29 @@ export const DEFAULT_ROUND_2_CODING = [
     orderIndex: 1,
     type: 'coding' as const,
     title: 'Fix Array Reversal with Subarray Indices',
+    topic: 'Arrays',
     prompt: `### Scenario
 You are given a list of integers and two 0-based indices \`start\` and \`end\`.
 Reverse only the subarray between \`start\` and \`end\` (inclusive) and print the resulting array as space-separated integers.
 
 ### Input Format
-- Line 1: Integer \`N\` (size of array)
-- Line 2: \`N\` space-separated integers
-- Line 3: Two space-separated integers \`start\` and \`end\`
+Line 1: Integer \`N\` (size of array)
+Line 2: \`N\` space-separated integers
+Line 3: Two space-separated integers \`start\` and \`end\`
 
 ### Output Format
-- Print the modified array elements separated by spaces.
+Print the modified array elements separated by spaces.
+
+### Constraints
+- \`1 <= N <= 10,000\`
+- \`0 <= start <= end < N\`
+- \`-10^9 <= arr[i] <= 10^9\`
 
 ### Error Code (Bug to Debug)
 The provided starter code contains an off-by-one index bound error and overwrites elements without proper temporary swapping.`,
+    inputFormat: 'Line 1: Integer N (size of array)\nLine 2: N space-separated integers\nLine 3: Two space-separated integers start and end',
+    outputFormat: 'Print the modified array elements separated by spaces.',
+    constraints: '1 <= N <= 10,000\n0 <= start <= end < N\n-10^9 <= arr[i] <= 10^9',
     marks: 30,
     allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
@@ -1374,11 +1384,12 @@ int main() {
 }
 `,
       c: `#include <stdio.h>
+#include <stdlib.h>
 
 int main() {
     int n;
     if (scanf("%d", &n) != 1) return 0;
-    int arr[1000];
+    int* arr = (int*)malloc(n * sizeof(int));
     for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
     int start, end;
     scanf("%d %d", &start, &end);
@@ -1394,6 +1405,7 @@ int main() {
         printf("%d%s", arr[k], k == n - 1 ? "" : " ");
     }
     printf("\\n");
+    free(arr);
     return 0;
 }
 `,
@@ -1437,22 +1449,31 @@ public class Solution {
     orderIndex: 2,
     type: 'coding' as const,
     title: 'Fix Target Sum Pair Finder',
+    topic: 'Two Pointers',
     prompt: `### Scenario
 Given a sorted array of distinct integers and a target value \`target\`, determine if there exist two distinct indices such that \`arr[i] + arr[j] == target\`.
 Print \`YES\` if such a pair exists, otherwise \`NO\`.
 
 ### Input Format
-- Line 1: Integer \`N\` (number of elements)
-- Line 2: \`N\` space-separated sorted integers
-- Line 3: Integer \`target\`
+Line 1: Integer \`N\` (number of elements)
+Line 2: \`N\` space-separated sorted integers
+Line 3: Integer \`target\`
 
 ### Output Format
-- Print \`YES\` if two elements sum to target, otherwise print \`NO\`.
+Print \`YES\` if two elements sum to target, otherwise print \`NO\`.
+
+### Constraints
+- \`2 <= N <= 100,000\`
+- Sorted in ascending order
+- \`-10^9 <= arr[i], target <= 10^9\`
 
 ### Error Code (Bug to Debug)
 The two-pointer search incorrectly increments and decrements pointers in inverted directions, causing the search window to collapse improperly.`,
+    inputFormat: 'Line 1: Integer N (number of elements)\nLine 2: N space-separated sorted integers\nLine 3: Integer target',
+    outputFormat: 'Print YES if two elements sum to target, otherwise print NO.',
+    constraints: '2 <= N <= 100,000\nSorted in ascending order\n-10^9 <= arr[i], target <= 10^9',
     marks: 35,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
       python: `import sys
 
@@ -1522,6 +1543,35 @@ int main() {
     return 0;
 }
 `,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+    int target;
+    if (scanf("%d", &target) != 1) { free(arr); return 0; }
+
+    int left = 0, right = n - 1;
+    int found = 0;
+    while (left < right) {
+        int s = arr[left] + arr[right];
+        if (s == target) {
+            found = 1;
+            break;
+        } else if (s < target) {
+            right--; // BUG: inverted update
+        } else {
+            left++;  // BUG: inverted update
+        }
+    }
+    printf("%s\\n", found ? "YES" : "NO");
+    free(arr);
+    return 0;
+}
+`,
       java: `import java.util.*;
 
 public class Solution {
@@ -1559,21 +1609,29 @@ public class Solution {
     orderIndex: 3,
     type: 'coding' as const,
     title: 'Fix Longest Consecutive Sequence Counter',
+    topic: 'Arrays',
     prompt: `### Scenario
 Given an unsorted array of integers, output the length of the longest consecutive elements sequence.
 For example, in \`[100, 4, 200, 1, 3, 2]\`, the longest consecutive elements sequence is \`[1, 2, 3, 4]\`, with length \`4\`.
 
 ### Input Format
-- Line 1: Integer \`N\`
-- Line 2: \`N\` space-separated integers
+Line 1: Integer \`N\`
+Line 2: \`N\` space-separated integers
 
 ### Output Format
-- Single integer representing the max consecutive length (0 if empty).
+Single integer representing the max consecutive length (0 if empty).
+
+### Constraints
+- \`0 <= N <= 100,000\`
+- \`-10^9 <= arr[i] <= 10^9\`
 
 ### Error Code (Bug to Debug)
 The sequence start detector incorrectly checks for \`num + 1\` instead of verifying that \`num - 1\` is absent, disrupting the consecutive sequence chain.`,
+    inputFormat: 'Line 1: Integer N\nLine 2: N space-separated integers',
+    outputFormat: 'Single integer representing the max consecutive length (0 if empty).',
+    constraints: '0 <= N <= 100,000\n-10^9 <= arr[i] <= 10^9',
     marks: 35,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
       python: `import sys
 
@@ -1653,6 +1711,41 @@ int main() {
     return 0;
 }
 `,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int cmp(const void* a, const void* b) {
+    long long diff = (long long)(*(int*)a) - (long long)(*(int*)b);
+    return diff > 0 ? 1 : (diff < 0 ? -1 : 0);
+}
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1 || n <= 0) {
+        printf("0\\n");
+        return 0;
+    }
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+    qsort(arr, n, sizeof(int), cmp);
+
+    int longest = 1;
+    int streak = 1;
+    for (int i = 1; i < n; i++) {
+        if (arr[i] == arr[i - 1]) continue;
+        // BUG: checks difference == 2 instead of 1
+        if (arr[i] == arr[i - 1] + 2) {
+            streak++;
+            if (streak > longest) longest = streak;
+        } else {
+            streak = 1;
+        }
+    }
+    printf("%d\\n", longest);
+    free(arr);
+    return 0;
+}
+`,
       java: `import java.util.*;
 
 public class Solution {
@@ -1700,19 +1793,27 @@ export const DEFAULT_ROUND_3_CODING = [
     orderIndex: 1,
     type: 'coding' as const,
     title: 'Fix Valid Parentheses Stack Underflow',
+    topic: 'Data Structures',
     prompt: `### Scenario
 Given a string \`s\` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the brackets in the input string are balanced and valid.
 
 ### Input Format
-- Single line containing the string \`s\`.
+Single line containing the string \`s\`.
 
 ### Output Format
-- Print \`VALID\` if all brackets are properly paired and closed in correct order, otherwise print \`INVALID\`.
+Print \`VALID\` if all brackets are properly paired and closed in correct order, otherwise print \`INVALID\`.
+
+### Constraints
+- \`0 <= length(s) <= 100,000\`
+- \`s\` consists of parentheses only \`()[]{}\`
 
 ### Error Code (Bug to Debug)
 The stack popping code does not guard against stack underflow when an extra closing bracket appears, throwing an unchecked exception.`,
+    inputFormat: 'Single line containing the string s.',
+    outputFormat: 'Print VALID if all brackets are properly paired and closed in correct order, otherwise print INVALID.',
+    constraints: '0 <= length(s) <= 100,000\ns consists of parentheses only ()[]{}',
     marks: 50,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
       python: `import sys
 
@@ -1779,6 +1880,36 @@ int main() {
     return 0;
 }
 `,
+      c: `#include <stdio.h>
+#include <string.h>
+
+int main() {
+    char s[100005];
+    if (scanf("%s", s) != 1) {
+        printf("VALID\\n");
+        return 0;
+    }
+    int len = strlen(s);
+    char stack[100005];
+    int top = 0;
+
+    for (int i = 0; i < len; i++) {
+        char c = s[i];
+        if (c == '(' || c == '{' || c == '[') {
+            stack[top++] = c;
+        } else {
+            // BUG: pops without checking if stack is empty
+            char t = stack[--top];
+            if ((c == ')' && t != '(') || (c == '}' && t != '{') || (c == ']' && t != '[')) {
+                printf("INVALID\\n");
+                return 0;
+            }
+        }
+    }
+    printf("%s\\n", top == 0 ? "VALID" : "INVALID");
+    return 0;
+}
+`,
       java: `import java.util.*;
 
 public class Solution {
@@ -1815,21 +1946,29 @@ public class Solution {
     orderIndex: 2,
     type: 'coding' as const,
     title: 'Fix Matrix Transpose Dimension Flipping',
+    topic: 'Matrices',
     prompt: `### Scenario
 Given an \`R x C\` matrix of integers, output its transpose with dimensions \`C x R\`.
 Each row in the transposed matrix corresponds to a column in the original matrix.
 
 ### Input Format
-- Line 1: Two integers \`R\` and \`C\`
-- Next \`R\` lines: \`C\` space-separated integers
+Line 1: Two integers \`R\` and \`C\`
+Next \`R\` lines: \`C\` space-separated integers
 
 ### Output Format
-- \`C\` lines with \`R\` space-separated integers per line.
+\`C\` lines with \`R\` space-separated integers per line.
+
+### Constraints
+- \`1 <= R, C <= 1,000\`
+- \`-10^9 <= mat[i][j] <= 10^9\`
 
 ### Error Code (Bug to Debug)
 The iteration loops invert row and column dimension bounds during printing, causing out-of-bounds index errors for non-square matrices.`,
+    inputFormat: 'Line 1: Two integers R and C\nNext R lines: C space-separated integers',
+    outputFormat: 'C lines with R space-separated integers per line.',
+    constraints: '1 <= R, C <= 1,000\n-10^9 <= mat[i][j] <= 10^9',
     marks: 50,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
       python: `import sys
 
@@ -1898,6 +2037,31 @@ int main() {
     return 0;
 }
 `,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int r, c;
+    if (scanf("%d %d", &r, &c) != 2) return 0;
+    int** mat = (int**)malloc(r * sizeof(int*));
+    for (int i = 0; i < r; i++) {
+        mat[i] = (int*)malloc(c * sizeof(int));
+        for (int j = 0; j < c; j++) scanf("%d", &mat[i][j]);
+    }
+
+    // BUGGY: incorrect loop bounds
+    for (int j = 0; j < r; j++) {
+        for (int i = 0; i < c; i++) {
+            printf("%d%s", mat[i][j], i == c - 1 ? "" : " ");
+        }
+        printf("\\n");
+    }
+
+    for (int i = 0; i < r; i++) free(mat[i]);
+    free(mat);
+    return 0;
+}
+`,
       java: `import java.util.*;
 
 public class Solution {
@@ -1939,21 +2103,29 @@ export const DEFAULT_TIE_BREAKER_QUESTION = {
   orderIndex: 1,
   type: 'coding' as const,
   title: 'Sudden-Death: Maximum Subarray Difference',
+  topic: 'Dynamic Programming',
   prompt: `### Scenario
 Given an array of integers of length \`N\`, compute the maximum difference \`arr[j] - arr[i]\` such that \`j > i\` (e.g. max profit from buying on day i and selling on day j).
 If no pair exists where \`j > i\` yields a positive difference, output \`0\`.
 
 ### Input Format
-- Line 1: Integer \`N\`
-- Line 2: \`N\` space-separated integers
+Line 1: Integer \`N\`
+Line 2: \`N\` space-separated integers
 
 ### Output Format
-- Single integer representing the maximum positive difference (or 0 if no positive difference is possible).
+Single integer representing the maximum positive difference (or 0 if no positive difference is possible).
+
+### Constraints
+- \`1 <= N <= 100,000\`
+- \`-10^9 <= arr[i] <= 10^9\`
 
 ### Error Code (Bug to Debug)
 The algorithm inverts the difference subtraction (calculating \`min_val - x\` instead of \`x - min_val\`) and incorrectly updates the prefix tracker with max instead of min.`,
+  inputFormat: 'Line 1: Integer N\nLine 2: N space-separated integers',
+  outputFormat: 'Single integer representing the maximum positive difference (or 0 if no positive difference is possible).',
+  constraints: '1 <= N <= 100,000\n-10^9 <= arr[i] <= 10^9',
   marks: 100,
-  allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+  allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
   starterCode: {
     python: `import sys
 
@@ -2023,6 +2195,31 @@ int main() {
     return 0;
 }
 `,
+    c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1 || n < 2) {
+        printf("0\\n");
+        return 0;
+    }
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+
+    // BUGGY: inverts subtraction (min_val - x) and tracks max instead of min
+    int min_val = arr[0];
+    int max_diff = 0;
+    for (int i = 1; i < n; i++) {
+        int x = arr[i];
+        if (min_val - x > max_diff) max_diff = min_val - x; // BUG: inverted subtraction
+        if (x > min_val) min_val = x;                      // BUG: should be min
+    }
+    printf("%d\\n", max_diff);
+    free(arr);
+    return 0;
+}
+`,
     java: `import java.util.*;
 
 public class Solution {
@@ -2049,8 +2246,11 @@ public class Solution {
 `
   },
   testCases: [
-    { input: '6\n7 1 5 3 6 4', expectedOutput: '5', isHidden: false, weight: 50 },
-    { input: '5\n7 6 4 3 1', expectedOutput: '0', isHidden: false, weight: 50 }
+    { input: '6\n7 1 5 3 6 4', expectedOutput: '5', isHidden: false, weight: 20 },
+    { input: '5\n7 6 4 3 1', expectedOutput: '0', isHidden: false, weight: 20 },
+    { input: '4\n1 2 3 4', expectedOutput: '3', isHidden: true, weight: 20 },
+    { input: '5\n3 3 5 0 0', expectedOutput: '2', isHidden: true, weight: 20 },
+    { input: '7\n2 4 1 7 8 3 9', expectedOutput: '8', isHidden: true, weight: 20 }
   ],
   timeLimitMs: 3000
 };
@@ -2063,12 +2263,168 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     title: 'Binary Search Boundary Bug (Question DNA)',
     topic: 'Algorithms',
     language: 'java',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: 'medium' as const,
     expectedSolveTimeMinutes: 15,
     marks: 25,
     skillTags: ['Binary Search', 'Boundary Handling', 'Pointers', 'Off-by-One'],
-    prompt: 'Identify and fix the boundary bug in this binary search implementation. Pay close attention to loop termination condition and upper index limit.',
+    prompt: `### Scenario
+Given a sorted array of distinct integers and a target value, find the 0-based index of the target using binary search. If the target is not present in the array, print -1.
+
+### Input Format
+Line 1: Integer N (number of elements)
+Line 2: N space-separated sorted integers
+Line 3: Integer target
+
+### Output Format
+Print the 0-based index of target, or -1 if not found.
+
+### Constraints
+- 1 <= N <= 100,000
+- -10^9 <= arr[i], target <= 10^9
+
+### Error Code (Bug to Debug)
+The binary search implementation initializes high to N instead of N - 1, and uses an incorrect boundary condition, causing out-of-bounds index lookups or infinite loops.`,
+    inputFormat: 'Line 1: Integer N (number of elements)\nLine 2: N space-separated sorted integers\nLine 3: Integer target',
+    outputFormat: 'Print the 0-based index of target, or -1 if not found.',
+    constraints: '1 <= N <= 100,000\n-10^9 <= arr[i], target <= 10^9',
+    allowedLanguages: ['c', 'cpp', 'python', 'java', 'javascript'],
+    starterCode: {
+      python: `import sys
+
+def binary_search(arr, target):
+    low = 0
+    high = len(arr) # BUG: should be len(arr) - 1
+    while low < high: # BUG: misses high boundary element
+        mid = (low + high) // 2
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            low = mid + 1
+        else:
+            high = mid # BUG
+    return -1
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    arr = [int(x) for x in data[1:n+1]]
+    target = int(data[n+1])
+    print(binary_search(arr, target))
+
+if __name__ == '__main__':
+    main()
+`,
+      cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+int binarySearch(const vector<int>& arr, int target) {
+    int low = 0;
+    int high = arr.size(); // BUG: should be arr.size() - 1
+    while (low < high) {
+        int mid = low + (high - low) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target) low = mid + 1;
+        else high = mid; // BUG
+    }
+    return -1;
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> arr(n);
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    int target; cin >> target;
+    cout << binarySearch(arr, target) << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int binarySearch(int arr[], int n, int target) {
+    int low = 0;
+    int high = n; // BUG: should be n - 1
+    while (low < high) {
+        int mid = low + (high - low) / 2;
+        if (arr[mid] == target) return mid;
+        else if (arr[mid] < target) low = mid + 1;
+        else high = mid; // BUG
+    }
+    return -1;
+}
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+    int target;
+    if (scanf("%d", &target) != 1) { free(arr); return 0; }
+    printf("%d\\n", binarySearch(arr, n, target));
+    free(arr);
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    static int binarySearch(int[] arr, int target) {
+        int low = 0;
+        int high = arr.length; // BUG: should be arr.length - 1
+        while (low < high) {
+            int mid = low + (high - low) / 2;
+            if (arr[mid] == target) return mid;
+            else if (arr[mid] < target) low = mid + 1;
+            else high = mid; // BUG
+        }
+        return -1;
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        int[] arr = new int[n];
+        for (int i = 0; i < n; i++) arr[i] = sc.nextInt();
+        int target = sc.nextInt();
+        System.out.println(binarySearch(arr, target));
+    }
+}
+`,
+      javascript: `const fs = require('fs');
+
+function binarySearch(arr, target) {
+    let low = 0;
+    let high = arr.length; // BUG: should be arr.length - 1
+    while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (arr[mid] === target) return mid;
+        else if (arr[mid] < target) low = mid + 1;
+        else high = mid; // BUG
+    }
+    return -1;
+}
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+    if (!input || input.length < 2 || input[0] === '') return;
+    const n = parseInt(input[0], 10);
+    const arr = input.slice(1, n + 1).map(x => parseInt(x, 10));
+    const target = parseInt(input[n + 1], 10);
+    console.log(binarySearch(arr, target));
+}
+
+main();
+`
+    },
     hasDnaMutation: true,
     dnaConfig: {
       bugCategory: 'off_by_one' as const,
@@ -2098,19 +2454,247 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     testCases: [
       { input: '5\n1 3 5 7 9\n7', output: '3', isHidden: false, weight: 10 },
       { input: '4\n2 4 6 8\n10', output: '-1', isHidden: false, weight: 10 },
-      { input: '6\n10 20 30 40 50 60\n10', output: '0', isHidden: true, weight: 5 }
+      { input: '6\n10 20 30 40 50 60\n10', output: '0', isHidden: true, weight: 10 },
+      { input: '5\n1 2 3 4 5\n5', output: '4', isHidden: true, weight: 10 },
+      { input: '1\n42\n42', output: '0', isHidden: true, weight: 10 }
     ]
   },
   {
     title: 'Linked List Cycle Detection Null Pointer (Question DNA)',
     topic: 'Linked Lists',
     language: 'python',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: 'medium' as const,
     expectedSolveTimeMinutes: 20,
     marks: 30,
     skillTags: ['Linked Lists', 'Null Pointer Guard', 'Fast & Slow Pointers'],
-    prompt: 'The following two-pointer cycle detection algorithm crashes with an unchecked null reference when encountering short or acyclic lists. Fix the traversal logic.',
+    prompt: `### Scenario
+Given a linked list represented by node values and an index pos where the tail links back to (-1 if no cycle), determine whether a cycle exists using Floyd's Tortoise and Hare algorithm.
+
+### Input Format
+Line 1: Integer N (number of nodes)
+Line 2: N space-separated integers (node values)
+Line 3: Integer pos (-1 if no cycle, otherwise 0-based index of cycle target)
+
+### Output Format
+Print true if the linked list contains a cycle, otherwise print false.
+
+### Constraints
+- 0 <= N <= 10,000
+- -1 <= pos < N
+
+### Error Code (Bug to Debug)
+The two-pointer fast traversal fails to check if fast or fast.next is null before advancing fast.next.next, causing null pointer exceptions.`,
+    inputFormat: 'Line 1: Integer N (number of nodes)\nLine 2: N space-separated integers\nLine 3: Integer pos (-1 if no cycle)',
+    outputFormat: 'Print true if the linked list contains a cycle, otherwise print false.',
+    constraints: '0 <= N <= 10,000\n-1 <= pos < N',
+    allowedLanguages: ['c', 'cpp', 'python', 'java', 'javascript'],
+    starterCode: {
+      python: `import sys
+
+class ListNode:
+    def __init__(self, val=0):
+        self.val = val
+        self.next = None
+
+def has_cycle(head):
+    if not head:
+        return False
+    slow = head
+    fast = head
+    # BUG: missing fast.next check
+    while fast:
+        slow = slow.next
+        fast = fast.next.next # Crashes when fast.next is None
+        if slow == fast:
+            return True
+    return False
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        print("false")
+        return
+    n = int(data[0])
+    if n <= 0:
+        print("false")
+        return
+    vals = [int(x) for x in data[1:n+1]]
+    pos = int(data[n+1])
+    nodes = [ListNode(v) for v in vals]
+    for i in range(n - 1):
+        nodes[i].next = nodes[i + 1]
+    if pos >= 0 and pos < n:
+        nodes[n - 1].next = nodes[pos]
+    print("true" if has_cycle(nodes[0]) else "false")
+
+if __name__ == '__main__':
+    main()
+`,
+      cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+struct ListNode {
+    int val;
+    ListNode* next;
+    ListNode(int x) : val(x), next(nullptr) {}
+};
+
+bool hasCycle(ListNode* head) {
+    if (!head) return false;
+    ListNode* slow = head;
+    ListNode* fast = head;
+    // BUG: does not verify fast->next != nullptr
+    while (fast != nullptr) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast) return true;
+    }
+    return false;
+}
+
+int main() {
+    int n;
+    if (!(cin >> n) || n <= 0) {
+        cout << "false\\n";
+        return 0;
+    }
+    vector<ListNode*> nodes(n);
+    for (int i = 0; i < n; i++) {
+        int v; cin >> v;
+        nodes[i] = new ListNode(v);
+    }
+    int pos; cin >> pos;
+    for (int i = 0; i < n - 1; i++) nodes[i]->next = nodes[i + 1];
+    if (pos >= 0 && pos < n) nodes[n - 1]->next = nodes[pos];
+    cout << (hasCycle(nodes[0]) ? "true" : "false") << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+typedef struct ListNode {
+    int val;
+    struct ListNode* next;
+} ListNode;
+
+bool hasCycle(ListNode* head) {
+    if (!head) return false;
+    ListNode* slow = head;
+    ListNode* fast = head;
+    // BUG: does not verify fast->next != NULL
+    while (fast != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast) return true;
+    }
+    return false;
+}
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1 || n <= 0) {
+        printf("false\\n");
+        return 0;
+    }
+    ListNode** nodes = (ListNode**)malloc(n * sizeof(ListNode*));
+    for (int i = 0; i < n; i++) {
+        int v; scanf("%d", &v);
+        nodes[i] = (ListNode*)malloc(sizeof(ListNode));
+        nodes[i]->val = v;
+        nodes[i]->next = NULL;
+    }
+    int pos; scanf("%d", &pos);
+    for (int i = 0; i < n - 1; i++) nodes[i]->next = nodes[i + 1];
+    if (pos >= 0 && pos < n) nodes[n - 1]->next = nodes[pos];
+    printf("%s\\n", hasCycle(nodes[0]) ? "true" : "false");
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+class ListNode {
+    int val;
+    ListNode next;
+    ListNode(int x) { val = x; next = null; }
+}
+
+public class Solution {
+    static boolean hasCycle(ListNode head) {
+        if (head == null) return false;
+        ListNode slow = head;
+        ListNode fast = head;
+        // BUG: missing fast.next null check
+        while (fast != null) {
+            slow = slow.next;
+            fast = fast.next.next;
+            if (slow == fast) return true;
+        }
+        return false;
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) { System.out.println("false"); return; }
+        int n = sc.nextInt();
+        if (n <= 0) { System.out.println("false"); return; }
+        ListNode[] nodes = new ListNode[n];
+        for (int i = 0; i < n; i++) nodes[i] = new ListNode(sc.nextInt());
+        int pos = sc.nextInt();
+        for (int i = 0; i < n - 1; i++) nodes[i].next = nodes[i + 1];
+        if (pos >= 0 && pos < n) nodes[n - 1].next = nodes[pos];
+        System.out.println(hasCycle(nodes[0]) ? "true" : "false");
+    }
+}
+`,
+      javascript: `const fs = require('fs');
+
+class ListNode {
+    constructor(val = 0) {
+        this.val = val;
+        this.next = null;
+    }
+}
+
+function hasCycle(head) {
+    if (!head) return false;
+    let slow = head;
+    let fast = head;
+    // BUG: missing fast.next check
+    while (fast) {
+        slow = slow.next;
+        fast = fast.next.next;
+        if (slow === fast) return true;
+    }
+    return false;
+}
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+    if (!input || input.length < 2 || input[0] === '') {
+        console.log("false");
+        return;
+    }
+    const n = parseInt(input[0], 10);
+    if (n <= 0) {
+        console.log("false");
+        return;
+    }
+    const nodes = [];
+    for (let i = 0; i < n; i++) nodes.push(new ListNode(parseInt(input[1 + i], 10)));
+    const pos = parseInt(input[1 + n], 10);
+    for (let i = 0; i < n - 1; i++) nodes[i].next = nodes[i + 1];
+    if (pos >= 0 && pos < n) nodes[n - 1].next = nodes[pos];
+    console.log(hasCycle(nodes[0]) ? "true" : "false");
+}
+
+main();
+`
+    },
     hasDnaMutation: true,
     dnaConfig: {
       bugCategory: 'null_pointer' as const,
@@ -2133,8 +2717,11 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
       }
     },
     testCases: [
-      { input: '3\n1 2 3\n1', output: 'True', isHidden: false, weight: 15 },
-      { input: '2\n1 2\n-1', output: 'False', isHidden: false, weight: 15 }
+      { input: '4\n3 2 0 -4\n1', output: 'true', isHidden: false, weight: 10 },
+      { input: '2\n1 2\n-1', output: 'false', isHidden: false, weight: 10 },
+      { input: '1\n1\n-1', output: 'false', isHidden: true, weight: 10 },
+      { input: '3\n1 2 3\n0', output: 'true', isHidden: true, weight: 10 },
+      { input: '5\n5 4 3 2 1\n-1', output: 'false', isHidden: true, weight: 10 }
     ]
   },
   {
@@ -2147,6 +2734,9 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     marks: 35,
     skillTags: ['SQL', 'Window Functions', 'DENSE_RANK', 'GROUP BY'],
     prompt: 'Write an SQL query to find employees who earn the top 3 highest unique salaries in each of the department divisions.',
+    inputFormat: 'Employee table (id INT, name VARCHAR, salary INT, departmentId INT)\nDepartment table (id INT, name VARCHAR)',
+    outputFormat: 'Department name, Employee name, Salary ordered by Department and Salary descending.',
+    constraints: 'Window functions DENSE_RANK() OVER (PARTITION BY departmentId ORDER BY salary DESC)',
     hasDnaMutation: false,
     testCases: [
       { input: 'Employees Table (7 rows)', output: 'IT: Alice ($90k), Bob ($85k)\nHR: Carol ($80k)', isHidden: false, weight: 35 }
@@ -2156,34 +2746,294 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     title: 'Subarray Reversal Off-by-One Debugging',
     topic: 'Arrays',
     language: 'python',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: 'easy' as const,
     expectedSolveTimeMinutes: 15,
     marks: 25,
     skillTags: ['Arrays', 'Two Pointers', 'Off-by-One'],
-    prompt: 'Given an array and start/end bounds, repair the reverse subarray logic to accurately swap elements in place.',
+    prompt: `### Scenario
+Given an array and start/end bounds, repair the reverse subarray logic to accurately swap elements in place.
+
+### Input Format
+Line 1: Integer N (size of array)
+Line 2: N space-separated integers
+Line 3: Two space-separated integers start and end (0-based inclusive)
+
+### Output Format
+Print the modified array elements separated by spaces.
+
+### Constraints
+- 1 <= N <= 10,000
+- 0 <= start <= end < N
+- -10^9 <= arr[i] <= 10^9
+
+### Error Code (Bug to Debug)
+The provided loop begins with index bound end - 1 and overwrites array elements without a temporary variable.`,
+    inputFormat: 'Line 1: Integer N\nLine 2: N space-separated integers\nLine 3: Two integers start and end',
+    outputFormat: 'Print the modified array elements separated by spaces.',
+    constraints: '1 <= N <= 10,000\n0 <= start <= end < N\n-10^9 <= arr[i] <= 10^9',
     hasDnaMutation: false,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript', 'c'],
+    starterCode: {
+      python: `import sys
+
+def main():
+    lines = sys.stdin.read().split()
+    if not lines:
+        return
+    n = int(lines[0])
+    arr = [int(x) for x in lines[1:n+1]]
+    start = int(lines[n+1])
+    end = int(lines[n+2])
+    
+    i = start
+    j = end - 1 # BUG: should be end
+    while i < j:
+        arr[i] = arr[j] # BUG: overwrites without temp
+        i += 1
+        j -= 1
+    print(*(arr))
+
+if __name__ == '__main__':
+    main()
+`,
+      cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> arr(n);
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    int start, end;
+    cin >> start >> end;
+    int i = start, j = end - 1; // BUG
+    while (i < j) {
+        arr[i] = arr[j]; // BUG
+        i++; j--;
+    }
+    for (int k = 0; k < n; k++) cout << arr[k] << (k == n - 1 ? "" : " ");
+    cout << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+    int start, end;
+    scanf("%d %d", &start, &end);
+    int i = start, j = end - 1; // BUG
+    while (i < j) {
+        arr[i] = arr[j]; // BUG
+        i++; j--;
+    }
+    for (int k = 0; k < n; k++) printf("%d%s", arr[k], k == n - 1 ? "" : " ");
+    printf("\\n");
+    free(arr);
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        int[] arr = new int[n];
+        for (int i = 0; i < n; i++) arr[i] = sc.nextInt();
+        int start = sc.nextInt();
+        int end = sc.nextInt();
+        int i = start, j = end - 1; // BUG
+        while (i < j) {
+            arr[i] = arr[j]; // BUG
+            i++; j--;
+        }
+        for (int k = 0; k < n; k++) System.out.print(arr[k] + (k == n - 1 ? "" : " "));
+        System.out.println();
+    }
+}
+`,
+      javascript: `const fs = require('fs');
+const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+if (input.length > 2) {
+    const n = parseInt(input[0], 10);
+    const arr = input.slice(1, n + 1).map(Number);
+    const start = parseInt(input[n + 1], 10);
+    const end = parseInt(input[n + 2], 10);
+    let i = start, j = end - 1; // BUG
+    while (i < j) {
+        arr[i] = arr[j]; // BUG
+        i++; j--;
+    }
+    console.log(arr.join(' '));
+}
+`
+    },
     testCases: [
       { input: '5\n1 2 3 4 5\n1 3', output: '1 4 3 2 5', isHidden: false, weight: 10 },
-      { input: '4\n10 20 30 40\n0 3', output: '40 30 20 10', isHidden: false, weight: 15 }
+      { input: '4\n10 20 30 40\n0 3', output: '40 30 20 10', isHidden: false, weight: 10 },
+      { input: '6\n7 8 9 10 11 12\n2 4', output: '7 8 11 10 9 12', isHidden: true, weight: 10 },
+      { input: '3\n1 2 3\n1 1', output: '1 2 3', isHidden: true, weight: 10 },
+      { input: '7\n5 1 9 3 7 4 8\n3 6', output: '5 1 9 8 4 7 3', isHidden: true, weight: 10 }
     ]
   },
   {
     title: 'Two-Sum Sorted Two-Pointer Direction Defect',
     topic: 'Two Pointers',
     language: 'cpp',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: 'medium' as const,
     expectedSolveTimeMinutes: 20,
     marks: 30,
     skillTags: ['Two Pointers', 'Sorting', 'Search Direction'],
-    prompt: 'Fix the two-pointer increment/decrement directions for finding if any two numbers sum to target in a sorted list.',
+    prompt: `### Scenario
+Fix the two-pointer increment/decrement directions for finding if any two numbers sum to target in a sorted list.
+
+### Input Format
+Line 1: Integer N (number of elements)
+Line 2: N space-separated sorted integers
+Line 3: Integer target
+
+### Output Format
+Print YES if two elements sum to target, otherwise print NO.
+
+### Constraints
+- 2 <= N <= 100,000
+- Sorted in ascending order
+- -10^9 <= arr[i], target <= 10^9
+
+### Error Code (Bug to Debug)
+When the pair sum is less than target, the right pointer is decremented instead of advancing the left pointer.`,
+    inputFormat: 'Line 1: Integer N\nLine 2: N space-separated sorted integers\nLine 3: Integer target',
+    outputFormat: 'Print YES if two elements sum to target, otherwise print NO.',
+    constraints: '2 <= N <= 100,000\nSorted in ascending order\n-10^9 <= arr[i], target <= 10^9',
     hasDnaMutation: false,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
+    starterCode: {
+      python: `import sys
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    arr = [int(x) for x in data[1:n+1]]
+    target = int(data[n+1])
+    left = 0
+    right = n - 1
+    found = False
+    while left < right:
+        s = arr[left] + arr[right]
+        if s == target:
+            found = True
+            break
+        elif s < target:
+            right -= 1 # BUG
+        else:
+            left += 1  # BUG
+    print("YES" if found else "NO")
+
+if __name__ == '__main__':
+    main()
+`,
+      cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> arr(n);
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    int target; cin >> target;
+    int left = 0, right = n - 1;
+    bool found = false;
+    while (left < right) {
+        int s = arr[left] + arr[right];
+        if (s == target) { found = true; break; }
+        else if (s < target) right--; // BUG
+        else left++;                 // BUG
+    }
+    cout << (found ? "YES" : "NO") << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    int* arr = (int*)malloc(n * sizeof(int));
+    for (int i = 0; i < n; i++) scanf("%d", &arr[i]);
+    int target; scanf("%d", &target);
+    int left = 0, right = n - 1;
+    int found = 0;
+    while (left < right) {
+        int s = arr[left] + arr[right];
+        if (s == target) { found = 1; break; }
+        else if (s < target) right--; // BUG
+        else left++;                 // BUG
+    }
+    printf("%s\\n", found ? "YES" : "NO");
+    free(arr);
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        int[] arr = new int[n];
+        for (int i = 0; i < n; i++) arr[i] = sc.nextInt();
+        int target = sc.nextInt();
+        int left = 0, right = n - 1;
+        boolean found = false;
+        while (left < right) {
+            int s = arr[left] + arr[right];
+            if (s == target) { found = true; break; }
+            else if (s < target) right--; // BUG
+            else left++;                 // BUG
+        }
+        System.out.println(found ? "YES" : "NO");
+    }
+}
+`,
+      javascript: `const fs = require('fs');
+const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+if (input.length > 2) {
+    const n = parseInt(input[0], 10);
+    const arr = input.slice(1, n + 1).map(Number);
+    const target = parseInt(input[n + 1], 10);
+    let left = 0, right = n - 1, found = false;
+    while (left < right) {
+        const s = arr[left] + arr[right];
+        if (s === target) { found = true; break; }
+        else if (s < target) right--; // BUG
+        else left++;                 // BUG
+    }
+    console.log(found ? "YES" : "NO");
+}
+`
+    },
     testCases: [
-      { input: '5\n1 2 4 6 10\n8', output: 'YES', isHidden: false, weight: 15 },
-      { input: '4\n1 3 5 9\n11', output: 'NO', isHidden: false, weight: 15 }
+      { input: '5\n1 2 4 6 10\n8', output: 'YES', isHidden: false, weight: 10 },
+      { input: '4\n1 3 5 9\n11', output: 'NO', isHidden: false, weight: 10 },
+      { input: '4\n2 5 7 11\n9', output: 'YES', isHidden: true, weight: 10 },
+      { input: '6\n-5 -2 0 3 6 8\n1', output: 'YES', isHidden: true, weight: 10 },
+      { input: '5\n10 20 30 40 50\n100', output: 'NO', isHidden: true, weight: 10 }
     ]
   },
   // ==========================================
@@ -2198,7 +3048,17 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 10,
     marks: 20,
     skillTags: ['SQL', 'Aggregate', 'DISTINCT', 'LIMIT OFFSET', 'Subqueries'],
-    prompt: `Write an SQL query to report the second highest distinct salary from the \`Employee\` table. If there is no second highest salary, the query should report \`null\`.\n\n\`\`\`sql\nCREATE TABLE Employee (\n  id INT PRIMARY KEY,\n  salary INT\n);\n\`\`\``,
+    prompt: `Write an SQL query to report the second highest distinct salary from the \`Employee\` table. If there is no second highest salary, the query should report \`null\`.
+
+\`\`\`sql
+CREATE TABLE Employee (
+  id INT PRIMARY KEY,
+  salary INT
+);
+\`\`\``,
+    inputFormat: 'Employee table: id INT, salary INT',
+    outputFormat: 'SecondHighestSalary INT (or null)',
+    constraints: 'Single row output with column name SecondHighestSalary',
     hasDnaMutation: false,
     testCases: [
       { input: 'Employee: [(1, 100), (2, 200), (3, 300)]', output: 'SecondHighestSalary: 200', isHidden: false, weight: 10 },
@@ -2214,7 +3074,17 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 10,
     marks: 20,
     skillTags: ['SQL', 'GROUP BY', 'HAVING', 'Aggregations'],
-    prompt: `Write an SQL query to report all the duplicate emails in a table named \`Person\`.\n\n\`\`\`sql\nCREATE TABLE Person (\n  id INT PRIMARY KEY,\n  email VARCHAR(255)\n);\n\`\`\``,
+    prompt: `Write an SQL query to report all the duplicate emails in a table named \`Person\`.
+
+\`\`\`sql
+CREATE TABLE Person (
+  id INT PRIMARY KEY,
+  email VARCHAR(255)
+);
+\`\`\``,
+    inputFormat: 'Person table: id INT, email VARCHAR(255)',
+    outputFormat: 'Email list containing duplicate emails',
+    constraints: 'Case-sensitive email matching with GROUP BY and HAVING',
     hasDnaMutation: false,
     testCases: [
       { input: 'Person: [(1, a@b.com), (2, c@d.com), (3, a@b.com)]', output: 'email: a@b.com', isHidden: false, weight: 20 }
@@ -2229,7 +3099,15 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 15,
     marks: 25,
     skillTags: ['SQL', 'LEFT JOIN', 'IS NULL', 'Foreign Keys'],
-    prompt: `Write an SQL query to find all customers who never placed any orders.\n\n\`\`\`sql\nCustomers (id INT, name VARCHAR(50))\nOrders (id INT, customerId INT REFERENCES Customers(id))\n\`\`\``,
+    prompt: `Write an SQL query to find all customers who never placed any orders.
+
+\`\`\`sql
+Customers (id INT, name VARCHAR(50))
+Orders (id INT, customerId INT REFERENCES Customers(id))
+\`\`\``,
+    inputFormat: 'Customers and Orders tables',
+    outputFormat: 'Customers name list',
+    constraints: 'Return customer name column aliased as Customers',
     hasDnaMutation: false,
     testCases: [
       { input: 'Customers: [Joe, Henry, Sam, Max]; Orders: [customerId 3, customerId 1]', output: 'Customers: Henry, Max', isHidden: false, weight: 25 }
@@ -2244,7 +3122,18 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 25,
     marks: 35,
     skillTags: ['SQL', 'Window Functions', 'LEAD', 'LAG', 'Date Arithmetic'],
-    prompt: `Write an SQL query to find all distinct user IDs who logged into the competition portal for at least 3 consecutive days using \`LEAD()\` or \`LAG()\` window functions.\n\n\`\`\`sql\nCREATE TABLE UserLogins (\n  id INT,\n  userId INT,\n  loginDate DATE\n);\n\`\`\``,
+    prompt: `Write an SQL query to find all distinct user IDs who logged into the competition portal for at least 3 consecutive days using \`LEAD()\` or \`LAG()\` window functions.
+
+\`\`\`sql
+CREATE TABLE UserLogins (
+  id INT,
+  userId INT,
+  loginDate DATE
+);
+\`\`\``,
+    inputFormat: 'UserLogins table with userId and loginDate',
+    outputFormat: 'Distinct userId list',
+    constraints: 'At least 3 consecutive calendar days',
     hasDnaMutation: false,
     testCases: [
       { input: 'UserLogins (10 records across users 101, 102, 103)', output: 'userId: 101', isHidden: false, weight: 35 }
@@ -2259,7 +3148,15 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 15,
     marks: 25,
     skillTags: ['SQL', 'JOIN', 'MAX()', 'Subqueries', 'Group Aggregation'],
-    prompt: `Write an SQL query to find employees who have the highest salary in each of the departments.\n\n\`\`\`sql\nEmployee (id INT, name VARCHAR, salary INT, departmentId INT)\nDepartment (id INT, name VARCHAR)\n\`\`\``,
+    prompt: `Write an SQL query to find employees who have the highest salary in each of the departments.
+
+\`\`\`sql
+Employee (id INT, name VARCHAR, salary INT, departmentId INT)
+Department (id INT, name VARCHAR)
+\`\`\``,
+    inputFormat: 'Employee and Department tables',
+    outputFormat: 'Department name, Employee name, Salary',
+    constraints: 'Handle ties by reporting all employees sharing highest department salary',
     hasDnaMutation: false,
     testCases: [
       { input: 'IT: [Max $90k, Joe $85k]; Sales: [Henry $80k, Sam $60k]', output: 'IT: Max ($90k), Sales: Henry ($80k)', isHidden: false, weight: 25 }
@@ -2267,7 +3164,7 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
   },
 
   // ==========================================
-  // CODING CHALLENGES (type: 'coding')
+  // CODING / DEBUGGING CHALLENGES (type: 'coding')
   // ==========================================
   {
     title: 'Longest Substring Without Repeating Characters (Sliding Window)',
@@ -2278,39 +3175,411 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 20,
     marks: 30,
     skillTags: ['Sliding Window', 'Strings', 'Hash Map', 'Two Pointers'],
-    prompt: 'Given a string `s`, find the length of the longest substring without duplicate characters using an optimal $O(N)$ sliding window approach.',
+    prompt: `### Scenario
+Given a string \`s\`, find the length of the longest substring without duplicate characters using a sliding window approach.
+
+### Input Format
+Single line containing string \`s\`
+
+### Output Format
+Print a single integer representing the maximum length of a substring with all distinct characters.
+
+### Constraints
+- \`0 <= length(s) <= 50,000\`
+- \`s\` consists of printable characters
+
+### Error Code (Bug to Debug)
+The sliding window start index does not properly advance when a duplicate character is encountered, leading to under-counting or over-counting.`,
+    inputFormat: 'Single line containing string s',
+    outputFormat: 'Print a single integer representing the maximum length of a substring with all distinct characters.',
+    constraints: '0 <= length(s) <= 50,000',
     hasDnaMutation: false,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
-      python: `def lengthOfLongestSubstring(s: str) -> int:\n    # Write optimal O(N) sliding window logic\n    pass`,
-      javascript: `function lengthOfLongestSubstring(s) {\n    // Write optimal O(N) sliding window logic\n}`,
-      java: `class Solution {\n    public int lengthOfLongestSubstring(String s) {\n        // Write optimal O(N) sliding window logic\n        return 0;\n    }\n}`,
-      cpp: `class Solution {\npublic:\n    int lengthOfLongestSubstring(string s) {\n        // Write optimal O(N) sliding window logic\n        return 0;\n    }\n};`
+      python: `import sys
+
+def length_of_longest_substring(s: str) -> int:
+    char_index = {}
+    left = 0
+    max_len = 0
+    for right, ch in enumerate(s):
+        if ch in char_index:
+            # BUG: does not guard against characters seen before current window start
+            left = char_index[ch]
+        char_index[ch] = right
+        max_len = max(max_len, right - left + 1)
+    return max_len
+
+def main():
+    s = sys.stdin.read().rstrip('\\r\\n')
+    print(length_of_longest_substring(s))
+
+if __name__ == '__main__':
+    main()
+`,
+      javascript: `const fs = require('fs');
+
+function lengthOfLongestSubstring(s) {
+    const map = new Map();
+    let left = 0;
+    let maxLen = 0;
+    for (let right = 0; right < s.length; right++) {
+        const ch = s[right];
+        if (map.has(ch)) {
+            // BUG: does not guard against previous window left bound
+            left = map.get(ch);
+        }
+        map.set(ch, right);
+        maxLen = Math.max(maxLen, right - left + 1);
+    }
+    return maxLen;
+}
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').replace(/[\\r\\n]+$/, '');
+    console.log(lengthOfLongestSubstring(input));
+}
+
+main();
+`,
+      cpp: `#include <iostream>
+#include <string>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+int lengthOfLongestSubstring(const string& s) {
+    vector<int> last(256, -1);
+    int left = 0;
+    int maxLen = 0;
+    for (int right = 0; right < (int)s.size(); right++) {
+        unsigned char ch = s[right];
+        if (last[ch] != -1) {
+            // BUG: fails to take max(left, last[ch] + 1)
+            left = last[ch];
+        }
+        last[ch] = right;
+        maxLen = max(maxLen, right - left + 1);
+    }
+    return maxLen;
+}
+
+int main() {
+    string s;
+    if (!getline(cin, s)) {
+        cout << 0 << "\\n";
+        return 0;
+    }
+    cout << lengthOfLongestSubstring(s) << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <string.h>
+
+int lengthOfLongestSubstring(const char* s) {
+    int last[256];
+    for (int i = 0; i < 256; i++) last[i] = -1;
+    int left = 0;
+    int maxLen = 0;
+    int n = strlen(s);
+    for (int right = 0; right < n; right++) {
+        unsigned char ch = s[right];
+        if (last[ch] != -1) {
+            // BUG: should be last[ch] + 1 with max guard
+            left = last[ch];
+        }
+        last[ch] = right;
+        int cur = right - left + 1;
+        if (cur > maxLen) maxLen = cur;
+    }
+    return maxLen;
+}
+
+int main() {
+    char s[100005];
+    if (fgets(s, sizeof(s), stdin) == NULL) {
+        printf("0\\n");
+        return 0;
+    }
+    s[strcspn(s, "\\r\\n")] = 0;
+    printf("%d\\n", lengthOfLongestSubstring(s));
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    static int lengthOfLongestSubstring(String s) {
+        Map<Character, Integer> map = new HashMap<>();
+        int left = 0;
+        int maxLen = 0;
+        for (int right = 0; right < s.length(); right++) {
+            char ch = s.charAt(right);
+            if (map.containsKey(ch)) {
+                // BUG: does not ensure left pointer never moves backward
+                left = map.get(ch);
+            }
+            map.put(ch, right);
+            maxLen = Math.max(maxLen, right - left + 1);
+        }
+        return maxLen;
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        String s = sc.hasNextLine() ? sc.nextLine() : "";
+        System.out.println(lengthOfLongestSubstring(s));
+    }
+}
+`
     },
     testCases: [
       { input: 'abcabcbb', output: '3', isHidden: false, weight: 10 },
       { input: 'bbbbb', output: '1', isHidden: false, weight: 10 },
-      { input: 'pwwkew', output: '3', isHidden: false, weight: 10 }
+      { input: 'pwwkew', output: '3', isHidden: true, weight: 10 },
+      { input: 'abcdef', output: '6', isHidden: true, weight: 10 },
+      { input: 'dvdf', output: '3', isHidden: true, weight: 10 }
     ]
   },
   {
     title: 'Merge Overlapping Intervals (Array Scheduling)',
-    topic: 'Algorithms',
+    topic: 'Intervals',
     language: 'python',
     type: 'coding' as const,
     difficulty: 'medium' as const,
     expectedSolveTimeMinutes: 20,
     marks: 30,
     skillTags: ['Intervals', 'Sorting', 'Greedy Algorithms'],
-    prompt: 'Given an array of `intervals` where `intervals[i] = [start_i, end_i]`, merge all overlapping intervals, and return an array of the non-overlapping intervals that cover all the intervals in the input.',
+    prompt: `### Scenario
+Given an array of \`intervals\` where \`intervals[i] = [start_i, end_i]\`, merge all overlapping intervals (including intervals that touch at boundaries), and return the merged intervals.
+
+### Input Format
+Line 1: Integer N (number of intervals)
+Next N lines: Two space-separated integers start and end
+
+### Output Format
+Line 1: Integer M (number of merged intervals)
+Next M lines: Two space-separated integers start and end in sorted order
+
+### Constraints
+- \`1 <= N <= 50,000\`
+- \`0 <= start <= end <= 10^9\`
+
+### Error Code (Bug to Debug)
+The merge condition uses strict inequality (< instead of <=), treating intervals that touch at the exact boundary as non-overlapping.`,
+    inputFormat: 'Line 1: Integer N\nNext N lines: start end',
+    outputFormat: 'Line 1: Integer M\nNext M lines: merged start end',
+    constraints: '1 <= N <= 50,000\n0 <= start <= end <= 10^9',
     hasDnaMutation: false,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
-      python: `def merge(intervals: list[list[int]]) -> list[list[int]]:\n    # Sort intervals and merge in O(N log N)\n    pass`
+      python: `import sys
+
+def merge(intervals):
+    intervals.sort(key=lambda x: (x[0], x[1]))
+    result = []
+    current_start, current_end = intervals[0]
+    for i in range(1, len(intervals)):
+        next_start, next_end = intervals[i]
+        # BUG: boundary-touching intervals are treated as separate
+        if next_start < current_end:
+            current_end = max(current_end, next_end)
+        else:
+            result.append((current_start, current_end))
+            current_start, current_end = next_start, next_end
+    result.append((current_start, current_end))
+    return result
+
+def main():
+    input_data = sys.stdin.read().split()
+    if not input_data:
+        return
+    n = int(input_data[0])
+    intervals = []
+    idx = 1
+    for _ in range(n):
+        intervals.append((int(input_data[idx]), int(input_data[idx + 1])))
+        idx += 2
+    res = merge(intervals)
+    print(len(res))
+    for s, e in res:
+        print(f"{s} {e}")
+
+if __name__ == '__main__':
+    main()
+`,
+      javascript: `const fs = require('fs');
+
+function merge(intervals) {
+    intervals.sort((a, b) => a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]);
+    const result = [];
+    let currentStart = intervals[0][0];
+    let currentEnd = intervals[0][1];
+    for (let i = 1; i < intervals.length; i++) {
+        const [nextStart, nextEnd] = intervals[i];
+        // BUG: boundary-touching intervals are treated as separate
+        if (nextStart < currentEnd) {
+            currentEnd = Math.max(currentEnd, nextEnd);
+        } else {
+            result.push([currentStart, currentEnd]);
+            currentStart = nextStart;
+            currentEnd = nextEnd;
+        }
+    }
+    result.push([currentStart, currentEnd]);
+    return result;
+}
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+    if (input.length === 0 || input[0] === '') return;
+    const n = parseInt(input[0], 10);
+    const intervals = [];
+    let idx = 1;
+    for (let i = 0; i < n; i++) {
+        intervals.push([parseInt(input[idx], 10), parseInt(input[idx + 1], 10)]);
+        idx += 2;
+    }
+    const res = merge(intervals);
+    console.log(res.length);
+    for (const [s, e] of res) {
+        console.log(s + " " + e);
+    }
+}
+
+main();
+`,
+      cpp: `#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+struct Interval { int start, end; };
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<Interval> intervals(n);
+    for (int i = 0; i < n; i++) cin >> intervals[i].start >> intervals[i].end;
+
+    sort(intervals.begin(), intervals.end(), [](const Interval& a, const Interval& b) {
+        if (a.start != b.start) return a.start < b.start;
+        return a.end < b.end;
+    });
+
+    vector<Interval> res;
+    int curStart = intervals[0].start, curEnd = intervals[0].end;
+    for (size_t i = 1; i < intervals.size(); i++) {
+        // BUG: should be <=
+        if (intervals[i].start < curEnd) {
+            curEnd = max(curEnd, intervals[i].end);
+        } else {
+            res.push_back({curStart, curEnd});
+            curStart = intervals[i].start;
+            curEnd = intervals[i].end;
+        }
+    }
+    res.push_back({curStart, curEnd});
+    cout << res.size() << "\\n";
+    for (auto& in : res) cout << in.start << " " << in.end << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+typedef struct { int start, end; } Interval;
+
+int cmp(const void* a, const void* b) {
+    const Interval* ia = (const Interval*)a;
+    const Interval* ib = (const Interval*)b;
+    if (ia->start != ib->start) return ia->start - ib->start;
+    return ia->end - ib->end;
+}
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    Interval* intervals = (Interval*)malloc(n * sizeof(Interval));
+    for (int i = 0; i < n; i++) scanf("%d %d", &intervals[i].start, &intervals[i].end);
+    qsort(intervals, n, sizeof(Interval), cmp);
+
+    Interval* res = (Interval*)malloc(n * sizeof(Interval));
+    int count = 0;
+    int curStart = intervals[0].start, curEnd = intervals[0].end;
+
+    for (int i = 1; i < n; i++) {
+        // BUG: boundary-touching intervals not merged
+        if (intervals[i].start < curEnd) {
+            if (intervals[i].end > curEnd) curEnd = intervals[i].end;
+        } else {
+            res[count].start = curStart;
+            res[count].end = curEnd;
+            count++;
+            curStart = intervals[i].start;
+            curEnd = intervals[i].end;
+        }
+    }
+    res[count].start = curStart;
+    res[count].end = curEnd;
+    count++;
+
+    printf("%d\\n", count);
+    for (int i = 0; i < count; i++) printf("%d %d\\n", res[i].start, res[i].end);
+    free(intervals);
+    free(res);
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    static class Interval {
+        int start, end;
+        Interval(int s, int e) { start = s; end = e; }
+    }
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        List<Interval> intervals = new ArrayList<>();
+        for (int i = 0; i < n; i++) intervals.add(new Interval(sc.nextInt(), sc.nextInt()));
+        intervals.sort((a, b) -> a.start != b.start ? Integer.compare(a.start, b.start) : Integer.compare(a.end, b.end));
+
+        List<Interval> res = new ArrayList<>();
+        int curStart = intervals.get(0).start;
+        int curEnd = intervals.get(0).end;
+
+        for (int i = 1; i < intervals.size(); i++) {
+            int nextStart = intervals.get(i).start;
+            int nextEnd = intervals.get(i).end;
+            // BUG: should be <=
+            if (nextStart < curEnd) {
+                curEnd = Math.max(curEnd, nextEnd);
+            } else {
+                res.add(new Interval(curStart, curEnd));
+                curStart = nextStart;
+                curEnd = nextEnd;
+            }
+        }
+        res.add(new Interval(curStart, curEnd));
+
+        System.out.println(res.size());
+        for (Interval in : res) System.out.println(in.start + " " + in.end);
+    }
+}
+`
     },
     testCases: [
-      { input: '[[1,3],[2,6],[8,10],[15,18]]', output: '[[1,6],[8,10],[15,18]]', isHidden: false, weight: 15 },
-      { input: '[[1,4],[4,5]]', output: '[[1,5]]', isHidden: false, weight: 15 }
+      { input: '4\n1 3\n2 5\n7 8\n8 10', output: '2\n1 5\n7 10', isHidden: false, weight: 10 },
+      { input: '5\n1 10\n2 3\n10 12\n15 18\n17 20', output: '2\n1 12\n15 20', isHidden: false, weight: 10 },
+      { input: '3\n1 2\n2 4\n4 4', output: '1\n1 4', isHidden: true, weight: 10 },
+      { input: '6\n5 7\n1 3\n2 6\n10 12\n12 15\n20 25', output: '3\n1 7\n10 15\n20 25', isHidden: true, weight: 10 },
+      { input: '4\n2 2\n2 5\n5 8\n10 12', output: '2\n2 8\n10 12', isHidden: true, weight: 10 }
     ]
   },
   {
@@ -2322,15 +3591,150 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 10,
     marks: 20,
     skillTags: ['Stack', 'Strings', 'Parentheses Matching'],
-    prompt: "Given a string `s` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid. An input string is valid if brackets close in correct order with corresponding matching pairs.",
+    prompt: `### Scenario
+Given a string \`s\` containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.
+An input string is valid if brackets close in correct order with corresponding matching pairs.
+
+### Input Format
+Single line containing string \`s\`
+
+### Output Format
+Print \`VALID\` if string is valid, otherwise print \`INVALID\`
+
+### Constraints
+- \`0 <= length(s) <= 100,000\`
+- Characters are only \`()[]{}\`
+
+### Error Code (Bug to Debug)
+The stack popping code does not guard against stack underflow when an extra closing bracket appears, throwing an unchecked exception.`,
+    inputFormat: 'Single line containing string s',
+    outputFormat: 'Print VALID if string is valid, otherwise print INVALID',
+    constraints: '0 <= length(s) <= 100,000\nCharacters are only ()[]{}',
     hasDnaMutation: false,
     allowedLanguages: ['python', 'cpp', 'java', 'javascript', 'c'],
     starterCode: {
-      python: `def isValid(s: str) -> bool:\n    # Use stack to validate bracket matching\n    pass`
+      python: `import sys
+
+def is_valid(s: str) -> bool:
+    stack = []
+    mapping = {')': '(', '}': '{', ']': '['}
+    for char in s:
+        if char in mapping:
+            # BUG: does not guard against empty stack
+            top = stack.pop() if stack else '#'
+            if mapping[char] != top:
+                return False
+        else:
+            stack.append(char)
+    return len(stack) == 0
+
+def main():
+    s = sys.stdin.read().strip()
+    print("VALID" if is_valid(s) else "INVALID")
+
+if __name__ == '__main__':
+    main()
+`,
+      javascript: `const fs = require('fs');
+
+function isValid(s) {
+    const stack = [];
+    const map = { ')': '(', '}': '{', ']': '[' };
+    for (const ch of s) {
+        if (map[ch]) {
+            const top = stack.length > 0 ? stack.pop() : '#';
+            if (top !== map[ch]) return false;
+        } else {
+            stack.push(ch);
+        }
+    }
+    return stack.length === 0;
+}
+
+function main() {
+    const s = fs.readFileSync(0, 'utf-8').trim();
+    console.log(isValid(s) ? "VALID" : "INVALID");
+}
+
+main();
+`,
+      cpp: `#include <iostream>
+#include <string>
+#include <stack>
+using namespace std;
+
+int main() {
+    string s;
+    if (!(cin >> s)) { cout << "VALID\\n"; return 0; }
+    stack<char> st;
+    for (char c : s) {
+        if (c == '(' || c == '{' || c == '[') st.push(c);
+        else {
+            if (st.empty()) { cout << "INVALID\\n"; return 0; }
+            char top = st.top(); st.pop();
+            if ((c == ')' && top != '(') || (c == '}' && top != '{') || (c == ']' && top != '[')) {
+                cout << "INVALID\\n"; return 0;
+            }
+        }
+    }
+    cout << (st.empty() ? "VALID" : "INVALID") << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <string.h>
+
+int main() {
+    char s[100005];
+    if (scanf("%s", s) != 1) { printf("VALID\\n"); return 0; }
+    int len = strlen(s);
+    char stack[100005];
+    int top = 0;
+    for (int i = 0; i < len; i++) {
+        char c = s[i];
+        if (c == '(' || c == '{' || c == '[') {
+            stack[top++] = c;
+        } else {
+            // BUG: pops without checking if stack is empty
+            char t = stack[--top];
+            if ((c == ')' && t != '(') || (c == '}' && t != '{') || (c == ']' && t != '[')) {
+                printf("INVALID\\n"); return 0;
+            }
+        }
+    }
+    printf("%s\\n", top == 0 ? "VALID" : "INVALID");
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNext()) { System.out.println("VALID"); return; }
+        String s = sc.next();
+        Deque<Character> stack = new ArrayDeque<>();
+        for (char c : s.toCharArray()) {
+            if (c == '(' || c == '{' || c == '[') stack.push(c);
+            else {
+                if (stack.isEmpty()) { System.out.println("INVALID"); return; }
+                char top = stack.pop();
+                if ((c == ')' && top != '(') || (c == '}' && top != '{') || (c == ']' && top != '[')) {
+                    System.out.println("INVALID"); return;
+                }
+            }
+        }
+        System.out.println(stack.isEmpty() ? "VALID" : "INVALID");
+    }
+}
+`
     },
     testCases: [
-      { input: '()[]{}', output: 'True', isHidden: false, weight: 10 },
-      { input: '(]', output: 'False', isHidden: false, weight: 10 }
+      { input: '()[]{}', output: 'VALID', isHidden: false, weight: 10 },
+      { input: '(]', output: 'INVALID', isHidden: false, weight: 10 },
+      { input: '([)]', output: 'INVALID', isHidden: true, weight: 10 },
+      { input: '{[]}', output: 'VALID', isHidden: true, weight: 10 },
+      { input: '(((((', output: 'INVALID', isHidden: true, weight: 10 }
     ]
   },
   {
@@ -2342,15 +3746,174 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
     expectedSolveTimeMinutes: 20,
     marks: 30,
     skillTags: ['Arrays', 'Prefix Sum', 'Time Complexity O(N)'],
-    prompt: 'Given an integer array `nums`, return an array `answer` such that `answer[i]` is equal to the product of all the elements of `nums` except `nums[i]`. You must write an algorithm that runs in $O(N)$ time and without using the division operation.',
+    prompt: `### Scenario
+Given an integer array \`nums\`, return an array \`answer\` such that \`answer[i]\` is equal to the product of all the elements of \`nums\` except \`nums[i]\`.
+You must write an algorithm that runs in O(N) time and without using the division operation.
+
+### Input Format
+Line 1: Integer N (number of elements)
+Line 2: N space-separated integers
+
+### Output Format
+Print N space-separated integers representing the output products.
+
+### Constraints
+- \`2 <= N <= 100,000\`
+- \`-30 <= nums[i] <= 30\`
+
+### Error Code (Bug to Debug)
+The suffix product loop inverts array indexing or skips the last element, causing incorrect products at boundary positions.`,
+    inputFormat: 'Line 1: Integer N\nLine 2: N space-separated integers',
+    outputFormat: 'Print N space-separated integers representing the output products.',
+    constraints: '2 <= N <= 100,000\n-30 <= nums[i] <= 30',
     hasDnaMutation: false,
-    allowedLanguages: ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: ['python', 'cpp', 'java', 'c', 'javascript'],
     starterCode: {
-      python: `def productExceptSelf(nums: list[int]) -> list[int]:\n    # Implement without division in O(N)\n    pass`
+      python: `import sys
+
+def product_except_self(nums):
+    n = len(nums)
+    res = [1] * n
+    # Prefix pass
+    prefix = 1
+    for i in range(n):
+        res[i] = prefix
+        prefix *= nums[i]
+    # Suffix pass (BUG: starts suffix at 0 instead of 1)
+    suffix = 0 # BUG: should be 1
+    for i in range(n - 1, -1, -1):
+        res[i] *= suffix
+        suffix *= nums[i]
+    return res
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    nums = [int(x) for x in data[1:n+1]]
+    res = product_except_self(nums)
+    print(*(res))
+
+if __name__ == '__main__':
+    main()
+`,
+      javascript: `const fs = require('fs');
+
+function productExceptSelf(nums) {
+    const n = nums.length;
+    const res = new Array(n).fill(1);
+    let prefix = 1;
+    for (let i = 0; i < n; i++) {
+        res[i] = prefix;
+        prefix *= nums[i];
+    }
+    let suffix = 0; // BUG: should be 1
+    for (let i = n - 1; i >= 0; i--) {
+        res[i] *= suffix;
+        suffix *= nums[i];
+    }
+    return res;
+}
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+    if (!input || input.length < 2 || input[0] === '') return;
+    const n = parseInt(input[0], 10);
+    const nums = input.slice(1, n + 1).map(Number);
+    console.log(productExceptSelf(nums).join(' '));
+}
+
+main();
+`,
+      cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<long long> nums(n);
+    for (int i = 0; i < n; i++) cin >> nums[i];
+
+    vector<long long> res(n, 1);
+    long long prefix = 1;
+    for (int i = 0; i < n; i++) {
+        res[i] = prefix;
+        prefix *= nums[i];
+    }
+    long long suffix = 0; // BUG: should be 1
+    for (int i = n - 1; i >= 0; i--) {
+        res[i] *= suffix;
+        suffix *= nums[i];
+    }
+    for (int i = 0; i < n; i++) cout << res[i] << (i == n - 1 ? "" : " ");
+    cout << "\\n";
+    return 0;
+}
+`,
+      c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    long long* nums = (long long*)malloc(n * sizeof(long long));
+    for (int i = 0; i < n; i++) scanf("%lld", &nums[i]);
+
+    long long* res = (long long*)malloc(n * sizeof(long long));
+    long long prefix = 1;
+    for (int i = 0; i < n; i++) {
+        res[i] = prefix;
+        prefix *= nums[i];
+    }
+    long long suffix = 0; // BUG: should be 1
+    for (int i = n - 1; i >= 0; i--) {
+        res[i] *= suffix;
+        suffix *= nums[i];
+    }
+    for (int i = 0; i < n; i++) printf("%lld%s", res[i], i == n - 1 ? "" : " ");
+    printf("\\n");
+    free(nums);
+    free(res);
+    return 0;
+}
+`,
+      java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        long[] nums = new long[n];
+        for (int i = 0; i < n; i++) nums[i] = sc.nextLong();
+
+        long[] res = new long[n];
+        long prefix = 1;
+        for (int i = 0; i < n; i++) {
+            res[i] = prefix;
+            prefix *= nums[i];
+        }
+        long suffix = 0; // BUG: should be 1
+        for (int i = n - 1; i >= 0; i--) {
+            res[i] *= suffix;
+            suffix *= nums[i];
+        }
+        for (int i = 0; i < n; i++) System.out.print(res[i] + (i == n - 1 ? "" : " "));
+        System.out.println();
+    }
+}
+`
     },
     testCases: [
-      { input: '[1,2,3,4]', output: '[24,12,8,6]', isHidden: false, weight: 15 },
-      { input: '[-1,1,0,-3,3]', output: '[0,0,9,0,0]', isHidden: false, weight: 15 }
+      { input: '4\n1 2 3 4', output: '24 12 8 6', isHidden: false, weight: 10 },
+      { input: '5\n-1 1 0 -3 3', output: '0 0 9 0 0', isHidden: false, weight: 10 },
+      { input: '3\n2 3 4', output: '12 8 6', isHidden: true, weight: 10 },
+      { input: '5\n1 1 1 1 1', output: '1 1 1 1 1', isHidden: true, weight: 10 },
+      { input: '2\n5 10', output: '10 5', isHidden: true, weight: 10 }
     ]
   },
 
@@ -2395,20 +3958,44 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
   }
 ];
 
+function extractPromptSection(prompt: string, sectionTitle: string): string {
+  const pattern = new RegExp(`###\\s*${sectionTitle}\\s*\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
+  const match = prompt.match(pattern);
+  return match ? match[1].trim() : '';
+}
+
 /**
  * Seed Default Question Bank Templates (upserts all curated templates into QuestionTemplate collection)
  */
 export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false): Promise<number> {
+  // 1. Migrate legacy debugging records to unified coding type with codingMode: 'debug'
+  try {
+    await QuestionTemplate.updateMany(
+      { type: 'debugging' },
+      { $set: { type: 'coding', codingMode: 'debug' } }
+    );
+    await Question.updateMany(
+      { type: 'debugging' },
+      { $set: { type: 'coding', codingMode: 'debug' } }
+    );
+    await DynamicRound.updateMany(
+      { type: 'debugging' },
+      { $set: { type: 'coding' } }
+    );
+  } catch (migErr) {
+    console.warn('Migration warning for legacy debugging records:', migErr);
+  }
+
   const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
+  const codingCount = await QuestionTemplate.countDocuments({ type: 'coding' });
   const totalCount = await QuestionTemplate.countDocuments();
-  if (mcqCount >= 40 && totalCount >= 68 && !forceRefresh) {
+  if (mcqCount >= 40 && codingCount >= 10 && totalCount >= 65 && !forceRefresh) {
     return totalCount;
   }
 
-  console.log('🌱 Seeding Central Question Bank with 40 logic debugging challenges & MCQs...');
+  console.log('🌱 Seeding Central Question Bank with 40 logic debugging challenges & curated Coding/Debugging problems...');
 
-  // Convert Round 1 MCQs to Question Bank Templates
-  // Purge obsolete language-prefixed MCQs so only the 20 logic debugging MCQs exist
+  // Purge obsolete language-prefixed MCQs so only the 40 logic debugging MCQs exist
   await QuestionTemplate.deleteMany({
     title: {
       $in: [
@@ -2463,12 +4050,16 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     title: c.title,
     topic: 'Bug Hunting',
     language: 'python',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: 'medium' as const,
     expectedSolveTimeMinutes: 20,
     marks: c.marks || 25,
     skillTags: ['Bug Hunting', 'Logic Errors', 'Testing'],
     prompt: c.prompt,
+    inputFormat: (c as any).inputFormat || extractPromptSection(c.prompt, 'Input Format'),
+    outputFormat: (c as any).outputFormat || extractPromptSection(c.prompt, 'Output Format'),
+    constraints: (c as any).constraints || extractPromptSection(c.prompt, 'Constraints'),
     explanation: 'Identify and fix logic errors in the starter code to satisfy all test cases.',
     options: [],
     allowedLanguages: c.allowedLanguages || ['python', 'cpp', 'java', 'javascript', 'c'],
@@ -2489,14 +4080,18 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     topic: 'Advanced Algorithms',
     language: 'python',
     type: 'coding' as const,
+    codingMode: 'standard' as const,
     difficulty: 'hard' as const,
     expectedSolveTimeMinutes: 30,
     marks: c.marks || 50,
     skillTags: ['Algorithms', 'Data Structures', 'Optimization'],
     prompt: c.prompt,
+    inputFormat: (c as any).inputFormat || extractPromptSection(c.prompt, 'Input Format'),
+    outputFormat: (c as any).outputFormat || extractPromptSection(c.prompt, 'Output Format'),
+    constraints: (c as any).constraints || extractPromptSection(c.prompt, 'Constraints'),
     explanation: 'High efficiency algorithmic solution required.',
     options: [],
-    allowedLanguages: c.allowedLanguages || ['python', 'cpp', 'java', 'javascript'],
+    allowedLanguages: c.allowedLanguages || ['python', 'cpp', 'java', 'javascript', 'c'],
     starterCode: c.starterCode || {},
     testCases: (c.testCases || []).map(tc => ({
       input: tc.input,
@@ -2514,11 +4109,15 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     topic: 'Sudden Death Tie-Breaker',
     language: 'python',
     type: 'coding' as const,
+    codingMode: 'standard' as const,
     difficulty: 'hard' as const,
     expectedSolveTimeMinutes: 15,
     marks: DEFAULT_TIE_BREAKER_QUESTION.marks,
     skillTags: ['Tie-Breaker', 'Algorithms', 'Fast-Solve'],
     prompt: DEFAULT_TIE_BREAKER_QUESTION.prompt,
+    inputFormat: (DEFAULT_TIE_BREAKER_QUESTION as any).inputFormat || extractPromptSection(DEFAULT_TIE_BREAKER_QUESTION.prompt, 'Input Format'),
+    outputFormat: (DEFAULT_TIE_BREAKER_QUESTION as any).outputFormat || extractPromptSection(DEFAULT_TIE_BREAKER_QUESTION.prompt, 'Output Format'),
+    constraints: (DEFAULT_TIE_BREAKER_QUESTION as any).constraints || extractPromptSection(DEFAULT_TIE_BREAKER_QUESTION.prompt, 'Constraints'),
     explanation: 'High speed optimal solution for sudden death playoff.',
     options: [],
     allowedLanguages: DEFAULT_TIE_BREAKER_QUESTION.allowedLanguages,
@@ -2538,12 +4137,16 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     title: p.title,
     topic: p.topic,
     language: 'java',
-    type: 'debugging' as const,
+    type: 'coding' as const,
+    codingMode: 'debug' as const,
     difficulty: p.difficulty,
     expectedSolveTimeMinutes: p.expectedSolveTimeMinutes,
     marks: p.marks,
     skillTags: [p.topic, p.subtopic, 'Logic Errors', 'Bug Fixing'],
     prompt: p.prompt,
+    inputFormat: p.inputFormat || extractPromptSection(p.prompt, 'Input Format'),
+    outputFormat: p.outputFormat || extractPromptSection(p.prompt, 'Output Format'),
+    constraints: p.constraints || extractPromptSection(p.prompt, 'Constraints'),
     explanation: 'Identify and fix logic errors in the starter code to satisfy all test cases across C, C++, Python, Java, and JavaScript.',
     options: [],
     allowedLanguages: p.allowedLanguages,
@@ -2574,17 +4177,38 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
       { $set: tmpl },
       { upsert: true }
     );
+
+    // Also synchronize corresponding Question records in live events/rounds
+    if (tmpl.type === 'coding') {
+      await Question.updateMany(
+        { title: tmpl.title },
+        {
+          $set: {
+            type: 'coding',
+            codingMode: (tmpl as any).codingMode || 'standard',
+            prompt: tmpl.prompt,
+            inputFormat: (tmpl as any).inputFormat || '',
+            outputFormat: (tmpl as any).outputFormat || '',
+            constraints: (tmpl as any).constraints || '',
+            starterCode: tmpl.starterCode || {},
+            allowedLanguages: tmpl.allowedLanguages || ['c', 'cpp', 'python', 'java', 'javascript'],
+            testCases: (tmpl.testCases || []).map((tc: any) => ({
+              input: tc.input,
+              expectedOutput: tc.output || tc.expectedOutput,
+              isHidden: tc.isHidden,
+              weight: tc.weight || 10
+            }))
+          }
+        }
+      );
+    }
+
     upsertedCount++;
   }
   console.log(`✅ Central Question Bank initialized with ${upsertedCount} comprehensive templates (MCQ, Coding, SQL, Debugging, Aptitude)`);
   return upsertedCount;
 }
 
-/**
- * Auto-Seed Event Round Questions (Round 1, Round 2, Round 3, Tie-Breaker)
- * Inserts live Question documents for the given eventId and collegeId.
- * Per-round idempotent: if a round already has questions, it preserves them.
- */
 export async function seedEventRoundQuestions(
   eventId: mongoose.Types.ObjectId | string,
   collegeId?: mongoose.Types.ObjectId | string

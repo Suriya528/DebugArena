@@ -43,14 +43,21 @@ const DEFAULT_STARTER_CODES: Record<string, string> = {
 public class Solution {
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
-        // Solution implementation
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        // Read input data
+        System.out.println(n);
     }
 }`,
   python: `import sys
 
 def main():
     input_data = sys.stdin.read().split()
-    # Solution implementation
+    if not input_data:
+        return
+    n = int(input_data[0])
+    # Read input data
+    print(n)
 
 if __name__ == '__main__':
     main()`,
@@ -61,21 +68,30 @@ using namespace std;
 int main() {
     ios_base::sync_with_stdio(false);
     cin.tie(NULL);
-    // Solution implementation
+    int n;
+    if (!(cin >> n)) return 0;
+    // Read input data
+    cout << n << "\\n";
     return 0;
 }`,
   c: `#include <stdio.h>
 #include <stdlib.h>
 
 int main() {
-    // Solution implementation
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    // Read input data
+    printf("%d\\n", n);
     return 0;
 }`,
   javascript: `const fs = require('fs');
 
 function main() {
     const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
-    // Solution implementation
+    if (!input || input.length === 0 || input[0] === '') return;
+    const n = parseInt(input[0], 10);
+    // Read input data
+    console.log(n);
 }
 
 main();`

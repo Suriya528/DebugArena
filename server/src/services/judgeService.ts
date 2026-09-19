@@ -722,17 +722,11 @@ export async function runTestCases(
 export function sanitizeResultsForParticipant(
   results: IAttemptTestCaseResult[]
 ): Array<Partial<IAttemptTestCaseResult> & { testNumber: number }> {
-  return results.map((r, idx) => {
-    if (r.isHidden) {
-      return {
-        testNumber: idx + 1,
-        passed: r.passed,
-        status: r.status,
-        runtimeMs: r.runtimeMs,
-        isHidden: true
-      };
-    }
-    return {
+  // CRITICAL SECURITY RULE: Hidden test cases must never be returned to participants.
+  // Filter out any hidden test case result so zero hidden test data exists in the client response.
+  return results
+    .filter(r => !r.isHidden)
+    .map((r, idx) => ({
       testNumber: idx + 1,
       passed: r.passed,
       status: r.status,
@@ -743,6 +737,5 @@ export function sanitizeResultsForParticipant(
       actual: r.actual,
       compileError: r.compileError,
       runtimeError: r.runtimeError
-    };
-  });
+    }));
 }

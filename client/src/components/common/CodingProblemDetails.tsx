@@ -97,7 +97,20 @@ export const CodingProblemDetails: React.FC<CodingProblemDetailsProps> = ({
         </div>
       </div>
 
-      {/* 4. ERROR CODE SECTION (NEEDS DEBUGGING) */}
+      {/* 4. CONSTRAINTS SECTION */}
+      {parsed.constraints && (
+        <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 sm:p-5 shadow-lg shadow-black/20 space-y-2.5">
+          <div className="flex items-center gap-2 text-amber-400 font-bold uppercase tracking-wider text-[11px]">
+            <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Constraints</span>
+          </div>
+          <div className="text-slate-300 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-mono">
+            {parsed.constraints}
+          </div>
+        </div>
+      )}
+
+      {/* 5. ERROR CODE SECTION (NEEDS DEBUGGING) */}
       <div className="rounded-2xl bg-gradient-to-b from-rose-950/30 to-slate-950 border border-rose-500/30 p-4 sm:p-5 shadow-xl shadow-rose-950/20 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-500/20 pb-3">
           <div className="flex items-center gap-2">
