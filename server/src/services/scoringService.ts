@@ -77,12 +77,15 @@ export async function finalizeParticipantRoundScore(
   let progress = await RoundProgress.findOne({ userId, roundNumber });
 
   if (!progress) {
+    const nowTime = new Date();
+    const durationMin = effectiveRound?.durationMinutes || 30;
     progress = new RoundProgress({
       userId,
       eventId: user?.eventId,
       roundNumber,
       status: 'submitted',
-      startedAt: effectiveRound?.startedAt || new Date()
+      startedAt: nowTime,
+      endsAt: new Date(nowTime.getTime() + durationMin * 60000)
     });
   } else if (!progress.eventId && user?.eventId) {
     progress.eventId = user.eventId as any;
@@ -106,8 +109,10 @@ export async function finalizeParticipantRoundScore(
   }
 
   const now = new Date();
-  const maxDurationSec = (effectiveRound?.durationMinutes || 30) * 60;
-  const startTime = progress.startedAt || effectiveRound?.startedAt || now;
+  const maxDurationSec = progress.endsAt && progress.startedAt
+    ? Math.max(0, Math.round((new Date(progress.endsAt).getTime() - new Date(progress.startedAt).getTime()) / 1000))
+    : (effectiveRound?.durationMinutes || 30) * 60;
+  const startTime = progress.startedAt || now;
 
   // Idempotency: If already submitted, preserve initial submission timestamp and duration unless force-recalculated
   let timeTakenSeconds = progress.timeTakenSeconds;

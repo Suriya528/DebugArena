@@ -229,11 +229,14 @@ export interface Attempt {
 }
 
 export interface RoundProgress {
-  status: 'not_started' | 'in_progress' | 'submitted' | 'advanced' | 'eliminated';
+  status: 'not_started' | 'in_progress' | 'submitted' | 'expired' | 'advanced' | 'eliminated';
   totalScore: number;
   markedForReview: string[];
   violationCount: number;
   timeTakenSeconds: number;
+  startedAt?: string | null;
+  endsAt?: string | null;
+  canStart?: boolean;
 }
 
 export interface RoundResultRow {
@@ -247,7 +250,7 @@ export interface RoundResultRow {
   };
   totalScore: number;
   timeTakenSeconds: number;
-  status: 'not_started' | 'in_progress' | 'submitted' | 'advanced' | 'eliminated';
+  status: 'not_started' | 'in_progress' | 'submitted' | 'expired' | 'advanced' | 'eliminated';
   submittedAt?: string;
   violationCount: number;
 }

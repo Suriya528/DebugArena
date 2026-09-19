@@ -124,7 +124,7 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
     // Update competition currentRoundNumber
     await Competition.updateOne({}, { currentRoundNumber: roundNumber, status: 'active' });
 
-    // Mark eligible participants as in_progress (Preserving submitted or eliminated status)
+    // Initialize eligible participants as not_started (Preserving in_progress, submitted, advanced, or eliminated status)
     if (roundNumber === 1) {
       const userFilter: any = { role: 'participant', isDisqualified: false };
       if (req.user?.eventId) {
@@ -136,18 +136,16 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
         if (!existing) {
           await RoundProgress.create({
             userId: p._id,
+            eventId: req.user?.eventId,
             roundNumber: 1,
-            status: 'in_progress',
-            startedAt: effectiveRound.startedAt || new Date()
+            status: 'not_started',
+            startedAt: null,
+            endsAt: null
           });
-        } else if (existing.status === 'not_started') {
-          existing.status = 'in_progress';
-          existing.startedAt = effectiveRound.startedAt || new Date();
-          await existing.save();
         }
       }
     } else {
-      // For Round 2 and 3, only advanced participants from this event start
+      // For Round 2 and 3, only advanced participants from this event are eligible
       const userFilter: any = { role: 'participant', isDisqualified: false };
       if (req.user?.eventId) {
         userFilter.eventId = req.user.eventId;
@@ -164,14 +162,12 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
         if (!existing) {
           await RoundProgress.create({
             userId: adv.userId,
+            eventId: req.user?.eventId,
             roundNumber,
-            status: 'in_progress',
-            startedAt: effectiveRound.startedAt || new Date()
+            status: 'not_started',
+            startedAt: null,
+            endsAt: null
           });
-        } else if (existing.status === 'not_started') {
-          existing.status = 'in_progress';
-          existing.startedAt = effectiveRound.startedAt || new Date();
-          await existing.save();
         }
       }
     }
@@ -234,7 +230,7 @@ adminRouter.post('/rounds/:roundNumber/lock', async (req: AuthenticatedRequest, 
     const activeParticipants = await RoundProgress.find({
       roundNumber,
       userId: { $in: tenantUserIds },
-      status: { $in: ['in_progress', 'not_started'] }
+      status: 'in_progress'
     });
 
     for (const p of activeParticipants) {

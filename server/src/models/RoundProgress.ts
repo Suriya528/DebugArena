@@ -6,8 +6,9 @@ export interface IRoundProgress extends Document {
   roundNumber: number;
   totalScore: number;
   timeTakenSeconds: number;
-  status: 'not_started' | 'in_progress' | 'submitted' | 'advanced' | 'eliminated';
+  status: 'not_started' | 'in_progress' | 'submitted' | 'expired' | 'advanced' | 'eliminated';
   startedAt: Date | null;
+  endsAt: Date | null;
   submittedAt: Date | null;
   markedForReview: Types.ObjectId[];
   violationCount: number;
@@ -26,10 +27,11 @@ const RoundProgressSchema = new Schema<IRoundProgress>(
     timeTakenSeconds: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ['not_started', 'in_progress', 'submitted', 'advanced', 'eliminated'],
+      enum: ['not_started', 'in_progress', 'submitted', 'expired', 'advanced', 'eliminated'],
       default: 'not_started'
     },
     startedAt: { type: Date, default: null },
+    endsAt: { type: Date, default: null },
     submittedAt: { type: Date, default: null },
     markedForReview: [{ type: Schema.Types.ObjectId, ref: 'Question' }],
     violationCount: { type: Number, default: 0 },

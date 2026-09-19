@@ -591,44 +591,43 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       }
     }
 
-    // Determine remaining time and absolute deadline from server
-    let remainingSeconds = 0;
-    let deadlineAt: Date | null = null;
-    if (round.status === 'active' && round.startedAt) {
-      remainingSeconds = getRemainingSeconds(round);
-      deadlineAt = new Date(new Date(round.startedAt).getTime() + round.durationMinutes * 60000);
-    }
-
-    // Get or initialize RoundProgress
+    // Get RoundProgress (strictly read-only: do NOT mutate or start attempt on read)
     let currentProgress = progress;
     if (!currentProgress) {
       currentProgress = await RoundProgress.findOne({ userId, roundNumber });
     }
-    if (!currentProgress) {
-      try {
-        currentProgress = await RoundProgress.create({
-          userId,
-          eventId: req.user?.eventId,
-          roundNumber,
-          status: round.status === 'active' ? 'in_progress' : 'not_started',
-          startedAt: round.status === 'active' ? (round.startedAt || new Date()) : null
-        });
-      } catch (err: any) {
-        if (err.code === 11000) {
-          currentProgress = await RoundProgress.findOne({ userId, roundNumber });
-        } else {
-          throw err;
-        }
+
+    let remainingSeconds = 0;
+    let deadlineAt: Date | null = null;
+    const canStart = round.status === 'active' && (!currentProgress || currentProgress.status === 'not_started');
+
+    if (!currentProgress || currentProgress.status === 'not_started') {
+      // Participant has NOT started yet: full duration is available, timer is not running
+      remainingSeconds = round.durationMinutes * 60;
+      deadlineAt = null;
+    } else if (currentProgress.status === 'in_progress') {
+      // Participant is actively in progress
+      const targetDeadline = currentProgress.endsAt
+        ? new Date(currentProgress.endsAt).getTime()
+        : (currentProgress.startedAt ? new Date(currentProgress.startedAt).getTime() + round.durationMinutes * 60000 : 0);
+
+      const now = Date.now();
+      if (targetDeadline > 0 && now >= targetDeadline) {
+        // Participant's individual deadline has expired: auto-finalize
+        await finalizeParticipantRoundScore(userId, roundNumber);
+        currentProgress = await RoundProgress.findOne({ userId, roundNumber });
+        remainingSeconds = 0;
+        deadlineAt = currentProgress?.endsAt || new Date(targetDeadline);
+      } else if (targetDeadline > 0) {
+        remainingSeconds = Math.max(0, Math.floor((targetDeadline - now) / 1000));
+        deadlineAt = currentProgress.endsAt || new Date(targetDeadline);
+      } else {
+        remainingSeconds = round.durationMinutes * 60;
       }
-    }
-    
-    if (currentProgress && currentProgress.status === 'not_started' && round.status === 'active') {
-      currentProgress.status = 'in_progress';
-      currentProgress.startedAt = round.startedAt || new Date();
-      if (!currentProgress.eventId && req.user?.eventId) {
-        currentProgress.eventId = req.user.eventId as any;
-      }
-      await currentProgress.save();
+    } else {
+      // Submitted, expired, or eliminated
+      remainingSeconds = 0;
+      deadlineAt = currentProgress.endsAt || null;
     }
 
     // Fetch questions for this round (Strictly isolated to candidate's event)
@@ -770,7 +769,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         type: round.type,
         durationMinutes: round.durationMinutes,
         status: round.status,
-        startedAt: round.startedAt,
+        startedAt: currentProgress?.startedAt || null,
         deadlineAt,
         remainingSeconds
       },
@@ -780,10 +779,14 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         markedForReview: currentProgress?.markedForReview || [],
         violationCount: currentProgress?.violationCount || 0,
         timeTakenSeconds: currentProgress?.timeTakenSeconds || 0,
+        startedAt: currentProgress?.startedAt || null,
+        endsAt: currentProgress?.endsAt || null,
+        canStart,
         isQualifiedWaitingNextRound,
         nextRoundAvailable,
         isFinalRound
       },
+      canStart,
       isQualifiedWaitingNextRound,
       nextRoundAvailable,
       isFinalRound,
@@ -802,6 +805,163 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
   } catch (err: any) {
     console.error('Error fetching round state:', err);
     res.status(500).json({ error: 'Server error retrieving round state' });
+  }
+});
+
+// POST /api/participant/rounds/:roundNumber/start and POST /api/participant/start-round
+// Authoritative Server-Side Participant Attempt Initialization
+participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const roundNumber = parseInt(req.params.roundNumber || req.body.roundNumber, 10);
+    if (isNaN(roundNumber)) {
+      res.status(400).json({ error: 'Valid roundNumber is required' });
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (user?.isDisqualified) {
+      res.status(403).json({ error: 'Participant is disqualified' });
+      return;
+    }
+
+    // Check if participant was eliminated in this event
+    const elimQuery: any = { userId, status: 'eliminated' };
+    if (req.user?.eventId) {
+      elimQuery.eventId = req.user.eventId;
+    }
+    const eliminatedProg = await RoundProgress.findOne(elimQuery);
+    if (eliminatedProg) {
+      res.status(403).json({ error: 'You have been eliminated from the competition.', status: 'eliminated' });
+      return;
+    }
+
+    // Find the round (dynamic round for event, or global round)
+    let round: any = null;
+    if (req.user?.eventId) {
+      round = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
+    }
+    if (!round) {
+      round = await Round.findOne({ roundNumber });
+    }
+    if (!round) {
+      res.status(404).json({ error: `Round ${roundNumber} not found` });
+      return;
+    }
+
+    if (round.status !== 'active') {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}: round is currently '${round.status}'. Waiting for admin to start.`,
+        roundStatus: round.status
+      });
+      return;
+    }
+
+    // Verify question presence & quota before participant starts
+    const qFilter: Record<string, any> = { roundNumber };
+    if (req.user?.eventId) qFilter.eventId = req.user.eventId;
+    const qCount = await Question.countDocuments(qFilter);
+    const targetCount = (round.questionCount !== undefined ? round.questionCount : null) || (roundNumber === 1 ? 10 : (round.type === 'mcq' ? 10 : 3));
+    if (qCount < targetCount) {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}. Administrator has not assigned all required questions (${qCount}/${targetCount}).`,
+        roundNumber,
+        requiredCount: targetCount,
+        assignedCount: qCount
+      });
+      return;
+    }
+
+    // If round > 1, check advancement eligibility
+    if (roundNumber > 1) {
+      const prevQuery: any = { userId, roundNumber: roundNumber - 1 };
+      if (req.user?.eventId) {
+        prevQuery.eventId = req.user.eventId;
+      }
+      const prevProg = await RoundProgress.findOne(prevQuery);
+      if (!prevProg || prevProg.status !== 'advanced') {
+        res.status(403).json({
+          error: 'You have not been advanced to this round yet.',
+          status: 'waiting_advancement'
+        });
+        return;
+      }
+    }
+
+    // Find or create RoundProgress
+    let progress = await RoundProgress.findOne({ userId, roundNumber });
+
+    if (progress && (progress.status === 'submitted' || progress.status === 'expired' || progress.status === 'eliminated')) {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}: attempt already completed (${progress.status}).`,
+        status: progress.status
+      });
+      return;
+    }
+
+    // Idempotency: Double-click or reopen in second tab while in progress
+    if (progress && progress.status === 'in_progress' && progress.startedAt) {
+      const endsAt = progress.endsAt || new Date(new Date(progress.startedAt).getTime() + round.durationMinutes * 60000);
+      const remainingSeconds = Math.max(0, Math.floor((new Date(endsAt).getTime() - Date.now()) / 1000));
+      res.json({
+        success: true,
+        message: 'Round attempt already in progress',
+        status: 'in_progress',
+        startedAt: progress.startedAt,
+        endsAt,
+        remainingSeconds,
+        durationMinutes: round.durationMinutes,
+        idempotent: true
+      });
+      return;
+    }
+
+    // New Attempt Start: set authoritative server timestamps
+    const now = new Date();
+    const durationMinutes = round.durationMinutes || 30;
+    const durationMs = durationMinutes * 60 * 1000;
+    const endsAt = new Date(now.getTime() + durationMs);
+
+    if (!progress) {
+      progress = await RoundProgress.create({
+        userId,
+        eventId: req.user?.eventId,
+        roundNumber,
+        status: 'in_progress',
+        startedAt: now,
+        endsAt: endsAt
+      });
+    } else {
+      progress.status = 'in_progress';
+      progress.startedAt = now;
+      progress.endsAt = endsAt;
+      if (!progress.eventId && req.user?.eventId) {
+        progress.eventId = req.user.eventId as any;
+      }
+      await progress.save();
+    }
+
+    broadcastToAdmins('admin:participant_started_round', {
+      userId,
+      username: req.user!.username,
+      roundNumber,
+      startedAt: now,
+      endsAt: endsAt,
+      eventId: req.user?.eventId
+    });
+
+    res.json({
+      success: true,
+      message: `Round ${roundNumber} started successfully`,
+      status: 'in_progress',
+      startedAt: progress.startedAt,
+      endsAt: progress.endsAt,
+      remainingSeconds: durationMinutes * 60,
+      durationMinutes
+    });
+  } catch (err: any) {
+    console.error('Error starting round attempt:', err);
+    res.status(500).json({ error: 'Internal server error while starting round' });
   }
 });
 
@@ -825,23 +985,6 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
       }
     }
 
-    // Check if participant already submitted or was eliminated
-    const progress = await RoundProgress.findOne({ userId, roundNumber });
-    if (progress && (progress.status === 'submitted' || progress.status === 'eliminated')) {
-      res.status(403).json({ error: `Cannot save answer: round status is ${progress.status}` });
-      return;
-    }
-
-    const targetQuestion = await Question.findById(questionId);
-    if (!targetQuestion) {
-      res.status(404).json({ error: 'Question not found' });
-      return;
-    }
-    if (req.user?.eventId && targetQuestion.eventId && targetQuestion.eventId.toString() !== req.user.eventId.toString()) {
-      res.status(403).json({ error: 'Question does not belong to this competition event' });
-      return;
-    }
-
     const isTieBreak = roundNumber === 99;
     if (isTieBreak) {
       const activeTie = await TieBreak.findOne({ tiedUserIds: userId, status: 'active' });
@@ -850,6 +993,21 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
         return;
       }
     } else {
+      // Check participant round attempt state
+      const progress = await RoundProgress.findOne({ userId, roundNumber });
+      if (!progress || progress.status === 'not_started') {
+        res.status(400).json({ error: 'Cannot save answer: Round has not been started yet.' });
+        return;
+      }
+      if (progress.status === 'submitted' || progress.status === 'expired' || progress.status === 'eliminated') {
+        res.status(403).json({ error: `Cannot save answer: round status is ${progress.status}` });
+        return;
+      }
+      if (progress.status !== 'in_progress') {
+        res.status(400).json({ error: 'Cannot save answer: round attempt is not in progress' });
+        return;
+      }
+
       let round: any = null;
       if (req.user?.eventId) {
         round = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
@@ -861,10 +1019,25 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'This round is not currently active' });
         return;
       }
-      if (round.startedAt && getRemainingSeconds(round) < -5) {
+
+      // Check personal attempt expiry (with 5s network grace period)
+      const deadline = progress.endsAt
+        ? new Date(progress.endsAt).getTime()
+        : (progress.startedAt ? new Date(progress.startedAt).getTime() + (round?.durationMinutes || 30) * 60000 : 0);
+      if (deadline > 0 && Date.now() > deadline + 5000) {
         res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
         return;
       }
+    }
+
+    const targetQuestion = await Question.findById(questionId);
+    if (!targetQuestion) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (req.user?.eventId && targetQuestion.eventId && targetQuestion.eventId.toString() !== req.user.eventId.toString()) {
+      res.status(403).json({ error: 'Question does not belong to this competition event' });
+      return;
     }
 
     let attempt = await Attempt.findOne({ userId, roundNumber, questionId });
@@ -961,10 +1134,18 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     }
 
     const activeRoundNumber = roundNumber || 2;
-    // Check if participant already submitted this round
+    // Check participant round attempt state
     const progress = await RoundProgress.findOne({ userId, roundNumber: activeRoundNumber });
-    if (progress && (progress.status === 'submitted' || progress.status === 'eliminated')) {
+    if (!progress || progress.status === 'not_started') {
+      res.status(400).json({ error: 'Cannot run code: Round has not been started yet.' });
+      return;
+    }
+    if (progress.status === 'submitted' || progress.status === 'expired' || progress.status === 'eliminated') {
       res.status(403).json({ error: `Cannot run code: round status is ${progress.status}` });
+      return;
+    }
+    if (progress.status !== 'in_progress') {
+      res.status(400).json({ error: 'Cannot run code: round attempt is not in progress.' });
       return;
     }
 
@@ -980,8 +1161,13 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       res.status(400).json({ error: 'Cannot run code: round is not active' });
       return;
     }
-    if (round.startedAt && getRemainingSeconds(round) < -5) {
-      res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
+
+    // Check personal attempt expiry (with 5s network grace period)
+    const deadline = progress.endsAt
+      ? new Date(progress.endsAt).getTime()
+      : (progress.startedAt ? new Date(progress.startedAt).getTime() + (round?.durationMinutes || 30) * 60000 : 0);
+    if (deadline > 0 && Date.now() > deadline + 5000) {
+      res.status(400).json({ error: 'Round time expired. Submission is no longer accepted.' });
       return;
     }
 
@@ -1125,10 +1311,18 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
         return;
       }
     } else {
-      // Check if participant already submitted or was eliminated
+      // Check participant round attempt state
       const progress = await RoundProgress.findOne({ userId, roundNumber });
-      if (progress && (progress.status === 'submitted' || progress.status === 'eliminated')) {
+      if (!progress || progress.status === 'not_started') {
+        res.status(400).json({ error: 'Cannot submit code: Round has not been started yet.' });
+        return;
+      }
+      if (progress.status === 'submitted' || progress.status === 'expired' || progress.status === 'eliminated') {
         res.status(403).json({ error: `Cannot submit code: round status is ${progress.status}` });
+        return;
+      }
+      if (progress.status !== 'in_progress') {
+        res.status(400).json({ error: 'Cannot submit code: round attempt is not in progress.' });
         return;
       }
 
@@ -1143,8 +1337,13 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'Cannot submit: round is not active' });
         return;
       }
-      if (round.startedAt && getRemainingSeconds(round) < -5) {
-        res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
+
+      // Check personal attempt expiry (with 5s network grace period)
+      const deadline = progress.endsAt
+        ? new Date(progress.endsAt).getTime()
+        : (progress.startedAt ? new Date(progress.startedAt).getTime() + (round?.durationMinutes || 30) * 60000 : 0);
+      if (deadline > 0 && Date.now() > deadline + 5000) {
+        res.status(400).json({ error: 'Round time expired. Submission is no longer accepted.' });
         return;
       }
     }
@@ -1380,13 +1579,17 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
       }
     }
 
-    // Guard against submitting an already eliminated or submitted round
+    // Guard against submitting an unstarted, eliminated, or submitted round
     const existingProgress = await RoundProgress.findOne({ userId, roundNumber });
-    if (existingProgress && existingProgress.status === 'eliminated') {
+    if (!existingProgress || existingProgress.status === 'not_started') {
+      res.status(400).json({ error: 'Cannot submit round: You have not started this round yet.' });
+      return;
+    }
+    if (existingProgress.status === 'eliminated') {
       res.status(403).json({ error: 'Cannot submit round: candidate was eliminated from this competition.' });
       return;
     }
-    if (existingProgress && existingProgress.status === 'submitted') {
+    if (existingProgress.status === 'submitted') {
       res.json({
         success: true,
         message: `Round ${roundNumber} already submitted`,
@@ -1394,6 +1597,10 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
         timeTakenSeconds: existingProgress.timeTakenSeconds,
         alreadySubmitted: true
       });
+      return;
+    }
+    if (existingProgress.status === 'expired') {
+      res.status(400).json({ error: 'Round time expired. Submission is no longer accepted.' });
       return;
     }
 

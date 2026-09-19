@@ -363,3 +363,8 @@ export async function createQuestionTemplate(data: any) {
   return res.data;
 }
 
+export async function startParticipantRound(roundNumber: number) {
+  const res = await api.post(`/participant/rounds/${roundNumber}/start`, { roundNumber });
+  return res.data;
+}
+

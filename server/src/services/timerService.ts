@@ -21,90 +21,50 @@ export function startServerTimerSweep(): void {
 
   sweepInterval = setInterval(async () => {
     try {
-      // 1. Sweep active legacy rounds
-      const activeRounds = await Round.find({ status: 'active' });
+      const now = new Date();
 
-      for (const round of activeRounds) {
-        if (!round.startedAt) continue;
+      // 1. Sweep active participant attempts whose individual endsAt deadline has elapsed
+      const expiredParticipants = await RoundProgress.find({
+        status: 'in_progress',
+        endsAt: { $ne: null, $lte: now }
+      });
 
-        const remaining = getRemainingSeconds(round);
+      for (const progress of expiredParticipants) {
+        console.log(`⏱️ Participant ${progress.userId} deadline reached for Round ${progress.roundNumber}. Auto-finalizing attempt.`);
+        await finalizeParticipantRoundScore(progress.userId.toString(), progress.roundNumber);
 
-        if (remaining <= 0) {
-          console.log(`⏱️ Round ${round.roundNumber} deadline reached. Auto-locking and sweeping submissions.`);
-          round.status = 'completed';
-          round.endedAt = new Date();
-          await round.save();
+        emitToUser(progress.userId.toString(), 'round:auto_submitted', {
+          roundNumber: progress.roundNumber,
+          eventId: progress.eventId,
+          reason: 'Time expired'
+        });
 
-          broadcastToParticipants('round:locked', {
-            roundNumber: round.roundNumber,
-            message: `Round ${round.roundNumber} has concluded.`
-          });
-
-          broadcastToAdmins('admin:round_locked', {
-            roundNumber: round.roundNumber
-          });
-
-          // Sweep all in_progress participants for this round
-          const inProgressList = await RoundProgress.find({
-            roundNumber: round.roundNumber,
-            status: { $in: ['in_progress', 'not_started'] }
-          });
-
-          for (const progress of inProgressList) {
-            await finalizeParticipantRoundScore(progress.userId.toString(), round.roundNumber);
-            emitToUser(progress.userId.toString(), 'round:auto_submitted', {
-              roundNumber: round.roundNumber,
-              reason: 'Time expired'
-            });
-          }
-        }
+        broadcastToAdmins('admin:participant_auto_submitted', {
+          userId: progress.userId,
+          roundNumber: progress.roundNumber,
+          eventId: progress.eventId,
+          reason: 'Time expired'
+        });
       }
 
-      // 2. Sweep active dynamic rounds (Phase 8+ dynamic multi-round events)
-      const activeDynRounds = await DynamicRound.find({ status: 'active' });
+      // 2. Legacy fallback: populate endsAt for any active in_progress attempts missing endsAt
+      const missingEndsAtList = await RoundProgress.find({
+        status: 'in_progress',
+        startedAt: { $ne: null },
+        endsAt: null
+      });
 
-      for (const dynRound of activeDynRounds) {
-        if (!dynRound.startedAt) continue;
-
-        const remaining = getRemainingSeconds(dynRound);
-
-        if (remaining <= 0) {
-          console.log(`⏱️ Dynamic Round ${dynRound.roundNumber} (Event: ${dynRound.eventId}) deadline reached. Auto-locking.`);
-          dynRound.status = 'completed';
-          dynRound.endedAt = new Date();
-          await dynRound.save();
-
-          const eventIdStr = dynRound.eventId?.toString();
-          broadcastToParticipants('round:locked', {
-            eventId: dynRound.eventId,
-            roundNumber: dynRound.roundNumber,
-            message: `Round ${dynRound.roundNumber} has concluded.`
-          }, eventIdStr);
-
-          broadcastToAdmins('admin:round_locked', {
-            eventId: dynRound.eventId,
-            roundNumber: dynRound.roundNumber
-          }, undefined, eventIdStr);
-
-          // Find participants scoped to this dynamic event
-          const eventUsers = await User.find({ eventId: dynRound.eventId }).select('_id');
-          const eventUserIds = eventUsers.map(u => u._id);
-
-          const inProgressDynList = await RoundProgress.find({
-            roundNumber: dynRound.roundNumber,
-            userId: { $in: eventUserIds },
-            status: { $in: ['in_progress', 'not_started'] }
-          });
-
-          for (const progress of inProgressDynList) {
-            await finalizeParticipantRoundScore(progress.userId.toString(), dynRound.roundNumber);
-            emitToUser(progress.userId.toString(), 'round:auto_submitted', {
-              eventId: dynRound.eventId,
-              roundNumber: dynRound.roundNumber,
-              reason: 'Time expired'
-            });
-          }
+      for (const p of missingEndsAtList) {
+        let durationMinutes = 30;
+        if (p.eventId) {
+          const dyn = await DynamicRound.findOne({ eventId: p.eventId, roundNumber: p.roundNumber });
+          if (dyn?.durationMinutes) durationMinutes = dyn.durationMinutes;
+        } else {
+          const r = await Round.findOne({ roundNumber: p.roundNumber });
+          if (r?.durationMinutes) durationMinutes = r.durationMinutes;
         }
+        p.endsAt = new Date(new Date(p.startedAt!).getTime() + durationMinutes * 60 * 1000);
+        await p.save();
       }
     } catch (err) {
       console.error('Error in timer sweep:', err);

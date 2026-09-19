@@ -29,7 +29,7 @@ import { KioskRecoveryPortal } from './components/participant/KioskRecoveryPorta
 import { AdminControlEntryView } from './components/admin/AdminControlEntryView.js';
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
-import { api } from './services/api.js';
+import { api, startParticipantRound } from './services/api.js';
 import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2, RefreshCw, Building2, HelpCircle } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -103,16 +103,11 @@ export const App: React.FC = () => {
       setRoundState(res.data);
       setViolationCount(res.data.progress?.violationCount || 0);
 
-      // Server-Authoritative Crash Recovery: If the round is active and progress status is in_progress,
-      // resume automatically regardless of whether browser restarted or computer crashed.
+      // Server-Authoritative State:
+      // Active assessment shell is armed ONLY if round is active AND participant attempt is in_progress
       if (res.data.round?.status === 'active' && res.data.progress?.status === 'in_progress') {
         setHasStartedActiveRound(true);
-      }
-      if (
-        res.data.progress?.status === 'submitted' ||
-        res.data.progress?.status === 'eliminated' ||
-        res.data.progress?.status === 'advanced'
-      ) {
+      } else {
         setHasStartedActiveRound(false);
       }
     } catch (err: any) {
@@ -155,8 +150,8 @@ export const App: React.FC = () => {
   // Server-authoritative timer hook
   const { formattedTime, isUrgent } = useTimer({
     serverRemainingSeconds: roundState?.round?.remainingSeconds || 0,
-    deadlineAt: roundState?.round?.deadlineAt || null,
-    isActive: roundState?.round?.status === 'active' && hasStartedActiveRound,
+    deadlineAt: roundState?.progress?.endsAt || roundState?.round?.deadlineAt || null,
+    isActive: roundState?.round?.status === 'active' && hasStartedActiveRound && roundState?.progress?.status === 'in_progress',
     onExpire: handleTimerExpire
   });
 
@@ -216,9 +211,41 @@ export const App: React.FC = () => {
     onViolation: handleViolation
   });
 
+  const [isStartingRound, setIsStartingRound] = useState<boolean>(false);
+
   const handleStartRoundAssessment = async () => {
-    await requestFullscreen();
-    setHasStartedActiveRound(true);
+    const roundNumber = roundState?.round?.roundNumber || 1;
+    setIsStartingRound(true);
+    try {
+      const res = await startParticipantRound(roundNumber);
+      // Synchronize authoritative server attempt timestamps
+      setRoundState((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          round: {
+            ...prev.round,
+            startedAt: res.startedAt,
+            deadlineAt: res.endsAt,
+            remainingSeconds: res.remainingSeconds
+          },
+          progress: {
+            ...prev.progress,
+            status: 'in_progress',
+            startedAt: res.startedAt,
+            endsAt: res.endsAt,
+            canStart: false
+          }
+        };
+      });
+      setHasStartedActiveRound(true);
+      await requestFullscreen();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to start round. Please try again.');
+      setHasStartedActiveRound(false);
+    } finally {
+      setIsStartingRound(false);
+    }
   };
 
   const handleResumeFullscreen = async () => {
@@ -610,6 +637,7 @@ export const App: React.FC = () => {
                   <InstructionsView
                     round={currentRound}
                     onStartRound={handleStartRoundAssessment}
+                    isLoading={isStartingRound}
                   />
                 ) : (
                   <div className="text-center text-slate-400 py-20 text-xs">
