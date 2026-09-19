@@ -157,6 +157,7 @@ export interface Question {
   // Coding
   allowedLanguages?: string[];
   starterCode?: Record<string, string>;
+  solutionCode?: Record<string, string>;
   testCases?: TestCase[];
   timeLimitMs?: number;
   memoryLimitMb?: number;
@@ -186,6 +187,7 @@ export interface QuestionTemplate {
   options?: { text: string; isCorrect: boolean }[];
   allowedLanguages?: string[];
   starterCode?: Record<string, string>;
+  solutionCode?: Record<string, string>;
   testCases?: { input: string; output: string; isHidden: boolean; weight: number }[];
   hasDnaMutation?: boolean;
   status?: 'draft' | 'validated' | 'published' | 'archived';

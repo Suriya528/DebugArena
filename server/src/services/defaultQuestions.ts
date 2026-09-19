@@ -3,8 +3,10 @@ import { Question, IQuestion } from '../models/Question.js';
 import { QuestionTemplate, IQuestionTemplate } from '../models/QuestionTemplate.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
+import { CURATED_CODING_SOLUTIONS } from './curatedCodingSolutions.js';
 
 export { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
+export { CURATED_CODING_SOLUTIONS } from './curatedCodingSolutions.js';
 
 /**
  * Standard Curated Library of Code Debugging MCQs (Round 1)
@@ -1779,7 +1781,7 @@ public class Solution {
       { input: '10\n0 3 7 2 5 8 4 6 0 1', expectedOutput: '9', isHidden: false, weight: 7 },
       { input: '5\n1 2 0 1 5', expectedOutput: '3', isHidden: true, weight: 7 },
       { input: '1\n99', expectedOutput: '1', isHidden: true, weight: 7 },
-      { input: '6\n9 1 4 7 3 -1', expectedOutput: '1', isHidden: true, weight: 7 }
+      { input: '6\n9 1 4 7 3 -1', expectedOutput: '2', isHidden: true, weight: 7 }
     ],
     timeLimitMs: 3000
   }
@@ -4064,6 +4066,7 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     options: [],
     allowedLanguages: c.allowedLanguages || ['python', 'cpp', 'java', 'javascript', 'c'],
     starterCode: c.starterCode || {},
+    solutionCode: (c as any).solutionCode || CURATED_CODING_SOLUTIONS[c.title] || {},
     testCases: (c.testCases || []).map(tc => ({
       input: tc.input,
       output: tc.expectedOutput,
@@ -4093,6 +4096,7 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     options: [],
     allowedLanguages: c.allowedLanguages || ['python', 'cpp', 'java', 'javascript', 'c'],
     starterCode: c.starterCode || {},
+    solutionCode: (c as any).solutionCode || CURATED_CODING_SOLUTIONS[c.title] || {},
     testCases: (c.testCases || []).map(tc => ({
       input: tc.input,
       output: tc.expectedOutput,
@@ -4122,6 +4126,7 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     options: [],
     allowedLanguages: DEFAULT_TIE_BREAKER_QUESTION.allowedLanguages,
     starterCode: DEFAULT_TIE_BREAKER_QUESTION.starterCode,
+    solutionCode: (DEFAULT_TIE_BREAKER_QUESTION as any).solutionCode || CURATED_CODING_SOLUTIONS[DEFAULT_TIE_BREAKER_QUESTION.title] || {},
     testCases: DEFAULT_TIE_BREAKER_QUESTION.testCases.map(tc => ({
       input: tc.input,
       output: tc.expectedOutput,
@@ -4151,6 +4156,7 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     options: [],
     allowedLanguages: p.allowedLanguages,
     starterCode: p.starterCode,
+    solutionCode: (p as any).solutionCode || {},
     testCases: p.testCases.map(tc => ({
       input: tc.input,
       output: tc.expectedOutput,
@@ -4161,8 +4167,18 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     isDefault: true
   }));
 
+  const generalTemplatesWithSolutions = DEFAULT_GENERAL_QUESTION_TEMPLATES.map(t => {
+    if (t.type === 'coding') {
+      return {
+        ...t,
+        solutionCode: (t as any).solutionCode || CURATED_CODING_SOLUTIONS[t.title] || {}
+      };
+    }
+    return t;
+  });
+
   const allTemplates = [
-    ...DEFAULT_GENERAL_QUESTION_TEMPLATES,
+    ...generalTemplatesWithSolutions,
     ...mcqTemplates,
     ...mediumCodingDebuggingTemplates,
     ...r2Templates,
@@ -4191,6 +4207,7 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
             outputFormat: (tmpl as any).outputFormat || '',
             constraints: (tmpl as any).constraints || '',
             starterCode: tmpl.starterCode || {},
+            solutionCode: (tmpl as any).solutionCode || {},
             allowedLanguages: tmpl.allowedLanguages || ['c', 'cpp', 'python', 'java', 'javascript'],
             testCases: (tmpl.testCases || []).map((tc: any) => ({
               input: tc.input,
@@ -4239,6 +4256,7 @@ export async function seedEventRoundQuestions(
   if (existingR2 === 0) {
     const r2Docs = DEFAULT_ROUND_2_CODING.map(q => ({
       ...q,
+      solutionCode: (q as any).solutionCode || CURATED_CODING_SOLUTIONS[q.title] || {},
       eventId: cleanEventId,
       collegeId: cleanCollegeId,
       roundNumber: 2
@@ -4252,6 +4270,7 @@ export async function seedEventRoundQuestions(
   if (existingR3 === 0) {
     const r3Docs = DEFAULT_ROUND_3_CODING.map(q => ({
       ...q,
+      solutionCode: (q as any).solutionCode || CURATED_CODING_SOLUTIONS[q.title] || {},
       eventId: cleanEventId,
       collegeId: cleanCollegeId,
       roundNumber: 3
@@ -4265,6 +4284,7 @@ export async function seedEventRoundQuestions(
   if (existingTB === 0) {
     await Question.create({
       ...DEFAULT_TIE_BREAKER_QUESTION,
+      solutionCode: (DEFAULT_TIE_BREAKER_QUESTION as any).solutionCode || CURATED_CODING_SOLUTIONS[DEFAULT_TIE_BREAKER_QUESTION.title] || {},
       eventId: cleanEventId,
       collegeId: cleanCollegeId,
       roundNumber: 99

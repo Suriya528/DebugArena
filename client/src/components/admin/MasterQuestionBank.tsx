@@ -68,6 +68,7 @@ export const MasterQuestionBank: React.FC = () => {
 
   // Active language tab in details view
   const [detailActiveLang, setDetailActiveLang] = useState<string>('java');
+  const [detailCodeMode, setDetailCodeMode] = useState<'starter' | 'solution'>('starter');
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -801,35 +802,69 @@ export const MasterQuestionBank: React.FC = () => {
                 </div>
               )}
 
-              {/* Starter Codes */}
-              {viewingTemplate.starterCode && Object.keys(viewingTemplate.starterCode).length > 0 && (
+              {/* Code Inspection (Starter Code vs Reference Solution) */}
+              {((viewingTemplate.starterCode && Object.keys(viewingTemplate.starterCode).length > 0) ||
+                (viewingTemplate.solutionCode && Object.keys(viewingTemplate.solutionCode).length > 0)) && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-medium text-[#9CA3AF]">
-                      Starter / Buggy Code
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDetailCodeMode('starter')}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                          detailCodeMode === 'starter'
+                            ? 'bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/40 shadow-sm'
+                            : 'bg-[#171B21] text-[#9CA3AF] hover:text-[#F3F4F6] border border-[#252A31]'
+                        }`}
+                      >
+                        Starter / Buggy Code
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailCodeMode('solution')}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          detailCodeMode === 'solution'
+                            ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40 shadow-sm'
+                            : 'bg-[#171B21] text-[#9CA3AF] hover:text-[#F3F4F6] border border-[#252A31]'
+                        }`}
+                      >
+                        <span>Reference Solution</span>
+                        <span className="text-[10px] bg-[#10B981]/30 text-[#A7F3D0] px-1.5 py-0.5 rounded font-mono">
+                          Admin Only
+                        </span>
+                      </button>
                     </div>
                   </div>
+
                   <div className="border border-[#252A31] rounded-lg overflow-hidden bg-[#171B21]">
-                    <div className="flex items-center bg-[#111418] border-b border-[#252A31] px-2 py-1 gap-1">
-                      {Object.keys(viewingTemplate.starterCode).map(lang => (
-                        <button
-                          key={lang}
-                          type="button"
-                          onClick={() => setDetailActiveLang(lang)}
-                          className={`px-3 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
-                            detailActiveLang === lang
-                              ? 'bg-[#171B21] text-[#F3F4F6] font-semibold border border-[#252A31]'
-                              : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
-                          }`}
-                        >
-                          {lang.toUpperCase()}
-                        </button>
-                      ))}
+                    <div className="flex items-center justify-between bg-[#111418] border-b border-[#252A31] px-2 py-1 gap-1">
+                      <div className="flex items-center gap-1">
+                        {['c', 'cpp', 'python', 'java', 'javascript'].map(lang => (
+                          <button
+                            key={lang}
+                            type="button"
+                            onClick={() => setDetailActiveLang(lang)}
+                            className={`px-3 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                              detailActiveLang === lang
+                                ? 'bg-[#171B21] text-[#F3F4F6] font-semibold border border-[#252A31]'
+                                : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
+                            }`}
+                          >
+                            {lang === 'cpp' ? 'C++' : lang.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-mono text-[#6B7280] px-2 hidden sm:inline">
+                        {detailCodeMode === 'starter' ? 'Buggy / Starter implementation' : 'Verified Judge Reference Implementation'}
+                      </span>
                     </div>
-                    <pre className="p-3 text-xs font-mono text-[#F3F4F6] overflow-x-auto leading-relaxed whitespace-pre-wrap max-h-56">
-                      {viewingTemplate.starterCode[detailActiveLang] ||
-                        Object.values(viewingTemplate.starterCode)[0] ||
-                        '// No starter code for this language'}
+                    <pre className="p-3 text-xs font-mono text-[#F3F4F6] overflow-x-auto leading-relaxed whitespace-pre-wrap max-h-64">
+                      {detailCodeMode === 'starter'
+                        ? ((viewingTemplate.starterCode && (viewingTemplate.starterCode[detailActiveLang] || viewingTemplate.starterCode[detailActiveLang.toLowerCase()])) ||
+                          Object.values(viewingTemplate.starterCode || {})[0] ||
+                          '// No starter code available for this language')
+                        : ((viewingTemplate.solutionCode && ((viewingTemplate.solutionCode as any)[detailActiveLang] || (viewingTemplate.solutionCode as any)[detailActiveLang.toLowerCase()])) ||
+                          '// No reference solution available for this language')}
                     </pre>
                   </div>
                 </div>

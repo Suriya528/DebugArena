@@ -48,6 +48,7 @@ export interface IQuestionTemplate extends Document {
   // Code / Debugging
   allowedLanguages: string[];
   starterCode?: Record<string, string>;
+  solutionCode?: Record<string, string>;
   testCases: ITestCase[];
 
   // Question DNA & Bug DNA (The Core USP)
@@ -127,6 +128,7 @@ const QuestionTemplateSchema = new Schema<IQuestionTemplate>(
     // Coding / Debugging
     allowedLanguages: { type: [String], default: ['java', 'python', 'cpp', 'javascript'] },
     starterCode: { type: Map, of: String, default: {} },
+    solutionCode: { type: Map, of: String, default: {} },
     testCases: { type: [TestCaseSchema], default: [] },
 
     // Question DNA & Bug DNA

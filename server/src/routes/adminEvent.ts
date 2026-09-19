@@ -1368,6 +1368,7 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
           ? tmpl.allowedLanguages
           : (round.allowedLanguages || ['python', 'cpp', 'java', 'c', 'javascript']),
         starterCode: tmpl.starterCode instanceof Map ? Object.fromEntries(tmpl.starterCode) : (tmpl.starterCode || {}),
+        solutionCode: (tmpl as any).solutionCode instanceof Map ? Object.fromEntries((tmpl as any).solutionCode) : ((tmpl as any).solutionCode || {}),
         testCases: (tmpl.testCases || []).map(tc => ({
           input: tc.input,
           expectedOutput: tc.output,

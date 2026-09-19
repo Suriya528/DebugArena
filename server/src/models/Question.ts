@@ -28,6 +28,7 @@ export interface IQuestion extends Document {
   // Coding specific
   allowedLanguages?: string[];
   starterCode?: Record<string, string>;
+  solutionCode?: Record<string, string>;
   testCases?: ITestCase[];
   timeLimitMs?: number;
   memoryLimitMb?: number;
@@ -80,6 +81,7 @@ const QuestionSchema = new Schema<IQuestion>(
     // Coding
     allowedLanguages: [{ type: String }],
     starterCode: { type: Map, of: String, default: {} },
+    solutionCode: { type: Map, of: String, default: {} },
     testCases: [TestCaseSchema],
     timeLimitMs: { type: Number, default: 3000 },
     memoryLimitMb: { type: Number, default: 256 },
