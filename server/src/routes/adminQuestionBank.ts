@@ -28,10 +28,11 @@ adminQuestionBankRouter.use(authenticate, requireAnyAdmin);
 // GET /api/admin/questions/bank
 adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    // Auto-seed if question bank is currently empty or missing the 20 logic debugging MCQs
+    // Auto-seed if question bank is missing the 40 MCQs or 10 coding/debugging challenges
     const totalCount = await QuestionTemplate.countDocuments();
     const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
-    if (totalCount < 25 || mcqCount < 20) {
+    const codingCount = await QuestionTemplate.countDocuments({ type: { $in: ['coding', 'debugging'] } });
+    if (totalCount < 55 || mcqCount < 40 || codingCount < 10) {
       await seedDefaultQuestionTemplates(true);
     }
 
@@ -94,9 +95,8 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     if (difficulty) filter.difficulty = difficulty;
 
     if (type && type !== 'all') {
-      if (exactType === 'true' || String(exactType) === 'true') {
-        filter.type = type;
-      } else if (type === 'coding' || type === 'debugging') {
+      // Coding and debugging are the same in the question bank
+      if (type === 'coding' || type === 'debugging' || type === 'coding_debugging') {
         filter.type = { $in: ['coding', 'debugging'] };
       } else {
         filter.type = type;
@@ -182,6 +182,12 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     for (const item of typeAgg) {
       if (item._id) countsByType[item._id] = item.count;
     }
+
+    // Coding and debugging are the same in the question bank
+    const combinedCoding = (countsByType.coding || 0) + (countsByType.debugging || 0);
+    countsByType.coding = combinedCoding;
+    countsByType.debugging = combinedCoding;
+    countsByType.coding_debugging = combinedCoding;
 
     const grandTotal = await QuestionTemplate.countDocuments();
 

@@ -15,6 +15,8 @@ import { adminControlRoomRouter } from './routes/adminControlRoom.js';
 import { adminAnalyticsRouter } from './routes/adminAnalytics.js';
 import { timeSyncRouter } from './routes/timeSync.js';
 import { tenantContext } from './middleware/tenantContext.js';
+import { QuestionTemplate } from './models/QuestionTemplate.js';
+import { seedDefaultQuestionTemplates } from './services/defaultQuestions.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -79,6 +81,18 @@ async function bootstrap() {
   validateProductionEnv();
 
   await connectDB();
+
+  // Ensure Master Question Bank contains curated library (40 MCQs, 10 Coding/Debugging challenges)
+  try {
+    const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
+    const codingCount = await QuestionTemplate.countDocuments({ type: { $in: ['coding', 'debugging'] } });
+    if (mcqCount < 40 || codingCount < 10) {
+      console.log(`📦 Central Question Bank requires synchronization (MCQs: ${mcqCount}/40, Coding/Debugging: ${codingCount}/10)...`);
+      await seedDefaultQuestionTemplates(true);
+    }
+  } catch (seedErr) {
+    console.warn('⚠️ Non-fatal: Failed to check/seed default question templates on boot:', seedErr);
+  }
 
   // Enterprise Policy: Never auto-populate demo test data on boot in any environment
   console.log('🏛️ Database ready in clean enterprise mode.');

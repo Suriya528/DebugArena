@@ -7,8 +7,7 @@ import {
   AlertCircle,
   HelpCircle,
   Code2,
-  Database,
-  Bug
+  Database
 } from 'lucide-react';
 import { api, updateQuestionTemplate, createQuestionDirect } from '../../services/api.js';
 
@@ -426,8 +425,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
   const TYPE_TABS = [
     { id: 'mcq' as const, label: 'Multiple Choice', icon: HelpCircle },
-    { id: 'coding' as const, label: 'Coding Challenge', icon: Code2 },
-    { id: 'debugging' as const, label: 'Buggy Debugging', icon: Bug },
+    { id: 'coding' as const, label: 'Coding / Debugging', icon: Code2 },
     { id: 'sql' as const, label: 'SQL Query', icon: Database }
   ];
 
@@ -759,7 +757,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-medium text-[#9CA3AF]">
-                    {type === 'debugging' ? 'Buggy Starter Code (Code to Debug)' : 'Language Starter Code'}
+                    Starter / Buggy Code (per language)
                   </label>
                   <span className="text-[11px] text-[#6B7280]">
                     Editing: <span className="font-mono text-[#F3F4F6] uppercase">{activeCodeTab}</span>

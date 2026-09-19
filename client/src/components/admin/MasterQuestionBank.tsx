@@ -19,8 +19,7 @@ import {
   ExternalLink,
   Code2,
   Database,
-  HelpCircle,
-  Bug
+  HelpCircle
 } from 'lucide-react';
 import { QuestionTemplate } from '../../types/index.js';
 import { getQuestionBank, deleteQuestionTemplate, api } from '../../services/api.js';
@@ -192,9 +191,8 @@ export const MasterQuestionBank: React.FC = () => {
       case 'mcq':
         return 'MCQ';
       case 'coding':
-        return 'Coding';
       case 'debugging':
-        return 'Debugging';
+        return 'Coding / Debugging';
       case 'sql':
         return 'SQL';
       case 'aptitude':
@@ -324,11 +322,11 @@ export const MasterQuestionBank: React.FC = () => {
               setPage(1);
             }}
             className={`flex items-center gap-2 transition-colors cursor-pointer ${
-              selectedType === 'coding' ? 'text-[#F3F4F6] font-semibold' : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
+              selectedType === 'coding' || selectedType === 'debugging' ? 'text-[#F3F4F6] font-semibold' : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
             }`}
           >
-            <span className="text-[#6B7280]">Coding</span>
-            <span className="font-mono text-sm">{countsByType.coding || 0}</span>
+            <span className="text-[#6B7280]">Coding / Debugging</span>
+            <span className="font-mono text-sm">{(countsByType.coding || 0) + (countsByType.debugging || 0)}</span>
           </button>
 
           <div className="h-3 w-[1px] bg-[#252A31] hidden sm:block" />
@@ -345,22 +343,6 @@ export const MasterQuestionBank: React.FC = () => {
           >
             <span className="text-[#6B7280]">SQL</span>
             <span className="font-mono text-sm">{countsByType.sql || 0}</span>
-          </button>
-
-          <div className="h-3 w-[1px] bg-[#252A31] hidden sm:block" />
-
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedType('debugging');
-              setPage(1);
-            }}
-            className={`flex items-center gap-2 transition-colors cursor-pointer ${
-              selectedType === 'debugging' ? 'text-[#F3F4F6] font-semibold' : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
-            }`}
-          >
-            <span className="text-[#6B7280]">Debugging</span>
-            <span className="font-mono text-sm">{countsByType.debugging || 0}</span>
           </button>
         </div>
 
@@ -406,9 +388,8 @@ export const MasterQuestionBank: React.FC = () => {
             >
               <option value="all">All Types</option>
               <option value="mcq">MCQ</option>
-              <option value="coding">Coding</option>
+              <option value="coding">Coding / Debugging</option>
               <option value="sql">SQL</option>
-              <option value="debugging">Debugging</option>
               <option value="aptitude">Aptitude</option>
             </select>
 
@@ -825,7 +806,7 @@ export const MasterQuestionBank: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-medium text-[#9CA3AF]">
-                      {viewingTemplate.type === 'debugging' ? 'Buggy Starter Code' : 'Language Starter Code'}
+                      Starter / Buggy Code
                     </div>
                   </div>
                   <div className="border border-[#252A31] rounded-lg overflow-hidden bg-[#171B21]">
