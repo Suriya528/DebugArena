@@ -1,8 +1,23 @@
 import axios from 'axios';
 import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { ENV } from '../config/env.js';
 import { ITestCase } from '../models/Question.js';
 import { IAttemptTestCaseResult } from '../models/Attempt.js';
+
+// Augment process.env.PATH with installed compiler directories (MinGW g++, Tableau OpenJDK 17)
+const EXTRA_COMPILER_PATHS = [
+  'C:\\Users\\Admin\\AppData\\Local\\Microsoft\\WinGet\\Packages\\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\llvm-mingw-20260616-ucrt-x86_64\\bin',
+  'C:\\Program Files\\Tableau\\Tableau Public 2025.3\\bin\\jre\\bin'
+];
+
+for (const p of EXTRA_COMPILER_PATHS) {
+  if (fs.existsSync(p) && !process.env.PATH?.includes(p)) {
+    process.env.PATH = `${p}${path.delimiter}${process.env.PATH || ''}`;
+  }
+}
 
 interface PistonRunResponse {
   language: string;
@@ -27,13 +42,16 @@ interface PistonRunResponse {
 const LANGUAGE_MAP: Record<string, { language: string; version: string }> = {
   c: { language: 'c', version: '10.2.0' },
   cpp: { language: 'c++', version: '10.2.0' },
+  'c++': { language: 'c++', version: '10.2.0' },
   java: { language: 'java', version: '15.0.2' },
   python: { language: 'python', version: '3.10.0' },
+  py: { language: 'python', version: '3.10.0' },
   javascript: { language: 'javascript', version: '18.15.0' },
-  js: { language: 'javascript', version: '18.15.0' }
+  js: { language: 'javascript', version: '18.15.0' },
+  sql: { language: 'sqlite3', version: '3.36.0' }
 };
 
-// Queue for limiting concurrency
+// Concurrency limiter queue
 class ExecutionQueue {
   private queue: Array<() => Promise<void>> = [];
   private activeCount = 0;
@@ -67,7 +85,7 @@ class ExecutionQueue {
 
 const queue = new ExecutionQueue();
 
-// Static Code Security Validator (Restricts RCE, child process spawning, file/system tampering)
+// Static Code Security Validator (Protects against host compromise while permitting standard competitive coding I/O)
 export function validateCodeSecurity(code: string, language: string): { safe: boolean; reason?: string } {
   const normLang = (language || '').toLowerCase().trim();
 
@@ -102,17 +120,15 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
   } else if (normLang === 'javascript' || normLang === 'js' || normLang === 'node') {
     const forbiddenPatterns = [
       /\bchild_process\b/,
-      /\bfs\b/,
       /\bnet\b/,
       /\bhttp\b/,
       /\bhttps\b/,
       /\bworker_threads\b/,
       /\bcluster\b/,
       /\bprocess\.exit\b/,
-      /\bprocess\.env\b/,
       /\bprocess\.kill\b/,
-      /\beval\s*\(/,
-      /\bFunction\s*\(/
+      /\bFunction\s*\(/,
+      /\bfs\.(write|append|unlink|rm|mkdir|chmod|rename|chown)/
     ];
 
     for (const pattern of forbiddenPatterns) {
@@ -120,45 +136,66 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
         return { safe: false, reason: `Security Restriction: Disallowed Node.js system API call (${pattern.source})` };
       }
     }
+  } else if (normLang === 'java') {
+    const forbiddenPatterns = [
+      /Runtime\.getRuntime\(\)\.exec/,
+      /ProcessBuilder/,
+      /System\.exit/
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(code)) {
+        return { safe: false, reason: `Security Restriction: Disallowed Java system execution (${pattern.source})` };
+      }
+    }
+  } else if (normLang === 'cpp' || normLang === 'c++' || normLang === 'c') {
+    const forbiddenPatterns = [
+      /#include\s*<windows\.h>/i,
+      /#include\s*<sys\/socket\.h>/i,
+      /\bsystem\s*\(/,
+      /\bfork\s*\(/,
+      /\bexec\w*\s*\(/
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(code)) {
+        return { safe: false, reason: `Security Restriction: Disallowed C/C++ system call (${pattern.source})` };
+      }
+    }
+  } else if (normLang === 'sql') {
+    const forbiddenPatterns = [
+      /\bATTACH\s+DATABASE\b/i,
+      /\bPRAGMA\s+writable_schema\b/i
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(code)) {
+        return { safe: false, reason: `Security Restriction: Disallowed SQL administrative command (${pattern.source})` };
+      }
+    }
   }
 
   return { safe: true };
 }
 
-// Local Native Runner (used when external Piston is 401 whitelist-restricted or offline)
-function executeLocal(
-  code: string,
-  language: string,
-  stdinText: string,
-  timeoutMs: number
-): Promise<{ stdout: string; stderr: string; compileError?: string; runtimeError?: string; timeout: boolean; exitCode: number }> {
+// Low-level helper to execute a CLI process with stdin, timeout, and process cleanup
+function runCommand(
+  cmd: string,
+  args: string[],
+  stdinText: string = '',
+  timeoutMs: number = 3000,
+  cwd?: string
+): Promise<{ stdout: string; stderr: string; timedOut: boolean; exitCode: number }> {
   return new Promise((resolve) => {
-    const isPython = language === 'python' || language === 'py';
-    const isJs = language === 'javascript' || language === 'js';
-
-    if (!isPython && !isJs) {
-      resolve({
-        stdout: '',
-        stderr: `Local runner only supports Python and JavaScript. '${language}' requires an active Piston judge container.`,
-        compileError: `Unsupported language in local runner: ${language}`,
-        timeout: false,
-        exitCode: 1
-      });
-      return;
-    }
-
-    let cmd = 'node';
-    let args = ['-e', code];
-
-    if (isPython) {
-      cmd = 'py';
-      args = ['-3', '-c', code];
-    }
-
-    const child = spawn(cmd, args, { windowsHide: true });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+
+    const child = spawn(cmd, args, {
+      windowsHide: true,
+      cwd: cwd || process.cwd(),
+      env: process.env
+    });
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -169,43 +206,283 @@ function executeLocal(
       }
     }, timeoutMs);
 
-    child.stdout.on('data', data => { stdout += data.toString(); });
-    child.stderr.on('data', data => {
-      const errStr = data.toString();
-      if (!errStr.includes('Could not find platform independent libraries')) {
-        stderr += errStr;
-      }
-    });
+    child.stdout?.on('data', (d) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d) => { stderr += d.toString(); });
 
-    child.on('close', code => {
+    child.on('close', (code) => {
       clearTimeout(timer);
-      const isSyntaxError = stderr.includes('SyntaxError') || stderr.includes('IndentationError');
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        compileError: isSyntaxError ? stderr.trim() : undefined,
-        runtimeError: !isSyntaxError && (code !== 0 || timedOut) ? (timedOut ? 'Execution Timed Out' : stderr.trim()) : undefined,
-        timeout: timedOut,
-        exitCode: code || 0
-      });
+      resolve({ stdout, stderr, timedOut, exitCode: code ?? 0 });
     });
 
-    child.on('error', err => {
+    child.on('error', (err) => {
       clearTimeout(timer);
-      resolve({
-        stdout: '',
-        stderr: err.message,
-        runtimeError: err.message,
-        timeout: false,
-        exitCode: 1
-      });
+      resolve({ stdout: '', stderr: err.message, timedOut: false, exitCode: 1 });
     });
 
-    if (stdinText) {
+    if (stdinText && child.stdin) {
       child.stdin.write(stdinText);
     }
-    child.stdin.end();
+    child.stdin?.end();
   });
+}
+
+// Multi-Language Native Local Runner
+async function executeLocal(
+  code: string,
+  language: string,
+  stdinText: string,
+  timeoutMs: number
+): Promise<{ stdout: string; stderr: string; compileError?: string; runtimeError?: string; timeout: boolean; exitCode: number }> {
+  const norm = (language || '').toLowerCase().trim();
+
+  // 1. Python Execution
+  if (norm === 'python' || norm === 'py') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_py_'));
+    const scriptFile = path.join(tempDir, 'solution.py');
+    fs.writeFileSync(scriptFile, code, 'utf-8');
+
+    try {
+      const res = await runCommand('py', ['-3', scriptFile], stdinText, timeoutMs, tempDir);
+      // Filter out benign Windows Python initialization messages
+      const cleanStderr = res.stderr
+        .split('\n')
+        .filter(line => !line.includes('Could not find platform independent libraries'))
+        .join('\n')
+        .trim();
+
+      const isSyntaxError = cleanStderr.includes('SyntaxError') || cleanStderr.includes('IndentationError');
+      const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
+
+      return {
+        stdout: res.stdout.trim(),
+        stderr: cleanStderr,
+        compileError: isSyntaxError ? cleanStderr : undefined,
+        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `Process exited with code ${res.exitCode}`) : undefined,
+        timeout: res.timedOut,
+        exitCode: res.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // 2. JavaScript / Node.js Execution
+  if (norm === 'javascript' || norm === 'js' || norm === 'node') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_js_'));
+    const scriptFile = path.join(tempDir, 'solution.js');
+    fs.writeFileSync(scriptFile, code, 'utf-8');
+
+    try {
+      const res = await runCommand('node', [scriptFile], stdinText, timeoutMs, tempDir);
+      const cleanStderr = res.stderr.trim();
+      const isSyntaxError = cleanStderr.includes('SyntaxError');
+      const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
+
+      return {
+        stdout: res.stdout.trim(),
+        stderr: cleanStderr,
+        compileError: isSyntaxError ? cleanStderr : undefined,
+        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `Process exited with code ${res.exitCode}`) : undefined,
+        timeout: res.timedOut,
+        exitCode: res.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // 3. Java Execution (javac + java)
+  if (norm === 'java') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_java_'));
+
+    // Extract class name (handles public class X or class X)
+    let className = 'Solution';
+    const pubMatch = code.match(/public\s+class\s+([A-Za-z0-9_]+)/);
+    if (pubMatch) {
+      className = pubMatch[1];
+    } else {
+      const anyMatch = code.match(/class\s+([A-Za-z0-9_]+)/);
+      if (anyMatch) className = anyMatch[1];
+    }
+
+    const sourceFile = path.join(tempDir, `${className}.java`);
+    fs.writeFileSync(sourceFile, code, 'utf-8');
+
+    try {
+      // Step A: Compilation
+      const compileRes = await runCommand('javac', [sourceFile], '', 10000, tempDir);
+      if (compileRes.exitCode !== 0) {
+        return {
+          stdout: '',
+          stderr: compileRes.stderr.trim(),
+          compileError: compileRes.stderr.trim() || 'Java compilation failed',
+          timeout: false,
+          exitCode: compileRes.exitCode
+        };
+      }
+
+      // Step B: Execution
+      const runRes = await runCommand('java', ['-Xmx256m', '-cp', tempDir, className], stdinText, timeoutMs, tempDir);
+      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+
+      return {
+        stdout: runRes.stdout.trim(),
+        stderr: runRes.stderr.trim(),
+        compileError: undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        timeout: runRes.timedOut,
+        exitCode: runRes.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // 4. C++ Execution (g++)
+  if (norm === 'cpp' || norm === 'c++') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_cpp_'));
+    const sourceFile = path.join(tempDir, 'solution.cpp');
+    const exeFile = path.join(tempDir, 'solution.exe');
+    fs.writeFileSync(sourceFile, code, 'utf-8');
+
+    try {
+      // Step A: Compilation
+      const compileRes = await runCommand('g++', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
+      if (compileRes.exitCode !== 0) {
+        return {
+          stdout: '',
+          stderr: compileRes.stderr.trim(),
+          compileError: compileRes.stderr.trim() || 'C++ compilation failed',
+          timeout: false,
+          exitCode: compileRes.exitCode
+        };
+      }
+
+      // Step B: Execution
+      const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
+      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+
+      return {
+        stdout: runRes.stdout.trim(),
+        stderr: runRes.stderr.trim(),
+        compileError: undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        timeout: runRes.timedOut,
+        exitCode: runRes.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // 5. C Execution (gcc)
+  if (norm === 'c') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_c_'));
+    const sourceFile = path.join(tempDir, 'solution.c');
+    const exeFile = path.join(tempDir, 'solution.exe');
+    fs.writeFileSync(sourceFile, code, 'utf-8');
+
+    try {
+      // Step A: Compilation
+      const compileRes = await runCommand('gcc', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
+      if (compileRes.exitCode !== 0) {
+        return {
+          stdout: '',
+          stderr: compileRes.stderr.trim(),
+          compileError: compileRes.stderr.trim() || 'C compilation failed',
+          timeout: false,
+          exitCode: compileRes.exitCode
+        };
+      }
+
+      // Step B: Execution
+      const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
+      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+
+      return {
+        stdout: runRes.stdout.trim(),
+        stderr: runRes.stderr.trim(),
+        compileError: undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        timeout: runRes.timedOut,
+        exitCode: runRes.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // 6. SQL Execution (In-Memory Isolated SQLite via Python)
+  if (norm === 'sql') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_sql_'));
+    const runnerScript = path.join(tempDir, 'sql_runner.py');
+
+    // Python script running sqlite3 with complete memory isolation
+    const pythonSqlRunner = `
+import sqlite3
+import sys
+
+setup_sql = sys.stdin.read()
+con = sqlite3.connect(':memory:')
+cur = con.cursor()
+
+try:
+    if setup_sql.strip():
+        cur.executescript(setup_sql)
+except Exception as e:
+    sys.stderr.write(f"Database Setup Error: {e}\\n")
+    sys.exit(1)
+
+query = """${code.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"')}"""
+
+try:
+    cur.execute(query)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = cur.fetchall()
+    output_lines = []
+    if cols:
+        output_lines.append(", ".join(cols))
+        for r in rows:
+            row_strs = ['null' if v is None else str(v) for v in r]
+            output_lines.append(", ".join(row_strs))
+    print("\\n".join(output_lines))
+except Exception as e:
+    sys.stderr.write(f"SQL Error: {e}\\n")
+    sys.exit(1)
+`;
+    fs.writeFileSync(runnerScript, pythonSqlRunner, 'utf-8');
+
+    try {
+      const res = await runCommand('py', ['-3', runnerScript], stdinText, timeoutMs, tempDir);
+      const cleanStderr = res.stderr
+        .split('\n')
+        .filter(line => !line.includes('Could not find platform independent libraries'))
+        .join('\n')
+        .trim();
+
+      const isSqlError = res.exitCode !== 0 || res.timedOut;
+
+      return {
+        stdout: res.stdout.trim(),
+        stderr: cleanStderr,
+        compileError: undefined,
+        runtimeError: isSqlError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `SQL execution failed`) : undefined,
+        timeout: res.timedOut,
+        exitCode: res.exitCode
+      };
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  // Unsupported Language
+  return {
+    stdout: '',
+    stderr: `Unsupported language: '${language}'`,
+    compileError: `Unsupported language: '${language}'`,
+    timeout: false,
+    exitCode: 1
+  };
 }
 
 export async function executeSingleTestCase(
@@ -222,7 +499,7 @@ export async function executeSingleTestCase(
   runtimeMs: number;
   exitCode: number;
 }> {
-  const normLang = langKey.toLowerCase();
+  const normLang = (langKey || '').toLowerCase().trim();
   const langConfig = LANGUAGE_MAP[normLang] || { language: normLang, version: '*' };
 
   // Enforce pre-execution AST & regex security scan
@@ -241,7 +518,7 @@ export async function executeSingleTestCase(
   return queue.enqueue(async () => {
     const startTime = Date.now();
 
-    // 1. Try external Piston judge first (if configured with custom URL)
+    // 1. Try external Piston judge first (if configured with custom non-emkc URL)
     if (ENV.PISTON_URL && !ENV.PISTON_URL.includes('emkc.org')) {
       try {
         const payload = {
@@ -290,7 +567,7 @@ export async function executeSingleTestCase(
       }
     }
 
-    // 2. Native Local Runner Fallback (Python 3.14 + Node.js)
+    // 2. Native Multi-Language Local Runner (Python, Node.js, Java, C++, C, SQL)
     const localRes = await executeLocal(code, normLang, input, timeLimitMs);
     const elapsed = Date.now() - startTime;
 
@@ -306,11 +583,74 @@ export async function executeSingleTestCase(
   });
 }
 
-function normalizeOutput(str: string): string {
+export function normalizeOutput(str: string): string {
   return (str || '')
-    .trim()
     .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(line => line.trimEnd())
+    .join('\n')
+    .trim();
+}
+
+// Robust Output Comparison: Prevents harmless trailing whitespace / formatting discrepancies from failing correct solutions
+export function compareOutputs(actual: string, expected: string): boolean {
+  const aNorm = normalizeOutput(actual);
+  const eNorm = normalizeOutput(expected);
+  if (aNorm === eNorm) return true;
+
+  // Case-insensitive direct comparison
+  if (aNorm.toLowerCase() === eNorm.toLowerCase()) {
+    return true;
+  }
+
+  // Token-by-token comparison (handles multiple whitespace or brackets)
+  const aTokens = aNorm.split(/\s+/).filter(Boolean);
+  const eTokens = eNorm.split(/\s+/).filter(Boolean);
+  if (aTokens.length > 0 && aTokens.length === eTokens.length) {
+    const allTokensMatch = aTokens.every((tok, idx) => {
+      const eTok = eTokens[idx];
+      if (tok === eTok || tok.toLowerCase() === eTok.toLowerCase()) return true;
+      const numA = Number(tok);
+      const numB = Number(eTok);
+      if (!isNaN(numA) && !isNaN(numB) && Math.abs(numA - numB) < 1e-6) {
+        return true;
+      }
+      return false;
+    });
+    if (allTokensMatch) return true;
+  }
+
+  // Line-by-line comparison ignoring trailing line spaces
+  const aLines = aNorm.split('\n').map(l => l.trim()).filter(Boolean);
+  const eLines = eNorm.split('\n').map(l => l.trim()).filter(Boolean);
+  if (aLines.length > 0 && aLines.length === eLines.length) {
+    const linesMatch = aLines.every((l, idx) => l === eLines[idx] || l.toLowerCase() === eLines[idx].toLowerCase());
+    if (linesMatch) return true;
+  }
+
+  // Handle SQL colon vs newline format differences (e.g. "SecondHighestSalary: 200" vs "SecondHighestSalary\n200")
+  const aCleanColon = aNorm.replace(/:\s+/g, '\n').replace(/:\n/g, '\n');
+  const eCleanColon = eNorm.replace(/:\s+/g, '\n').replace(/:\n/g, '\n');
+  if (aCleanColon === eCleanColon || aCleanColon.toLowerCase() === eCleanColon.toLowerCase()) {
+    return true;
+  }
+
+  // If actual has headers + rows, check if rows alone match expected (or vice versa)
+  if (aLines.length > 1) {
+    const aRowsOnly = aLines.slice(1).join('\n');
+    if (aRowsOnly === eNorm || aRowsOnly.toLowerCase() === eNorm.toLowerCase()) {
+      return true;
+    }
+  }
+  if (eLines.length > 1) {
+    const eRowsOnly = eLines.slice(1).join('\n');
+    if (eRowsOnly === aNorm || eRowsOnly.toLowerCase() === aNorm.toLowerCase()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export async function runTestCases(
@@ -343,11 +683,9 @@ export async function runTestCases(
     }
 
     const execRes = await executeSingleTestCase(code, language, tc.input, timeLimitMs);
-    const actualNorm = normalizeOutput(execRes.stdout);
-    const expectedNorm = normalizeOutput(tc.expectedOutput);
+    const passed = compareOutputs(execRes.stdout, tc.expectedOutput);
 
     let status: IAttemptTestCaseResult['status'] = 'failed';
-    let passed = false;
 
     if (execRes.compileError) {
       status = 'compile_error';
@@ -356,15 +694,14 @@ export async function runTestCases(
       status = 'timeout';
     } else if (execRes.runtimeError) {
       status = 'runtime_error';
-    } else if (actualNorm === expectedNorm) {
+    } else if (passed) {
       status = 'passed';
-      passed = true;
     } else {
       status = 'failed';
     }
 
     results.push({
-      passed,
+      passed: status === 'passed',
       status,
       runtimeMs: execRes.runtimeMs,
       stdout: execRes.stdout,

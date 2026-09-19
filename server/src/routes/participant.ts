@@ -516,7 +516,11 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     }
 
     const competition = await Competition.findOne() || await Competition.create({ status: 'active' });
-    const { roundNumber, progress, activeTieBreak } = await getParticipantAccessibleRound(userId, req.user?.eventId);
+    const computed = await getParticipantAccessibleRound(userId, req.user?.eventId);
+    const requestedRound = req.query.roundNumber ? parseInt(req.query.roundNumber as string, 10) : undefined;
+    const roundNumber = requestedRound || computed.roundNumber;
+    const progress = computed.progress;
+    const activeTieBreak = computed.activeTieBreak;
 
     // If active tie-break exists for user
     if (activeTieBreak) {
@@ -971,8 +975,8 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     }
 
     const question = await Question.findById(questionId);
-    if (!question || question.type !== 'coding') {
-      res.status(404).json({ error: 'Coding question not found' });
+    if (!question || (question.type !== 'coding' && question.type !== 'debugging' && question.type !== 'sql')) {
+      res.status(404).json({ error: 'Question not found or not executable' });
       return;
     }
 
@@ -984,13 +988,16 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     // Validate language against permitted languages for this round
     let allowedLangs = question.allowedLanguages && question.allowedLanguages.length > 0
       ? question.allowedLanguages
-      : ['python', 'cpp', 'java', 'c', 'javascript'];
+      : (question.type === 'sql' ? ['sql'] : ['python', 'cpp', 'java', 'c', 'javascript']);
 
     if (req.user?.eventId) {
       const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: activeRoundNumber });
       if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
         allowedLangs = dynRound.allowedLanguages;
       }
+    }
+    if (question.type === 'sql' && !allowedLangs.includes('sql')) {
+      allowedLangs = [...allowedLangs, 'sql'];
     }
 
     const normalizedLang = (language || '').toLowerCase().trim();
@@ -1132,8 +1139,8 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     }
 
     const question = await Question.findById(questionId);
-    if (!question || question.type !== 'coding') {
-      res.status(404).json({ error: 'Coding question not found' });
+    if (!question || (question.type !== 'coding' && question.type !== 'debugging' && question.type !== 'sql')) {
+      res.status(404).json({ error: 'Question not found or not executable' });
       return;
     }
 
@@ -1145,13 +1152,16 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     // Validate language against permitted languages for this round
     let allowedSubmitLangs = question.allowedLanguages && question.allowedLanguages.length > 0
       ? question.allowedLanguages
-      : ['python', 'cpp', 'java', 'c', 'javascript'];
+      : (question.type === 'sql' ? ['sql'] : ['python', 'cpp', 'java', 'c', 'javascript']);
 
     if (req.user?.eventId && !isTieBreak) {
       const dynRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber });
       if (dynRound && dynRound.allowedLanguages && dynRound.allowedLanguages.length > 0) {
         allowedSubmitLangs = dynRound.allowedLanguages;
       }
+    }
+    if (question.type === 'sql' && !allowedSubmitLangs.includes('sql')) {
+      allowedSubmitLangs = [...allowedSubmitLangs, 'sql'];
     }
 
     const normalizedSubmitLang = (language || '').toLowerCase().trim();
