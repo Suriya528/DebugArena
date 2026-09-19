@@ -78,7 +78,13 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       }
     }
     if (difficulty) filter.difficulty = difficulty;
-    if (type) filter.type = type;
+    if (type) {
+      if (type === 'coding' || type === 'debugging') {
+        filter.type = { $in: ['coding', 'debugging'] };
+      } else {
+        filter.type = type;
+      }
+    }
     if (search) {
       const rawSearch = decodeURIComponent(String(search)).replace(/\+/g, ' ').trim();
       const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

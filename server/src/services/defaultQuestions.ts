@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import { Question, IQuestion } from '../models/Question.js';
 import { QuestionTemplate, IQuestionTemplate } from '../models/QuestionTemplate.js';
+import { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
+
+export { MEDIUM_CODING_DEBUGGING_PROBLEMS } from './mediumCodingDebuggingQuestions.js';
 
 /**
  * Standard Curated Library of Code Debugging MCQs (Round 1)
@@ -2398,7 +2401,7 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
 export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false): Promise<number> {
   const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
   const totalCount = await QuestionTemplate.countDocuments();
-  if (mcqCount >= 40 && totalCount >= 58 && !forceRefresh) {
+  if (mcqCount >= 40 && totalCount >= 68 && !forceRefresh) {
     return totalCount;
   }
 
@@ -2530,9 +2533,35 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
     isDefault: true
   };
 
+  // Convert 10 Medium Coding / Debugging Problems to Question Bank Templates
+  const mediumCodingDebuggingTemplates = MEDIUM_CODING_DEBUGGING_PROBLEMS.map(p => ({
+    title: p.title,
+    topic: p.topic,
+    language: 'java',
+    type: 'debugging' as const,
+    difficulty: p.difficulty,
+    expectedSolveTimeMinutes: p.expectedSolveTimeMinutes,
+    marks: p.marks,
+    skillTags: [p.topic, p.subtopic, 'Logic Errors', 'Bug Fixing'],
+    prompt: p.prompt,
+    explanation: 'Identify and fix logic errors in the starter code to satisfy all test cases across C, C++, Python, Java, and JavaScript.',
+    options: [],
+    allowedLanguages: p.allowedLanguages,
+    starterCode: p.starterCode,
+    testCases: p.testCases.map(tc => ({
+      input: tc.input,
+      output: tc.expectedOutput,
+      isHidden: tc.isHidden,
+      weight: tc.weight
+    })),
+    hasDnaMutation: false,
+    isDefault: true
+  }));
+
   const allTemplates = [
     ...DEFAULT_GENERAL_QUESTION_TEMPLATES,
     ...mcqTemplates,
+    ...mediumCodingDebuggingTemplates,
     ...r2Templates,
     ...r3Templates,
     tbTemplate
