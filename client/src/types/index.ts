@@ -173,6 +173,11 @@ export interface QuestionTemplate {
   skillTags?: string[];
   prompt: string;
   explanation?: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  constraints?: string;
+  timeLimitMs?: number;
+  memoryLimitMb?: number;
   options?: { text: string; isCorrect: boolean }[];
   allowedLanguages?: string[];
   starterCode?: Record<string, string>;

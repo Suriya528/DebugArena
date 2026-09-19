@@ -35,6 +35,11 @@ export interface IQuestionTemplate extends Document {
   skillTags: string[];
   prompt: string;
   explanation?: string;
+  inputFormat?: string;
+  outputFormat?: string;
+  constraints?: string;
+  timeLimitMs?: number;
+  memoryLimitMb?: number;
 
   // MCQ
   options?: { text: string; isCorrect: boolean }[];
@@ -98,6 +103,11 @@ const QuestionTemplateSchema = new Schema<IQuestionTemplate>(
     skillTags: { type: [String], default: [] },
     prompt: { type: String, required: true },
     explanation: { type: String, default: '' },
+    inputFormat: { type: String, default: '' },
+    outputFormat: { type: String, default: '' },
+    constraints: { type: String, default: '' },
+    timeLimitMs: { type: Number, default: 2000 },
+    memoryLimitMb: { type: Number, default: 256 },
 
     // MCQ
     options: [

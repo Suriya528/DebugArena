@@ -40,6 +40,8 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       language,
       difficulty,
       type,
+      exactType,
+      usage,
       search,
       eventId,
       stageNumber,
@@ -52,7 +54,54 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       currentRoundNumber
     } = req.query;
 
+    // Global Event Usage Aggregation (from DynamicRound.selectedQuestionIds as Single Source of Truth)
+    const allRoundsWithSelections = await DynamicRound.find({
+      'selectedQuestionIds.0': { $exists: true }
+    }).populate('eventId', 'name code');
+
+    const globalUsageMap = new Map<string, Array<{ eventId: string; eventName: string; eventCode: string; roundNumber: number; roundTitle: string }>>();
+    const usedIds: mongoose.Types.ObjectId[] = [];
+    for (const dr of allRoundsWithSelections) {
+      const ev = dr.eventId as any;
+      if (!ev) continue;
+      for (const qid of dr.selectedQuestionIds || []) {
+        const key = qid.toString();
+        if (!globalUsageMap.has(key)) {
+          globalUsageMap.set(key, []);
+          if (mongoose.Types.ObjectId.isValid(key)) {
+            usedIds.push(new mongoose.Types.ObjectId(key));
+          }
+        }
+        globalUsageMap.get(key)!.push({
+          eventId: ev._id.toString(),
+          eventName: ev.name,
+          eventCode: ev.code,
+          roundNumber: dr.roundNumber,
+          roundTitle: dr.title
+        });
+      }
+    }
+
     const filter: Record<string, any> = {};
+
+    if (usage === 'used') {
+      filter._id = { $in: usedIds };
+    } else if (usage === 'unused') {
+      filter._id = { $nin: usedIds };
+    }
+
+    if (topic) filter.topic = topic;
+    if (difficulty) filter.difficulty = difficulty;
+
+    if (type && type !== 'all') {
+      if (exactType === 'true' || String(exactType) === 'true') {
+        filter.type = type;
+      } else if (type === 'coding' || type === 'debugging') {
+        filter.type = { $in: ['coding', 'debugging'] };
+      } else {
+        filter.type = type;
+      }
+    }
 
     if (language) {
       const cleanLang = (language as string).toLowerCase().trim();
@@ -77,14 +126,7 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
         });
       }
     }
-    if (difficulty) filter.difficulty = difficulty;
-    if (type) {
-      if (type === 'coding' || type === 'debugging') {
-        filter.type = { $in: ['coding', 'debugging'] };
-      } else {
-        filter.type = type;
-      }
-    }
+
     if (search) {
       const rawSearch = decodeURIComponent(String(search)).replace(/\+/g, ' ').trim();
       const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -100,8 +142,8 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     const limit = Math.min(100, Math.max(1, parseInt(queryLimit as string, 10) || 25));
     const skip = (page - 1) * limit;
 
-    const sortOrderNum = (sortOrder as string)?.toLowerCase() === 'desc' ? -1 : 1;
-    let sortObj: Record<string, any> = { topic: 1, difficulty: 1, title: 1 };
+    const sortOrderNum = (sortOrder as string)?.toLowerCase() === 'asc' ? 1 : -1;
+    let sortObj: Record<string, any> = { createdAt: -1 };
     if (sortBy === 'title') {
       sortObj = { title: sortOrderNum };
     } else if (sortBy === 'difficulty') {
@@ -110,6 +152,8 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       sortObj = { topic: sortOrderNum };
     } else if (sortBy === 'createdAt') {
       sortObj = { createdAt: sortOrderNum };
+    } else if (sortBy === 'updatedAt') {
+      sortObj = { updatedAt: sortOrderNum };
     }
 
     const totalMatching = await QuestionTemplate.countDocuments(filter);
@@ -128,36 +172,18 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     const typeAgg = await QuestionTemplate.aggregate([
       { $group: { _id: '$type', count: { $sum: 1 } } }
     ]);
-    const countsByType: Record<string, number> = {};
+    const countsByType: Record<string, number> = {
+      mcq: 0,
+      coding: 0,
+      sql: 0,
+      debugging: 0,
+      aptitude: 0
+    };
     for (const item of typeAgg) {
       if (item._id) countsByType[item._id] = item.count;
     }
 
     const grandTotal = await QuestionTemplate.countDocuments();
-
-    // Global Event Usage Aggregation (from DynamicRound.selectedQuestionIds as Single Source of Truth)
-    const allRoundsWithSelections = await DynamicRound.find({
-      'selectedQuestionIds.0': { $exists: true }
-    }).populate('eventId', 'name code');
-
-    const globalUsageMap = new Map<string, Array<{ eventId: string; eventName: string; eventCode: string; roundNumber: number; roundTitle: string }>>();
-    for (const dr of allRoundsWithSelections) {
-      const ev = dr.eventId as any;
-      if (!ev) continue;
-      for (const qid of dr.selectedQuestionIds || []) {
-        const key = qid.toString();
-        if (!globalUsageMap.has(key)) {
-          globalUsageMap.set(key, []);
-        }
-        globalUsageMap.get(key)!.push({
-          eventId: ev._id.toString(),
-          eventName: ev.name,
-          eventCode: ev.code,
-          roundNumber: dr.roundNumber,
-          roundTitle: dr.title
-        });
-      }
-    }
 
     // Cross-round duplication detection for a specific target event
     const effectiveEventId = targetEventId || eventId;
@@ -246,6 +272,11 @@ adminQuestionBankRouter.post('/', async (req: AuthenticatedRequest, res: Respons
       skillTags,
       prompt,
       explanation,
+      inputFormat,
+      outputFormat,
+      constraints,
+      timeLimitMs,
+      memoryLimitMb,
       options,
       allowedLanguages,
       starterCode,
@@ -273,8 +304,13 @@ adminQuestionBankRouter.post('/', async (req: AuthenticatedRequest, res: Respons
       skillTags: skillTags || [],
       prompt: prompt.trim(),
       explanation: explanation || '',
+      inputFormat: inputFormat || '',
+      outputFormat: outputFormat || '',
+      constraints: constraints || '',
+      timeLimitMs: timeLimitMs || 2000,
+      memoryLimitMb: memoryLimitMb || 256,
       options: options || [],
-      allowedLanguages: allowedLanguages || ['java', 'python', 'cpp', 'javascript'],
+      allowedLanguages: allowedLanguages || ['java', 'python', 'cpp', 'javascript', 'c'],
       starterCode: starterCode || {},
       testCases: testCases || [],
       hasDnaMutation: Boolean(hasDnaMutation),
@@ -290,7 +326,7 @@ adminQuestionBankRouter.post('/', async (req: AuthenticatedRequest, res: Respons
       details: { title, topic, type, hasDnaMutation }
     });
 
-    res.status(201).json({ template });
+    res.status(201).json({ success: true, template });
   } catch (err: any) {
     console.error('Failed to create question template:', err);
     res.status(500).json({ error: 'Failed to create question template' });
@@ -534,6 +570,11 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
       skillTags,
       prompt,
       explanation,
+      inputFormat,
+      outputFormat,
+      constraints,
+      timeLimitMs,
+      memoryLimitMb,
       options,
       allowedLanguages,
       starterCode,
@@ -557,6 +598,11 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
     if (skillTags) template.skillTags = skillTags;
     template.prompt = prompt.trim();
     if (explanation !== undefined) template.explanation = explanation;
+    if (inputFormat !== undefined) template.inputFormat = inputFormat;
+    if (outputFormat !== undefined) template.outputFormat = outputFormat;
+    if (constraints !== undefined) template.constraints = constraints;
+    if (timeLimitMs !== undefined) template.timeLimitMs = Number(timeLimitMs);
+    if (memoryLimitMb !== undefined) template.memoryLimitMb = Number(memoryLimitMb);
     if (options) template.options = options;
     if (allowedLanguages) template.allowedLanguages = allowedLanguages;
     if (starterCode) template.starterCode = starterCode;

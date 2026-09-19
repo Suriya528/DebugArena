@@ -333,7 +333,9 @@ export async function getQuestionBank(params?: {
   page?: number;
   limit?: number;
   type?: string;
+  exactType?: boolean | string;
   difficulty?: string;
+  usage?: string;
   topic?: string;
   language?: string;
   search?: string;

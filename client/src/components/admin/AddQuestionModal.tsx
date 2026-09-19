@@ -1,36 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
-  BookOpen,
   Plus,
   Trash2,
   CheckCircle2,
-  Code2,
-  AlertOctagon,
-  Dna,
-  Clock,
-  Award,
-  Sparkles,
-  Layers,
-  HelpCircle,
   AlertCircle,
-  Pencil
+  HelpCircle,
+  Code2,
+  Database,
+  Bug
 } from 'lucide-react';
 import { api, updateQuestionTemplate, createQuestionDirect } from '../../services/api.js';
 
-interface AddQuestionModalProps {
+export interface AddQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onQuestionAdded: () => void;
+  onQuestionAdded: (template?: any) => void;
   editingTemplate?: any | null;
   targetRoundNumber?: number;
   targetEventId?: string;
+  initialType?: 'mcq' | 'coding' | 'sql' | 'debugging';
 }
 
 const TOPIC_PRESETS = [
   'Algorithms',
   'Arrays',
   'Strings',
+  'Sliding Window',
+  'Two Pointers',
   'Binary Search',
   'Linked Lists',
   'Dynamic Programming',
@@ -38,21 +35,52 @@ const TOPIC_PRESETS = [
   'Pointers & Memory',
   'Concurrency',
   'SQL',
-  'Aptitude & Logic'
+  'Debugging & Logic'
 ];
 
-const BUG_CATEGORIES = [
-  { id: 'off_by_one', label: 'Off-By-One Boundary Error' },
-  { id: 'null_pointer', label: 'Null Pointer Dereference' },
-  { id: 'wrong_condition', label: 'Wrong Logical Condition' },
-  { id: 'incorrect_loop', label: 'Incorrect Loop Termination' },
-  { id: 'wrong_operator', label: 'Wrong Operator Precedence' },
-  { id: 'type_conversion', label: 'Type Conversion / Coercion' },
-  { id: 'recursion', label: 'Missing Base Case / Recursion Depth' },
-  { id: 'memory_issue', label: 'Memory Leak / Dangling Pointer' },
-  { id: 'concurrency', label: 'Race Condition / Thread Safety' },
-  { id: 'exception_handling', label: 'Unhandled Exception / Stack Underflow' }
-];
+const DEFAULT_STARTER_CODES: Record<string, string> = {
+  java: `import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        // Solution implementation
+    }
+}`,
+  python: `import sys
+
+def main():
+    input_data = sys.stdin.read().split()
+    # Solution implementation
+
+if __name__ == '__main__':
+    main()`,
+  cpp: `#include <iostream>
+#include <vector>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    // Solution implementation
+    return 0;
+}`,
+  c: `#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    // Solution implementation
+    return 0;
+}`,
+  javascript: `const fs = require('fs');
+
+function main() {
+    const input = fs.readFileSync(0, 'utf-8').trim().split(/\\s+/);
+    // Solution implementation
+}
+
+main();`
+};
 
 export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
   isOpen,
@@ -60,21 +88,28 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
   onQuestionAdded,
   editingTemplate = null,
   targetRoundNumber,
-  targetEventId
+  targetEventId,
+  initialType = 'coding'
 }) => {
+  const [type, setType] = useState<'mcq' | 'coding' | 'sql' | 'debugging'>('coding');
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('Algorithms');
   const [customTopic, setCustomTopic] = useState('');
-  const [language, setLanguage] = useState('python');
-  const [type, setType] = useState<'debugging' | 'coding' | 'mcq' | 'sql' | 'aptitude'>('debugging');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [marks, setMarks] = useState(20);
   const [expectedSolveTimeMinutes, setExpectedSolveTimeMinutes] = useState(15);
-  const [skillTagsInput, setSkillTagsInput] = useState('Debugging, Logic');
+  const [skillTagsInput, setSkillTagsInput] = useState('Algorithms, Logic');
+
+  // Problem statement & format fields
   const [prompt, setPrompt] = useState('');
+  const [inputFormat, setInputFormat] = useState('');
+  const [outputFormat, setOutputFormat] = useState('');
+  const [constraints, setConstraints] = useState('');
+  const [timeLimitMs, setTimeLimitMs] = useState(2000);
+  const [memoryLimitMb, setMemoryLimitMb] = useState(256);
   const [explanation, setExplanation] = useState('');
 
-  // MCQ State
+  // MCQ state
   const [options, setOptions] = useState([
     { text: '', isCorrect: true },
     { text: '', isCorrect: false },
@@ -82,21 +117,28 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
     { text: '', isCorrect: false }
   ]);
 
-  // Coding / Debugging State
-  const [starterCode, setStarterCode] = useState('');
-  const [testCases, setTestCases] = useState([
+  // Multi-language coding/debugging state
+  const [allowedLanguages, setAllowedLanguages] = useState<string[]>(['java', 'python', 'cpp', 'c', 'javascript']);
+  const [activeCodeTab, setActiveCodeTab] = useState<string>('java');
+  const [starterCodes, setStarterCodes] = useState<Record<string, string>>({ ...DEFAULT_STARTER_CODES });
+
+  // Test cases
+  const [testCases, setTestCases] = useState<Array<{ input: string; output: string; isHidden: boolean; weight: number }>>([
     { input: '', output: '', isHidden: false, weight: 10 },
     { input: '', output: '', isHidden: true, weight: 10 }
   ]);
 
-  // Question DNA State
-  const [hasDnaMutation, setHasDnaMutation] = useState(false);
-  const [bugCategory, setBugCategory] = useState('off_by_one');
+  // SQL specific state
+  const [schemaDdl, setSchemaDdl] = useState('');
+  const [sampleData, setSampleData] = useState('');
+  const [expectedQuery, setExpectedQuery] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    if (!isOpen) return;
+
     if (editingTemplate) {
       setTitle(editingTemplate.title || '');
       const t = editingTemplate.topic || 'Algorithms';
@@ -107,13 +149,17 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         setTopic('__custom__');
         setCustomTopic(t);
       }
-      setLanguage(editingTemplate.language || 'python');
-      setType(editingTemplate.type || 'debugging');
+      setType(editingTemplate.type || 'coding');
       setDifficulty(editingTemplate.difficulty || 'medium');
       setMarks(editingTemplate.marks ?? 20);
       setExpectedSolveTimeMinutes(editingTemplate.expectedSolveTimeMinutes ?? 15);
       setSkillTagsInput(Array.isArray(editingTemplate.skillTags) ? editingTemplate.skillTags.join(', ') : (editingTemplate.skillTags || ''));
       setPrompt(editingTemplate.prompt || '');
+      setInputFormat(editingTemplate.inputFormat || '');
+      setOutputFormat(editingTemplate.outputFormat || '');
+      setConstraints(editingTemplate.constraints || '');
+      setTimeLimitMs(editingTemplate.timeLimitMs ?? 2000);
+      setMemoryLimitMb(editingTemplate.memoryLimitMb ?? 256);
       setExplanation(editingTemplate.explanation || '');
 
       if (editingTemplate.options && editingTemplate.options.length > 0) {
@@ -130,17 +176,28 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         ]);
       }
 
-      if (editingTemplate.starterCode) {
-        if (typeof editingTemplate.starterCode === 'object') {
-          const codeVal = editingTemplate.starterCode[editingTemplate.language || 'python'] || Object.values(editingTemplate.starterCode)[0] || '';
-          setStarterCode(typeof codeVal === 'string' ? codeVal : JSON.stringify(codeVal, null, 2));
-        } else {
-          setStarterCode(String(editingTemplate.starterCode));
-        }
-      } else {
-        setStarterCode('');
-      }
+      // Languages & Starter Codes
+      const langs = Array.isArray(editingTemplate.allowedLanguages) && editingTemplate.allowedLanguages.length > 0
+        ? editingTemplate.allowedLanguages
+        : ['java', 'python', 'cpp', 'c', 'javascript'];
+      setAllowedLanguages(langs);
+      setActiveCodeTab(langs[0] || 'java');
 
+      const loadedCodes: Record<string, string> = { ...DEFAULT_STARTER_CODES };
+      if (editingTemplate.starterCode) {
+        if (editingTemplate.starterCode instanceof Map) {
+          editingTemplate.starterCode.forEach((v: string, k: string) => {
+            loadedCodes[k] = v;
+          });
+        } else if (typeof editingTemplate.starterCode === 'object') {
+          Object.entries(editingTemplate.starterCode).forEach(([k, v]) => {
+            loadedCodes[k] = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+          });
+        }
+      }
+      setStarterCodes(loadedCodes);
+
+      // Test cases
       if (editingTemplate.testCases && editingTemplate.testCases.length > 0) {
         setTestCases(editingTemplate.testCases.map((tc: any) => ({
           input: tc.input || '',
@@ -155,20 +212,24 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         ]);
       }
 
-      setHasDnaMutation(Boolean(editingTemplate.hasDnaMutation));
-      setBugCategory(editingTemplate.dnaConfig?.bugCategory || 'off_by_one');
       setError(null);
-    } else if (isOpen) {
+    } else {
+      // Create new
+      const resolvedInitialType = targetRoundNumber === 1 ? 'mcq' : initialType;
+      setType(resolvedInitialType);
       setTitle('');
       setTopic('Algorithms');
       setCustomTopic('');
-      setLanguage('python');
-      setType(targetRoundNumber === 1 ? 'mcq' : 'debugging');
       setDifficulty('medium');
       setMarks(20);
       setExpectedSolveTimeMinutes(15);
-      setSkillTagsInput('Debugging, Logic');
+      setSkillTagsInput('Algorithms, Logic');
       setPrompt('');
+      setInputFormat('');
+      setOutputFormat('');
+      setConstraints('');
+      setTimeLimitMs(2000);
+      setMemoryLimitMb(256);
       setExplanation('');
       setOptions([
         { text: '', isCorrect: true },
@@ -176,49 +237,56 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         { text: '', isCorrect: false },
         { text: '', isCorrect: false }
       ]);
-      setStarterCode('');
+      setAllowedLanguages(['java', 'python', 'cpp', 'c', 'javascript']);
+      setActiveCodeTab('java');
+      setStarterCodes({ ...DEFAULT_STARTER_CODES });
       setTestCases([
         { input: '', output: '', isHidden: false, weight: 10 },
         { input: '', output: '', isHidden: true, weight: 10 }
       ]);
-      setHasDnaMutation(false);
-      setBugCategory('off_by_one');
+      setSchemaDdl('');
+      setSampleData('');
+      setExpectedQuery('');
       setError(null);
     }
-  }, [editingTemplate, isOpen, targetRoundNumber]);
+  }, [editingTemplate, isOpen, targetRoundNumber, initialType]);
 
   if (!isOpen) return null;
 
-  const handleAddOption = () => {
-    setOptions([...options, { text: '', isCorrect: false }]);
+  const handleToggleLanguage = (lang: string) => {
+    if (allowedLanguages.includes(lang)) {
+      if (allowedLanguages.length === 1) {
+        setError('At least one programming language must be supported.');
+        return;
+      }
+      const next = allowedLanguages.filter(l => l !== lang);
+      setAllowedLanguages(next);
+      if (activeCodeTab === lang) {
+        setActiveCodeTab(next[0] || 'java');
+      }
+    } else {
+      const next = [...allowedLanguages, lang];
+      setAllowedLanguages(next);
+    }
   };
 
-  const handleRemoveOption = (index: number) => {
-    if (options.length <= 2) {
-      alert('An MCQ question requires at least 2 options.');
-      return;
-    }
-    const filtered = options.filter((_, i) => i !== index);
-    if (!filtered.some(o => o.isCorrect)) {
-      filtered[0].isCorrect = true;
-    }
-    setOptions(filtered);
-  };
-
-  const handleSetCorrectOption = (index: number) => {
-    setOptions(options.map((opt, i) => ({ ...opt, isCorrect: i === index })));
+  const handleUpdateStarterCode = (lang: string, code: string) => {
+    setStarterCodes(prev => ({
+      ...prev,
+      [lang]: code
+    }));
   };
 
   const handleAddTestCase = () => {
-    setTestCases([...testCases, { input: '', output: '', isHidden: false, weight: 10 }]);
+    setTestCases(prev => [...prev, { input: '', output: '', isHidden: false, weight: 10 }]);
   };
 
   const handleRemoveTestCase = (index: number) => {
     if (testCases.length <= 1) {
-      alert('A coding/debugging challenge must have at least 1 test case.');
+      setError('A coding or debugging challenge must have at least 1 test case.');
       return;
     }
-    setTestCases(testCases.filter((_, i) => i !== index));
+    setTestCases(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -227,11 +295,11 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
     const resolvedTopic = topic === '__custom__' ? customTopic.trim() : topic;
     if (!title.trim()) {
-      setError('Please provide a challenge title.');
+      setError('Please provide a question title.');
       return;
     }
     if (!resolvedTopic) {
-      setError('Please provide or select a topic.');
+      setError('Please select or specify a topic.');
       return;
     }
     if (!prompt.trim()) {
@@ -242,16 +310,20 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
     if (type === 'mcq') {
       const emptyOptions = options.some(o => !o.text.trim());
       if (emptyOptions) {
-        setError('Please fill in text for all MCQ options.');
+        setError('Please fill in text for all options.');
         return;
       }
       if (!options.some(o => o.isCorrect)) {
-        setError('Please select one correct answer option.');
+        setError('Please mark the correct answer option.');
         return;
       }
     }
 
     if (type === 'coding' || type === 'debugging') {
+      if (allowedLanguages.length === 0) {
+        setError('Please select at least one supported language.');
+        return;
+      }
       const emptyOutputs = testCases.some(tc => !tc.output.trim());
       if (emptyOutputs) {
         setError('Please provide expected outputs for all test cases.');
@@ -269,7 +341,6 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
       const payload: any = {
         title: title.trim(),
         topic: resolvedTopic,
-        language,
         type,
         difficulty,
         marks: Math.max(1, Number(marks) || 20),
@@ -277,16 +348,38 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         skillTags: tags,
         prompt: prompt.trim(),
         explanation: explanation.trim(),
-        hasDnaMutation
+        inputFormat: inputFormat.trim(),
+        outputFormat: outputFormat.trim(),
+        constraints: constraints.trim(),
+        timeLimitMs: Number(timeLimitMs) || 2000,
+        memoryLimitMb: Number(memoryLimitMb) || 256
       };
 
       if (type === 'mcq') {
         payload.options = options.map(o => ({ text: o.text.trim(), isCorrect: o.isCorrect }));
-      } else {
-        payload.allowedLanguages = [language, 'python', 'cpp', 'java', 'javascript', 'c'].filter((v, i, a) => a.indexOf(v) === i);
-        payload.starterCode = {
-          [language]: starterCode.trim()
+        payload.language = 'general';
+        payload.allowedLanguages = ['general'];
+      } else if (type === 'sql') {
+        payload.language = 'sql';
+        payload.allowedLanguages = ['sql'];
+        const filteredCodes: Record<string, string> = {
+          sql: expectedQuery.trim() || schemaDdl.trim()
         };
+        payload.starterCode = filteredCodes;
+        payload.testCases = testCases.map(tc => ({
+          input: tc.input || schemaDdl,
+          output: tc.output.trim(),
+          isHidden: Boolean(tc.isHidden),
+          weight: Math.max(1, Number(tc.weight) || 10)
+        }));
+      } else {
+        payload.language = allowedLanguages[0] || 'java';
+        payload.allowedLanguages = allowedLanguages;
+        const filteredCodes: Record<string, string> = {};
+        for (const lang of allowedLanguages) {
+          filteredCodes[lang] = (starterCodes[lang] || DEFAULT_STARTER_CODES[lang] || '').trim();
+        }
+        payload.starterCode = filteredCodes;
         payload.testCases = testCases.map(tc => ({
           input: tc.input,
           output: tc.output.trim(),
@@ -295,344 +388,437 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
         }));
       }
 
-      if (hasDnaMutation) {
-        payload.dnaConfig = {
-          bugCategory,
-          codeTemplate: starterCode.trim() || `// Template for ${title}\n`
-        };
-      }
+      let savedTemplate: any = null;
 
       if (editingTemplate) {
-        await updateQuestionTemplate(editingTemplate._id, payload);
+        const res = await updateQuestionTemplate(editingTemplate._id, payload);
+        savedTemplate = res.template || { ...editingTemplate, ...payload };
       } else if (targetRoundNumber) {
-        await createQuestionDirect({
+        const res = await createQuestionDirect({
           ...payload,
           roundNumber: targetRoundNumber,
           eventId: targetEventId,
           type: type === 'mcq' ? 'mcq' : 'coding',
           options: type === 'mcq' && payload.options ? payload.options.map((o: any) => o.text) : [],
           correctOptionIndex: type === 'mcq' && payload.options ? Math.max(0, payload.options.findIndex((o: any) => o.isCorrect)) : 0,
-          testCases: (type === 'coding' || type === 'debugging') && payload.testCases ? payload.testCases.map((tc: any) => ({
+          testCases: payload.testCases ? payload.testCases.map((tc: any) => ({
             input: tc.input,
             expectedOutput: tc.output,
             isHidden: tc.isHidden,
             weight: tc.weight
           })) : []
         });
+        savedTemplate = res.question || res.template;
       } else {
-        await api.post('/admin/questions/bank', payload);
+        const res = await api.post('/admin/questions/bank', payload);
+        savedTemplate = res.data?.template || res.data;
       }
 
-      onQuestionAdded();
+      onQuestionAdded(savedTemplate);
       onClose();
     } catch (err: any) {
+      console.error('Failed to save question template:', err);
       setError(err.response?.data?.error || 'Failed to save question.');
     } finally {
       setLoading(false);
     }
   };
 
+  const TYPE_TABS = [
+    { id: 'mcq' as const, label: 'Multiple Choice', icon: HelpCircle },
+    { id: 'coding' as const, label: 'Coding Challenge', icon: Code2 },
+    { id: 'debugging' as const, label: 'Buggy Debugging', icon: Bug },
+    { id: 'sql' as const, label: 'SQL Query', icon: Database }
+  ];
+
+  const ALL_LANGUAGES = [
+    { id: 'java', label: 'Java' },
+    { id: 'python', label: 'Python' },
+    { id: 'cpp', label: 'C++' },
+    { id: 'c', label: 'C' },
+    { id: 'javascript', label: 'JavaScript' }
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-[#0c1220] border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl my-8 max-h-[92vh] overflow-y-auto text-left">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-3xl bg-[#111418] border border-[#252A31] rounded-2xl shadow-2xl my-8 max-h-[90vh] flex flex-col text-left overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center ${
-              editingTemplate
-                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                : targetRoundNumber
-                ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400'
-                : 'bg-purple-500/15 border-purple-500/30 text-purple-400'
-            }`}>
-              {editingTemplate ? <Pencil className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                {editingTemplate
-                  ? `Edit: ${editingTemplate.title}`
-                  : targetRoundNumber
-                  ? `Add Question to Round ${targetRoundNumber}`
-                  : 'Add Question to Bank'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {editingTemplate
-                  ? 'Update question specifications, test cases, and scoring rules'
-                  : targetRoundNumber
-                  ? 'Deploy challenge directly to this active event round'
-                  : 'Create reusable challenge templates for tournament rounds'}
-              </p>
-            </div>
+        <div className="px-6 py-4 bg-[#171B21] border-b border-[#252A31] flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-[#F3F4F6]">
+              {editingTemplate ? 'Edit Question' : 'Add Question'}
+            </h2>
+            <p className="text-xs text-[#9CA3AF] mt-0.5">
+              {editingTemplate
+                ? 'Update master question parameters and test cases'
+                : 'Create a reusable assessment problem for tournament rounds'}
+            </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#252A31] transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {error && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Title & Topic */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1.5">Challenge Title</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Fix Subarray Reversal Off-by-One"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs text-[#F3F4F6]">
+          {error && (
+            <div className="p-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
             </div>
+          )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1.5">Topic / Category</label>
+          {/* Type Selector (Segmented buttons) */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-medium text-[#9CA3AF]">Question Type</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {TYPE_TABS.map(tab => {
+                const Icon = tab.icon;
+                const isSelected = type === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    disabled={Boolean(editingTemplate)}
+                    onClick={() => setType(tab.id)}
+                    className={`px-3 py-2 rounded-lg border text-left flex items-center gap-2 transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#171B21] border-[#F3F4F6] text-[#F3F4F6] font-medium'
+                        : 'bg-[#111418] border-[#252A31] text-[#9CA3AF] hover:text-[#F3F4F6] hover:border-[#374151]'
+                    } ${editingTemplate ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Title Input */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-medium text-[#9CA3AF]">
+              Title <span className="text-[#EF4444]">*</span>
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Maximum Sales in K Consecutive Days"
+              className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] placeholder-[#6B7280] focus:outline-none focus:border-[#4B5563]"
+              required
+            />
+          </div>
+
+          {/* Topic & Difficulty Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-[#9CA3AF]">Topic</label>
               <select
                 value={topic}
                 onChange={e => setTopic(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] focus:outline-none focus:border-[#4B5563]"
               >
                 {TOPIC_PRESETS.map(t => (
                   <option key={t} value={t}>{t}</option>
                 ))}
                 <option value="__custom__">+ Custom Topic...</option>
               </select>
-              {topic === '__custom__' && (
+            </div>
+
+            {topic === '__custom__' && (
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-medium text-[#9CA3AF]">Custom Topic Name</label>
                 <input
                   type="text"
-                  placeholder="Enter custom topic name..."
                   value={customTopic}
                   onChange={e => setCustomTopic(e.target.value)}
-                  className="mt-2 w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                  required
+                  placeholder="Enter topic..."
+                  className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] focus:outline-none focus:border-[#4B5563]"
                 />
-              )}
-            </div>
-          </div>
+              </div>
+            )}
 
-          {/* Type, Language, Difficulty */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Challenge Type</label>
-              <select
-                value={type}
-                onChange={e => setType(e.target.value as any)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-              >
-                <option value="debugging">Code Debugging</option>
-                <option value="coding">Full Coding</option>
-                <option value="mcq">MCQ Question</option>
-                <option value="sql">SQL Query</option>
-                <option value="aptitude">Aptitude & Logic</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Language</label>
-              <select
-                value={language}
-                onChange={e => setLanguage(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-              >
-                <option value="python">Python 3</option>
-                <option value="cpp">C++ (GCC)</option>
-                <option value="java">Java 17</option>
-                <option value="javascript">JavaScript</option>
-                <option value="c">C (GCC)</option>
-                <option value="sql">SQL</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Difficulty</label>
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-[#9CA3AF]">Difficulty</label>
               <select
                 value={difficulty}
                 onChange={e => setDifficulty(e.target.value as any)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] focus:outline-none focus:border-[#4B5563]"
               >
                 <option value="easy">Easy</option>
                 <option value="medium">Medium</option>
                 <option value="hard">Hard</option>
               </select>
             </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-[#9CA3AF]">Marks</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={marks}
+                onChange={e => setMarks(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] focus:outline-none focus:border-[#4B5563]"
+              />
+            </div>
           </div>
 
-          {/* Marks, Solve Time, Skill Tags */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Marks / Points</label>
-              <input
-                type="number"
-                min={5}
-                max={500}
-                value={marks}
-                onChange={e => setMarks(parseInt(e.target.value, 10) || 20)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Expected Time (mins)</label>
-              <input
-                type="number"
-                min={2}
-                max={180}
-                value={expectedSolveTimeMinutes}
-                onChange={e => setExpectedSolveTimeMinutes(parseInt(e.target.value, 10) || 15)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-300 block mb-1">Skill Tags (comma-sep)</label>
+          {/* Tags & Solve Time */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-[#9CA3AF]">Tags (comma-separated)</label>
               <input
                 type="text"
-                placeholder="Arrays, Pointers, Off-by-One"
                 value={skillTagsInput}
                 onChange={e => setSkillTagsInput(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                placeholder="e.g. Arrays, Sliding Window, Pointers"
+                className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] placeholder-[#6B7280] focus:outline-none focus:border-[#4B5563]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-[#9CA3AF]">Target Solve Time (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={expectedSolveTimeMinutes}
+                onChange={e => setExpectedSolveTimeMinutes(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] focus:outline-none focus:border-[#4B5563]"
               />
             </div>
           </div>
 
           {/* Problem Statement Prompt */}
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
-              <span>Problem Statement / Prompt</span>
-              <span className="text-[10px] text-slate-400 font-normal">Supports ### Scenario, ### Input Format, ### Output Format, ### Error Code</span>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-medium text-[#9CA3AF]">
+              Problem Statement / Prompt <span className="text-[#EF4444]">*</span>
             </label>
             <textarea
-              rows={5}
-              required
-              placeholder={`### Scenario\nDescribe the problem background and requirements...\n\n### Input Format\n- Line 1: Integer N...\n\n### Output Format\n- Print the computed result...\n\n### Error Code (Bug to Debug)\nExplain the defect or bug in the starter code...`}
+              rows={4}
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-purple-500 leading-relaxed resize-y"
+              placeholder="Describe the challenge statement or scenario clearly..."
+              className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono placeholder-[#6B7280] focus:outline-none focus:border-[#4B5563] resize-y"
+              required
             />
           </div>
 
-          {/* MCQ Options Section */}
+          {/* TYPE-SPECIFIC SECTIONS */}
+
+          {/* SECTION A: MCQ */}
           {type === 'mcq' && (
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+            <div className="space-y-3 pt-2 border-t border-[#252A31]">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <HelpCircle className="w-3.5 h-3.5 text-purple-400" /> Options & Correct Answer
+                <label className="text-[11px] font-medium text-[#9CA3AF]">
+                  Options (Select the single correct answer)
                 </label>
-                <button
-                  type="button"
-                  onClick={handleAddOption}
-                  className="text-[11px] text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" /> Add Option
-                </button>
               </div>
 
               <div className="space-y-2">
-                {options.map((opt, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleSetCorrectOption(idx)}
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center cursor-pointer shrink-0 transition-all ${
-                        opt.isCorrect
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-slate-700 bg-slate-900 hover:border-slate-500'
-                      }`}
-                      title={opt.isCorrect ? 'Correct Answer' : 'Click to mark as correct answer'}
-                    >
-                      {opt.isCorrect && <div className="w-2 h-2 rounded-full bg-white" />}
-                    </button>
-                    <span className="text-xs font-mono font-bold text-slate-400 w-4">
-                      {String.fromCharCode(65 + idx)}.
-                    </span>
-                    <input
-                      type="text"
-                      placeholder={`Option ${String.fromCharCode(65 + idx)} text...`}
-                      value={opt.text}
-                      onChange={e => {
-                        const updated = [...options];
-                        updated[idx].text = e.target.value;
-                        setOptions(updated);
-                      }}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-                    />
-                    {options.length > 2 && (
+                {options.map((opt, idx) => {
+                  const letter = String.fromCharCode(65 + idx);
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => handleRemoveOption(idx)}
-                        className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
+                        onClick={() => {
+                          setOptions(options.map((o, i) => ({ ...o, isCorrect: i === idx })));
+                        }}
+                        className={`w-6 h-6 rounded-full border flex items-center justify-center text-[10px] font-bold transition-colors cursor-pointer ${
+                          opt.isCorrect
+                            ? 'bg-[#22C55E] border-[#22C55E] text-black'
+                            : 'bg-[#171B21] border-[#252A31] text-[#9CA3AF] hover:border-[#4B5563]'
+                        }`}
+                        title="Mark as correct answer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {letter}
                       </button>
-                    )}
-                  </div>
-                ))}
+                      <input
+                        type="text"
+                        value={opt.text}
+                        onChange={e => {
+                          const updated = [...options];
+                          updated[idx].text = e.target.value;
+                          setOptions(updated);
+                        }}
+                        placeholder={`Option ${letter} text...`}
+                        className={`flex-1 px-3 py-2 rounded-lg bg-[#171B21] border text-xs text-[#F3F4F6] placeholder-[#6B7280] focus:outline-none ${
+                          opt.isCorrect ? 'border-[#22C55E]/50' : 'border-[#252A31] focus:border-[#4B5563]'
+                        }`}
+                      />
+                      {options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = options.filter((_, i) => i !== idx);
+                            if (!updated.some(o => o.isCorrect)) updated[0].isCorrect = true;
+                            setOptions(updated);
+                          }}
+                          className="p-2 text-[#9CA3AF] hover:text-[#EF4444] transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                  Answer Explanation (Optional)
-                </label>
+              {options.length < 6 && (
+                <button
+                  type="button"
+                  onClick={() => setOptions([...options, { text: '', isCorrect: false }])}
+                  className="px-2.5 py-1 rounded border border-[#252A31] text-[11px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#171B21] transition-colors cursor-pointer"
+                >
+                  + Add Option
+                </button>
+              )}
+
+              <div className="space-y-1.5 pt-2">
+                <label className="block text-[11px] font-medium text-[#9CA3AF]">Explanation / Solution rationale</label>
                 <textarea
                   rows={2}
-                  placeholder="Explain why the answer is correct..."
                   value={explanation}
                   onChange={e => setExplanation(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none focus:border-purple-500 resize-none"
+                  placeholder="Explain why the correct answer is right..."
+                  className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] placeholder-[#6B7280] focus:outline-none focus:border-[#4B5563]"
                 />
               </div>
             </div>
           )}
 
-          {/* Coding / Debugging Starter Code & Test Cases */}
-          {type !== 'mcq' && (
-            <div className="space-y-4">
-              {/* Starter Code */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
-                  <span>Error Code / Starter Code ({language})</span>
-                  <span className="text-[10px] text-rose-400 font-semibold">Flawed code that participant needs to debug</span>
+          {/* SECTION B: CODING & DEBUGGING */}
+          {(type === 'coding' || type === 'debugging') && (
+            <div className="space-y-4 pt-2 border-t border-[#252A31]">
+              {/* Formats & Constraints */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-[#9CA3AF]">Input Format</label>
+                  <textarea
+                    rows={2}
+                    value={inputFormat}
+                    onChange={e => setInputFormat(e.target.value)}
+                    placeholder="e.g. N K followed by N integers"
+                    className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono focus:outline-none focus:border-[#4B5563]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-[#9CA3AF]">Output Format</label>
+                  <textarea
+                    rows={2}
+                    value={outputFormat}
+                    onChange={e => setOutputFormat(e.target.value)}
+                    placeholder="e.g. Single integer output"
+                    className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono focus:outline-none focus:border-[#4B5563]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-[#9CA3AF]">Constraints</label>
+                  <textarea
+                    rows={2}
+                    value={constraints}
+                    onChange={e => setConstraints(e.target.value)}
+                    placeholder="e.g. 1 <= N <= 10^5"
+                    className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono focus:outline-none focus:border-[#4B5563]"
+                  />
+                </div>
+              </div>
+
+              {/* Supported Languages */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-medium text-[#9CA3AF]">
+                  Supported Languages (C, C++, Python, Java, JavaScript)
                 </label>
-                <textarea
-                  rows={6}
-                  placeholder={`// Error code in ${language} containing the defect that participants must debug\n...`}
-                  value={starterCode}
-                  onChange={e => setStarterCode(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-rose-200 font-mono focus:outline-none focus:border-purple-500 leading-relaxed resize-y"
-                />
+                <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-[#171B21] border border-[#252A31]">
+                  {ALL_LANGUAGES.map(lang => {
+                    const isChecked = allowedLanguages.includes(lang.id);
+                    return (
+                      <label key={lang.id} className="flex items-center gap-2 cursor-pointer text-xs select-none">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleLanguage(lang.id)}
+                          className="rounded border-[#252A31] text-white focus:ring-0 cursor-pointer"
+                        />
+                        <span className={isChecked ? 'text-[#F3F4F6] font-medium' : 'text-[#6B7280]'}>
+                          {lang.label}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tabbed Multi-Language Starter / Buggy Code Editor */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-medium text-[#9CA3AF]">
+                    {type === 'debugging' ? 'Buggy Starter Code (Code to Debug)' : 'Language Starter Code'}
+                  </label>
+                  <span className="text-[11px] text-[#6B7280]">
+                    Editing: <span className="font-mono text-[#F3F4F6] uppercase">{activeCodeTab}</span>
+                  </span>
+                </div>
+
+                <div className="border border-[#252A31] rounded-lg overflow-hidden bg-[#171B21]">
+                  {/* Language Tab Strip */}
+                  <div className="flex items-center bg-[#111418] border-b border-[#252A31] px-2 py-1 gap-1 overflow-x-auto">
+                    {ALL_LANGUAGES.filter(l => allowedLanguages.includes(l.id)).map(l => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => setActiveCodeTab(l.id)}
+                        className={`px-3 py-1 rounded text-xs font-mono transition-colors cursor-pointer ${
+                          activeCodeTab === l.id
+                            ? 'bg-[#171B21] text-[#F3F4F6] border border-[#252A31] font-semibold'
+                            : 'text-[#9CA3AF] hover:text-[#F3F4F6]'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    rows={8}
+                    value={starterCodes[activeCodeTab] || ''}
+                    onChange={e => handleUpdateStarterCode(activeCodeTab, e.target.value)}
+                    placeholder={`Enter ${activeCodeTab} starter or buggy code here...`}
+                    className="w-full p-3 bg-transparent text-xs font-mono text-[#F3F4F6] focus:outline-none resize-y leading-relaxed"
+                    spellCheck={false}
+                  />
+                </div>
               </div>
 
               {/* Test Cases */}
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                    <Code2 className="w-3.5 h-3.5 text-indigo-400" /> Evaluation Test Cases
+                  <label className="text-[11px] font-medium text-[#9CA3AF]">
+                    Test Cases (Sample & Hidden Evaluation)
                   </label>
                   <button
                     type="button"
                     onClick={handleAddTestCase}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 rounded border border-[#252A31] text-[11px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#171B21] transition-colors cursor-pointer flex items-center gap-1"
                   >
-                    <Plus className="w-3 h-3" /> Add Test Case
+                    <Plus className="w-3 h-3" />
+                    <span>Add Test Case</span>
                   </button>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {testCases.map((tc, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <div key={idx} className="p-3 rounded-lg bg-[#171B21] border border-[#252A31] space-y-2">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-slate-300 font-mono">Case #{idx + 1}</span>
+                        <span className="font-mono text-[#9CA3AF]">Test Case #{idx + 1}</span>
                         <div className="flex items-center gap-3">
-                          <label className="inline-flex items-center gap-1.5 text-slate-400 cursor-pointer">
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
                             <input
                               type="checkbox"
                               checked={tc.isHidden}
@@ -641,63 +827,55 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
                                 updated[idx].isHidden = e.target.checked;
                                 setTestCases(updated);
                               }}
-                              className="rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-0 w-3.5 h-3.5"
+                              className="rounded border-[#252A31] text-white focus:ring-0 cursor-pointer"
                             />
-                            <span>Hidden Case</span>
+                            <span className={tc.isHidden ? 'text-[#F59E0B] font-medium' : 'text-[#6B7280]'}>
+                              Hidden Test
+                            </span>
                           </label>
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-500">Weight:</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={tc.weight}
-                              onChange={e => {
-                                const updated = [...testCases];
-                                updated[idx].weight = parseInt(e.target.value, 10) || 10;
-                                setTestCases(updated);
-                              }}
-                              className="w-12 bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-white text-center font-mono"
-                            />
-                          </div>
+
                           {testCases.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveTestCase(idx)}
-                              className="text-slate-500 hover:text-rose-400 cursor-pointer"
+                              className="text-[#9CA3AF] hover:text-[#EF4444] transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Input (stdin)</label>
+                          <label className="block text-[10px] text-[#6B7280] mb-0.5">Input</label>
                           <textarea
                             rows={2}
-                            placeholder="Input values..."
                             value={tc.input}
                             onChange={e => {
                               const updated = [...testCases];
                               updated[idx].input = e.target.value;
                               setTestCases(updated);
                             }}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-white font-mono resize-none"
+                            placeholder="Standard input..."
+                            className="w-full px-2.5 py-1.5 rounded bg-[#111418] border border-[#252A31] text-xs font-mono text-[#F3F4F6] focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Expected Output (stdout)</label>
+                          <label className="block text-[10px] text-[#6B7280] mb-0.5">
+                            Expected Output <span className="text-[#EF4444]">*</span>
+                          </label>
                           <textarea
                             rows={2}
-                            placeholder="Expected output..."
                             value={tc.output}
                             onChange={e => {
                               const updated = [...testCases];
                               updated[idx].output = e.target.value;
                               setTestCases(updated);
                             }}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-emerald-400 font-mono resize-none"
+                            placeholder="Expected stdout..."
+                            className="w-full px-2.5 py-1.5 rounded bg-[#111418] border border-[#252A31] text-xs font-mono text-[#F3F4F6] focus:outline-none"
+                            required
                           />
                         </div>
                       </div>
@@ -705,77 +883,122 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
                   ))}
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Question DNA (Parametric Mutation Toggle) */}
-              <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/30 space-y-3">
+          {/* SECTION C: SQL */}
+          {type === 'sql' && (
+            <div className="space-y-3 pt-2 border-t border-[#252A31]">
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-medium text-[#9CA3AF]">
+                  Table Schema DDL
+                </label>
+                <textarea
+                  rows={3}
+                  value={schemaDdl}
+                  onChange={e => setSchemaDdl(e.target.value)}
+                  placeholder="CREATE TABLE employees (id INT, name VARCHAR(50), salary INT);"
+                  className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-medium text-[#9CA3AF]">
+                  Expected SQL Query / Solution
+                </label>
+                <textarea
+                  rows={3}
+                  value={expectedQuery}
+                  onChange={e => setExpectedQuery(e.target.value)}
+                  placeholder="SELECT name, salary FROM employees WHERE salary > 50000;"
+                  className="w-full px-3 py-2 rounded-lg bg-[#171B21] border border-[#252A31] text-xs text-[#F3F4F6] font-mono focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-                      <Dna className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span>Question DNA & Mutation Engine</span>
-                        <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.2 rounded font-mono">USP</span>
-                      </div>
-                      <p className="text-[10px] text-slate-400">Generate randomized bug variations to eliminate cheat vectors</p>
-                    </div>
-                  </div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasDnaMutation}
-                      onChange={e => setHasDnaMutation(e.target.checked)}
-                      className="rounded border-slate-700 bg-slate-950 text-purple-600 focus:ring-0 w-4 h-4"
-                    />
-                    <span className="text-xs font-bold text-purple-300">Enable DNA</span>
+                  <label className="text-[11px] font-medium text-[#9CA3AF]">
+                    SQL Output Evaluation Test Cases
                   </label>
+                  <button
+                    type="button"
+                    onClick={handleAddTestCase}
+                    className="px-2.5 py-1 rounded border border-[#252A31] text-[11px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#171B21] transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Test Case</span>
+                  </button>
                 </div>
 
-                {hasDnaMutation && (
-                  <div className="pt-2 border-t border-purple-500/20">
-                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Bug Category Classification
-                    </label>
-                    <select
-                      value={bugCategory}
-                      onChange={e => setBugCategory(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-                    >
-                      {BUG_CATEGORIES.map(b => (
-                        <option key={b.id} value={b.id}>{b.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  {testCases.map((tc, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-[#171B21] border border-[#252A31] space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-mono text-[#9CA3AF]">Test Case #{idx + 1}</span>
+                        {testCases.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTestCase(idx)}
+                            className="text-[#9CA3AF] hover:text-[#EF4444] transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-[#6B7280] mb-0.5">Input / Data Seeds</label>
+                          <textarea
+                            rows={2}
+                            value={tc.input}
+                            onChange={e => {
+                              const updated = [...testCases];
+                              updated[idx].input = e.target.value;
+                              setTestCases(updated);
+                            }}
+                            placeholder="Custom seed statements if needed..."
+                            className="w-full px-2.5 py-1.5 rounded bg-[#111418] border border-[#252A31] text-xs font-mono text-[#F3F4F6] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[#6B7280] mb-0.5">Expected Output Table</label>
+                          <textarea
+                            rows={2}
+                            value={tc.output}
+                            onChange={e => {
+                              const updated = [...testCases];
+                              updated[idx].output = e.target.value;
+                              setTestCases(updated);
+                            }}
+                            placeholder="Expected rows or scalar result..."
+                            className="w-full px-2.5 py-1.5 rounded bg-[#111418] border border-[#252A31] text-xs font-mono text-[#F3F4F6] focus:outline-none"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Submit Actions */}
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+          {/* Footer Submit Actions */}
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[#252A31]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 cursor-pointer"
+              className="px-3.5 py-2 rounded-lg bg-[#171B21] hover:bg-[#252A31] text-xs font-medium text-[#9CA3AF] hover:text-[#F3F4F6] border border-[#252A31] transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-lg bg-[#FFFFFF] hover:bg-[#E5E7EB] text-xs font-semibold text-black transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>
-                {loading
-                  ? 'Saving...'
-                  : editingTemplate
-                  ? 'Save Changes'
-                  : targetRoundNumber
-                  ? `Add to Round ${targetRoundNumber}`
-                  : 'Add Question to Bank'}
-              </span>
+              <CheckCircle2 className="w-4 h-4 text-black" />
+              <span>{loading ? 'Saving...' : editingTemplate ? 'Update Question' : 'Add Question'}</span>
             </button>
           </div>
         </form>
