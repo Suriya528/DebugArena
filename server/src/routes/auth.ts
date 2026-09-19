@@ -155,7 +155,7 @@ function maskEmailAddress(email: string): string {
 // If multiple accounts share the same passkey, requests email confirmation to disambiguate.
 authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { passkey, email, identifier } = req.body;
+    const { passkey, email, identifier, requireEmailVerification } = req.body;
     if (!passkey || String(passkey).trim().length === 0) {
       res.status(400).json({ error: 'Security passkey keyword is required' });
       return;
@@ -267,75 +267,84 @@ authRouter.post('/passkey/login', async (req: Request, res: Response): Promise<v
 
     const needsOnboarding = !targetUser.collegeId;
 
-    // Direct 1-Step Passkey Sign-In: If organizer account was created without an external email,
-    // authenticate immediately with JWT token without waiting for email link!
-    const isInternalOrMissingEmail = !targetUser.email || targetUser.email.endsWith('@debugarena.internal');
-    if (isInternalOrMissingEmail) {
-      const payload: AuthPayload = {
-        userId: targetUser._id.toString(),
+    // Optional Two-Factor Email Authorization Flow: only if explicitly requested by client
+    if (requireEmailVerification === true) {
+      const sessionId = crypto.randomBytes(32).toString('hex');
+      const magicToken = crypto.randomBytes(32).toString('hex');
+
+      await PasskeySignInSession.create({
+        sessionId,
+        token: magicToken,
+        userId: targetUser._id,
+        email: targetUser.email,
         username: targetUser.username,
-        role: targetUser.role,
-        name: targetUser.name,
-        collegeId: targetUser.collegeId ? targetUser.collegeId.toString() : undefined,
-        eventId: targetUser.eventId ? targetUser.eventId.toString() : undefined
-      };
-      const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
+        name: targetUser.name || targetUser.username,
+        status: 'pending',
+        needsOnboarding,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+      });
+
+      const clientOrigin = process.env.CLIENT_ORIGIN && process.env.CLIENT_ORIGIN !== 'http://localhost:5173'
+        ? process.env.CLIENT_ORIGIN
+        : (req.get('origin') || process.env.CLIENT_ORIGIN || 'http://localhost:5173');
+      const signInUrl = `${clientOrigin}/verify-signin?token=${magicToken}&session=${sessionId}`;
+
+      sendPasskeyMagicSignInEmail({
+        to: targetUser.email,
+        name: targetUser.name || targetUser.username,
+        username: targetUser.username,
+        signInUrl,
+        expiresInMinutes: 15
+      }).catch(err => console.warn('Background magic sign-in email dispatch error:', err));
 
       res.json({
-        token,
-        needsOnboarding,
-        user: {
-          id: targetUser._id,
-          username: targetUser.username,
-          name: targetUser.name,
-          email: targetUser.email,
-          role: targetUser.role,
-          collegeId: targetUser.collegeId,
-          eventId: targetUser.eventId,
-          hasPasskey: true,
-          needsOnboarding
-        }
+        requiresEmailVerification: true,
+        sessionId,
+        maskedEmail: maskEmailAddress(targetUser.email),
+        username: targetUser.username,
+        devSignInUrl: process.env.NODE_ENV !== 'production' ? signInUrl : undefined,
+        message: `A secure sign-in authorization link has been sent to ${maskEmailAddress(targetUser.email)}.`
       });
       return;
     }
 
-    // Two-Factor Email Authorization Flow for accounts with registered email address
-    const sessionId = crypto.randomBytes(32).toString('hex');
-    const magicToken = crypto.randomBytes(32).toString('hex');
-
-    await PasskeySignInSession.create({
-      sessionId,
-      token: magicToken,
-      userId: targetUser._id,
-      email: targetUser.email,
+    // Direct 1-Step Passkey Sign-In: Immediate cryptographic authentication for all organizers
+    const payload: AuthPayload = {
+      userId: targetUser._id.toString(),
       username: targetUser.username,
-      name: targetUser.name || targetUser.username,
-      status: 'pending',
-      needsOnboarding,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
-    });
+      role: targetUser.role,
+      name: targetUser.name,
+      collegeId: targetUser.collegeId ? targetUser.collegeId.toString() : undefined,
+      eventId: targetUser.eventId ? targetUser.eventId.toString() : undefined
+    };
+    const token = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '24h' });
 
-    const clientOrigin = process.env.CLIENT_ORIGIN && process.env.CLIENT_ORIGIN !== 'http://localhost:5173'
-      ? process.env.CLIENT_ORIGIN
-      : (req.get('origin') || process.env.CLIENT_ORIGIN || 'http://localhost:5173');
-    const signInUrl = `${clientOrigin}/verify-signin?token=${magicToken}&session=${sessionId}`;
-
-    sendPasskeyMagicSignInEmail({
-      to: targetUser.email,
-      name: targetUser.name || targetUser.username,
-      username: targetUser.username,
-      signInUrl,
-      expiresInMinutes: 15
-    }).catch(err => console.warn('Background magic sign-in email dispatch error:', err));
+    // Non-blocking security notification email in background if organizer has an email
+    if (targetUser.email && !targetUser.email.endsWith('@debugarena.internal')) {
+      sendPasskeyNotificationEmail({
+        to: targetUser.email,
+        name: targetUser.name || targetUser.username,
+        passkeyKeyword: cleanPasskey,
+        isUpdate: false
+      }).catch(err => console.warn('Background email dispatch notice on passkey login:', err));
+    }
 
     res.json({
-      requiresEmailVerification: true,
-      sessionId,
-      maskedEmail: maskEmailAddress(targetUser.email),
-      username: targetUser.username,
-      devSignInUrl: process.env.NODE_ENV !== 'production' ? signInUrl : undefined,
-      message: `A secure sign-in authorization link has been sent to ${maskEmailAddress(targetUser.email)}.`
+      token,
+      needsOnboarding,
+      user: {
+        id: targetUser._id,
+        username: targetUser.username,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        collegeId: targetUser.collegeId,
+        eventId: targetUser.eventId,
+        hasPasskey: true,
+        needsOnboarding
+      }
     });
+    return;
   } catch (err: any) {
     console.error('Passkey login error:', err);
     res.status(500).json({ error: 'Server error during passkey verification' });

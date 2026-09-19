@@ -26,6 +26,7 @@ let baseUrl: string;
 async function setup() {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri());
+  await User.init();
 
   const app = express();
   app.use(express.json());
@@ -60,7 +61,7 @@ async function runTests() {
     name: 'Hackathon 2026',
     code: 'HACK99',
     collegeId: college._id,
-    status: 'live',
+    status: 'ready',
     scoringConfig: { violationLimit: 2, autoSubmitOnViolation: true }
   });
 
@@ -78,10 +79,20 @@ async function runTests() {
     roundNumber: 2,
     title: 'Round 2: Algorithmic Debugging',
     type: 'debugging',
-    status: 'active',
-    startedAt: new Date(Date.now() - 60000), // started 1 min ago
+    status: 'pending',
     durationMinutes: 30,
     allowedLanguages: ['python', 'cpp']
+  });
+
+  const question1 = await Question.create({
+    eventId: event._id,
+    roundNumber: 1,
+    type: 'mcq',
+    title: 'Q1',
+    prompt: 'What is 1+1?',
+    marks: 10,
+    options: ['1', '2', '3', '4'],
+    correctOption: 1
   });
 
   const question = await Question.create({
@@ -96,6 +107,16 @@ async function runTests() {
     testCases: [{ input: '1->2->3', expectedOutput: '3->2->1', weight: 100, isHidden: false }],
     timeLimitMs: 2000
   });
+
+  dynRound1.questionCount = 1;
+  dynRound1.totalQuestions = 1;
+  dynRound1.selectedQuestionIds = [question1._id as any];
+  await dynRound1.save();
+
+  dynRound.questionCount = 1;
+  dynRound.totalQuestions = 1;
+  dynRound.selectedQuestionIds = [question._id as any];
+  await dynRound.save();
 
   const adminUser = await User.create({
     username: 'superadmin',
@@ -144,6 +165,13 @@ async function runTests() {
 
   const studentToken = data1.token;
   const studentId = data1.user.id;
+
+  // Start event and round 2 for tests 2-8
+  event.status = 'live';
+  await event.save();
+  dynRound.status = 'active';
+  dynRound.startedAt = new Date(Date.now() - 60000);
+  await dynRound.save();
 
   console.log('--- TEST 2: run-code Protected Against Post-Submission & Deadline Expiry ---');
   // First run-code should succeed
@@ -492,11 +520,11 @@ async function runTests() {
     collegeId: college._id
   });
 
-  // Organizer enters passkey on laptop
+  // Organizer enters passkey on laptop requesting two-factor email verification
   const emailPasskeyLoginRes = await fetch(`${baseUrl}/api/auth/passkey/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ passkey: 'GAMMA-SECURE-KEY' })
+    body: JSON.stringify({ passkey: 'GAMMA-SECURE-KEY', requireEmailVerification: true })
   });
   if (!emailPasskeyLoginRes.ok) {
     throw new Error(`Email passkey login failed: ${await emailPasskeyLoginRes.text()}`);

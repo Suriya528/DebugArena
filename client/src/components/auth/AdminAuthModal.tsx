@@ -597,6 +597,20 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                       </span>
                     </button>
 
+                    {/* Direct 1-Step Passkey Sign-In Alternative */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailVerificationPending(null);
+                        setSigninMethod('passkey');
+                        setError(null);
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Key className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Sign in directly with Passkey keyword (No email needed)</span>
+                    </button>
+
                     {/* Back to standard login */}
                     <button
                       type="button"

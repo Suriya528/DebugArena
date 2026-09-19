@@ -86,16 +86,16 @@ UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 // Event-scoped uniqueness for participants (both username and usernameNormalized)
 UserSchema.index(
   { eventId: 1, username: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
+  { unique: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
 );
 UserSchema.index(
   { eventId: 1, usernameNormalized: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
+  { unique: true, partialFilterExpression: { role: 'participant', eventId: { $exists: true } } }
 );
 // Global uniqueness for administrators/coordinators
 UserSchema.index(
   { username: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { role: { $ne: 'participant' } } }
+  { unique: true, partialFilterExpression: { role: { $in: ['admin', 'super_admin', 'college_admin', 'event_coordinator', 'question_manager', 'result_reviewer'] } } }
 );
 
 export const User = mongoose.model<IUser>('User', UserSchema);
