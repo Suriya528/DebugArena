@@ -1483,6 +1483,71 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
       { upsert: true }
     );
 
+    // Initialize eligible participants as not_started and heal ghost records with 0 attempts
+    const userFilter: any = { role: 'participant', eventId, isDisqualified: false };
+    if (parsedRound === 1) {
+      const participants = await User.find(userFilter);
+      for (const p of participants) {
+        const existing = await RoundProgress.findOne({ userId: p._id, roundNumber: 1, eventId });
+        if (!existing) {
+          await RoundProgress.create({
+            userId: p._id,
+            eventId,
+            roundNumber: 1,
+            status: 'not_started',
+            startedAt: null,
+            endsAt: null
+          });
+        } else if (
+          (existing.status === 'submitted' || existing.status === 'expired' || existing.status === 'in_progress') &&
+          (existing.totalScore || 0) === 0
+        ) {
+          const count = await Attempt.countDocuments({ userId: p._id, roundNumber: 1 });
+          if (count === 0) {
+            existing.status = 'not_started';
+            existing.startedAt = null;
+            existing.endsAt = null;
+            existing.submittedAt = null;
+            existing.timeTakenSeconds = 0;
+            await existing.save();
+          }
+        }
+      }
+    } else {
+      const eligibleUsers = await User.find(userFilter).distinct('_id');
+      const advancedFromPrev = await RoundProgress.find({
+        userId: { $in: eligibleUsers },
+        roundNumber: parsedRound - 1,
+        status: 'advanced'
+      });
+      for (const adv of advancedFromPrev) {
+        const existing = await RoundProgress.findOne({ userId: adv.userId, roundNumber: parsedRound, eventId });
+        if (!existing) {
+          await RoundProgress.create({
+            userId: adv.userId,
+            eventId,
+            roundNumber: parsedRound,
+            status: 'not_started',
+            startedAt: null,
+            endsAt: null
+          });
+        } else if (
+          (existing.status === 'submitted' || existing.status === 'expired' || existing.status === 'in_progress') &&
+          (existing.totalScore || 0) === 0
+        ) {
+          const count = await Attempt.countDocuments({ userId: adv.userId, roundNumber: parsedRound });
+          if (count === 0) {
+            existing.status = 'not_started';
+            existing.startedAt = null;
+            existing.endsAt = null;
+            existing.submittedAt = null;
+            existing.timeTakenSeconds = 0;
+            await existing.save();
+          }
+        }
+      }
+    }
+
     await recordAudit(req, 'ROUND_STARTED', 'DynamicRound', round._id.toString(), { roundNumber: parsedRound }, '', event.collegeId, eventId);
 
     broadcastToAll('round:started', {
@@ -1527,7 +1592,7 @@ const lockRoundHandler = async (req: AuthenticatedRequest, res: Response): Promi
     round.endedAt = new Date();
     await round.save();
 
-    // Auto-grade/sweep in_progress or not_started participants for this event
+    // Auto-grade/sweep strictly in_progress participants for this event (never sweep not_started)
     const userFilter: any = { role: 'participant', eventId };
     const eventParticipants = await User.find(userFilter).select('_id');
     const participantIds = eventParticipants.map(u => u._id);
@@ -1535,7 +1600,7 @@ const lockRoundHandler = async (req: AuthenticatedRequest, res: Response): Promi
     const activeParticipants = await RoundProgress.find({
       roundNumber: parsedRound,
       userId: { $in: participantIds },
-      status: { $in: ['in_progress', 'not_started'] }
+      status: 'in_progress'
     });
 
     for (const p of activeParticipants) {

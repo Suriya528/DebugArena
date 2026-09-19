@@ -67,13 +67,13 @@ export const App: React.FC = () => {
   // Participant Portal State
   const [roundState, setRoundState] = useState<any>(null);
   const [portalLoading, setPortalLoading] = useState<boolean>(false);
-  const [hasStartedActiveRound, setHasStartedActiveRoundState] = useState<boolean>(() => {
+  const [hasStartedActiveRound, setHasStartedActiveRoundState] = useState<boolean>(false);
+
+  useEffect(() => {
     try {
-      return localStorage.getItem('debugarena_active_round_session') === 'true';
-    } catch {
-      return false;
-    }
-  });
+      localStorage.removeItem('debugarena_active_round_session');
+    } catch {}
+  }, []);
 
   const setHasStartedActiveRound = useCallback((val: boolean) => {
     try {
@@ -132,7 +132,7 @@ export const App: React.FC = () => {
 
   // Handle participant auto-submit on timer expiry
   const handleTimerExpire = useCallback(async () => {
-    if (!roundState || roundState.progress?.status === 'submitted') return;
+    if (!roundState || roundState.progress?.status !== 'in_progress') return;
     console.log('⏰ Round timer expired. Finalizing submission.');
     try {
       await api.post('/participant/submit-round', {
@@ -140,6 +140,7 @@ export const App: React.FC = () => {
       });
       try {
         localStorage.removeItem('debugarena_participant_recovery');
+        localStorage.removeItem('debugarena_active_round_session');
       } catch {}
       await fetchRoundState();
     } catch (e) {
@@ -588,8 +589,9 @@ export const App: React.FC = () => {
             roundState?.isWaitingAdvancement ||
             roundState?.isQualifiedWaitingNextRound ||
             roundState?.nextRoundAvailable ||
-            (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'advanced')) ||
+            (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'expired' || currentProgress?.status === 'advanced')) ||
             currentProgress?.status === 'submitted' ||
+            currentProgress?.status === 'expired' ||
             currentProgress?.status === 'advanced'
           ) && (
             <>
@@ -597,7 +599,7 @@ export const App: React.FC = () => {
               <main className="flex-1 flex items-center justify-center p-4">
                 <RoundSummaryView
                   round={currentRound || ({ roundNumber: 1, title: 'Debug Arena', status: 'completed' } as any)}
-                  progress={currentProgress || ({ totalScore: 0, timeTakenSeconds: 0, status: roundState?.isEliminated ? 'eliminated' : 'submitted' } as any)}
+                  progress={currentProgress || ({ totalScore: 0, timeTakenSeconds: 0, status: roundState?.isEliminated ? 'eliminated' : (currentProgress?.status || 'submitted') } as any)}
                   onRefresh={fetchRoundState}
                   isEliminated={roundState?.isEliminated}
                   isWaitingAdvancement={roundState?.isWaitingAdvancement}
@@ -629,7 +631,11 @@ export const App: React.FC = () => {
           )}
 
           {/* 3D. Assessment Briefing (Before starting active round) */}
-          {!roundState?.isTieBreak && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced' && !hasStartedActiveRound && (
+          {!roundState?.isTieBreak &&
+            currentProgress?.status !== 'submitted' &&
+            currentProgress?.status !== 'expired' &&
+            currentProgress?.status !== 'advanced' &&
+            !hasStartedActiveRound && (
             <>
               <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
               <main className="flex-1 flex items-center justify-center p-4">

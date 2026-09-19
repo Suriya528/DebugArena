@@ -480,7 +480,7 @@ async function getParticipantAccessibleRound(userId: string, eventId?: string) {
   for (let r = maxRound; r >= 1; r--) {
     const prog = progressList.find(p => p.roundNumber === r);
     if (prog) {
-      if (prog.status === 'in_progress' || prog.status === 'submitted' || prog.status === 'not_started') {
+      if (prog.status === 'in_progress' || prog.status === 'submitted' || prog.status === 'expired' || prog.status === 'not_started') {
         return { roundNumber: r, progress: prog, activeTieBreak };
       }
     }
@@ -594,7 +594,29 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Get RoundProgress (strictly read-only: do NOT mutate or start attempt on read)
     let currentProgress = progress;
     if (!currentProgress) {
-      currentProgress = await RoundProgress.findOne({ userId, roundNumber });
+      const progQuery: any = { userId, roundNumber };
+      if (req.user?.eventId) progQuery.eventId = req.user.eventId;
+      currentProgress = await RoundProgress.findOne(progQuery);
+      if (!currentProgress && !req.user?.eventId) {
+        currentProgress = await RoundProgress.findOne({ userId, roundNumber });
+      }
+    }
+
+    // Section 29 Self-Healing: Heal ghost submitted/expired records (0 score & 0 attempts) for active or not_started rounds
+    if (
+      currentProgress &&
+      (currentProgress.status === 'submitted' || currentProgress.status === 'expired') &&
+      (currentProgress.totalScore || 0) === 0
+    ) {
+      const attemptCount = await Attempt.countDocuments({ userId, roundNumber });
+      if (attemptCount === 0 && (round.status === 'active' || round.status === 'not_started')) {
+        currentProgress.status = 'not_started';
+        currentProgress.startedAt = null;
+        currentProgress.endsAt = null;
+        currentProgress.submittedAt = null;
+        currentProgress.timeTakenSeconds = 0;
+        await currentProgress.save();
+      }
     }
 
     let remainingSeconds = 0;
@@ -889,7 +911,26 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
     }
 
     // Find or create RoundProgress
-    let progress = await RoundProgress.findOne({ userId, roundNumber });
+    const progQuery: any = { userId, roundNumber };
+    if (req.user?.eventId) progQuery.eventId = req.user.eventId;
+    let progress = await RoundProgress.findOne(progQuery);
+    if (!progress && !req.user?.eventId) {
+      progress = await RoundProgress.findOne({ userId, roundNumber });
+    }
+
+    // Section 29 Self-Healing: Check if existing submitted/expired attempt was a 0-attempt ghost record from the old bug
+    if (progress && (progress.status === 'submitted' || progress.status === 'expired') && (progress.totalScore || 0) === 0) {
+      const attemptCount = await Attempt.countDocuments({ userId, roundNumber });
+      if (attemptCount === 0) {
+        // Heal ghost record to not_started so participant can start their real attempt
+        progress.status = 'not_started';
+        progress.startedAt = null;
+        progress.endsAt = null;
+        progress.submittedAt = null;
+        progress.timeTakenSeconds = 0;
+        await progress.save();
+      }
+    }
 
     if (progress && (progress.status === 'submitted' || progress.status === 'expired' || progress.status === 'eliminated')) {
       res.status(400).json({

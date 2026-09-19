@@ -315,15 +315,62 @@ async function run() {
     }
     console.log(`✓ Test 7 PASSED: Fresh 2-minute duration (${p2Remaining}s) started from exact moment of participant click!`);
 
+    // -------------------------------------------------------------
+    // TEST 10: Ghost Attempt Self-Healing (Section 29)
+    // -------------------------------------------------------------
+    console.log('\n--- Running Test 10: Ghost Attempt Self-Healing (Section 29) ---');
+    const participant3 = await User.create({
+      username: `part3_${testSuffix}`,
+      email: `part3_${testSuffix}@example.com`,
+      passwordHash: 'dummy',
+      name: 'Participant Three',
+      role: 'participant'
+    });
+    const part3Token = jwt.sign(
+      { userId: participant3._id.toString(), username: participant3.username, role: 'participant' },
+      ENV.JWT_SECRET
+    );
+
+    // Simulate participant 3 having a corrupted 'submitted' ghost record with 0 attempts and 0 score
+    await RoundProgress.create({
+      userId: participant3._id,
+      roundNumber: testRoundNumber,
+      status: 'submitted',
+      totalScore: 0,
+      timeTakenSeconds: 0,
+      startedAt: new Date(Date.now() - 10000),
+      endsAt: new Date(Date.now() - 5000),
+      submittedAt: new Date(Date.now() - 5000)
+    });
+
+    // Participant 3 opens round: GET /round-state should self-heal ghost record to not_started
+    const p3State = await apiReq('/participant/round-state', part3Token);
+    if (p3State.data.progress?.status !== 'not_started') {
+      throw new Error(`Expected ghost record to be healed to not_started, got: ${p3State.data.progress?.status}`);
+    }
+    if (p3State.data.canStart !== true) {
+      throw new Error(`Expected canStart to be true after healing, got: ${p3State.data.canStart}`);
+    }
+    console.log('  Participant 3 ghost record successfully healed to not_started on round open.');
+
+    // Participant 3 clicks Start Round: POST /rounds/:roundNumber/start
+    const p3StartRes = await apiReq(`/participant/rounds/${testRoundNumber}/start`, part3Token, 'POST', {
+      roundNumber: testRoundNumber
+    });
+    if (p3StartRes.status !== 200 || p3StartRes.data.status !== 'in_progress') {
+      throw new Error(`Expected in_progress after starting healed record, got: ${JSON.stringify(p3StartRes.data)}`);
+    }
+    console.log('✓ Test 10 PASSED: Ghost submitted record successfully healed and started!');
+
     // Clean up test data
     await Round.deleteMany({ roundNumber: testRoundNumber });
     await Question.deleteMany({ roundNumber: testRoundNumber, eventId: null });
     await RoundProgress.deleteMany({ roundNumber: testRoundNumber });
     await Attempt.deleteMany({ roundNumber: testRoundNumber });
-    await User.deleteMany({ _id: { $in: [adminUser._id, participant1._id, participant2._id] } });
+    await User.deleteMany({ _id: { $in: [adminUser._id, participant1._id, participant2._id, participant3._id] } });
 
     console.log('\n===============================================================');
-    console.log('🎉 ALL 9 TEST MATRIX SCENARIOS PASSED WITH ZERO REGRESSIONS!');
+    console.log('🎉 ALL 10 TEST MATRIX SCENARIOS PASSED WITH ZERO REGRESSIONS!');
     console.log('===============================================================\n');
   } finally {
     stopServerTimerSweep();

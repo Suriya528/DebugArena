@@ -124,7 +124,7 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
     // Update competition currentRoundNumber
     await Competition.updateOne({}, { currentRoundNumber: roundNumber, status: 'active' });
 
-    // Initialize eligible participants as not_started (Preserving in_progress, submitted, advanced, or eliminated status)
+    // Initialize eligible participants as not_started and heal ghost records with 0 attempts
     if (roundNumber === 1) {
       const userFilter: any = { role: 'participant', isDisqualified: false };
       if (req.user?.eventId) {
@@ -142,6 +142,19 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
             startedAt: null,
             endsAt: null
           });
+        } else if (
+          (existing.status === 'submitted' || existing.status === 'expired' || existing.status === 'in_progress') &&
+          (existing.totalScore || 0) === 0
+        ) {
+          const count = await Attempt.countDocuments({ userId: p._id, roundNumber: 1 });
+          if (count === 0) {
+            existing.status = 'not_started';
+            existing.startedAt = null;
+            existing.endsAt = null;
+            existing.submittedAt = null;
+            existing.timeTakenSeconds = 0;
+            await existing.save();
+          }
         }
       }
     } else {
@@ -168,6 +181,19 @@ adminRouter.post('/rounds/:roundNumber/start', async (req: AuthenticatedRequest,
             startedAt: null,
             endsAt: null
           });
+        } else if (
+          (existing.status === 'submitted' || existing.status === 'expired' || existing.status === 'in_progress') &&
+          (existing.totalScore || 0) === 0
+        ) {
+          const count = await Attempt.countDocuments({ userId: adv.userId, roundNumber });
+          if (count === 0) {
+            existing.status = 'not_started';
+            existing.startedAt = null;
+            existing.endsAt = null;
+            existing.submittedAt = null;
+            existing.timeTakenSeconds = 0;
+            await existing.save();
+          }
         }
       }
     }
