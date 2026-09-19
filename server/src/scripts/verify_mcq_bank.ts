@@ -22,14 +22,15 @@ async function main() {
   });
 
   console.log('\nVerifying DEFAULT_ROUND_1_MCQS count:', DEFAULT_ROUND_1_MCQS.length);
-  if (mcqs.length >= 20 && DEFAULT_ROUND_1_MCQS.length === 20) {
-    console.log('✅ All 20 Logic Debugging MCQs successfully verified in MongoDB Question Bank!');
+  if (mcqs.length >= 40 && DEFAULT_ROUND_1_MCQS.length === 40) {
+    console.log('✅ All 40 Logic Debugging MCQs successfully verified in MongoDB Question Bank!');
   } else {
-    console.error('❌ MCQ verification failed! Expected at least 20 MCQs.');
+    console.error(`❌ MCQ verification failed! Expected 40 MCQs, got DB: ${mcqs.length}, Array: ${DEFAULT_ROUND_1_MCQS.length}`);
     process.exit(1);
   }
 
   await mongoose.disconnect();
+  process.exit(0);
 }
 
 main().catch(err => {

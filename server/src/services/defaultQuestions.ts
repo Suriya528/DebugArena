@@ -643,6 +643,639 @@ What is generally the **best first debugging approach**?`,
     ],
     correctOptionIndex: 2,
     explanation: 'A minimal reproducible case and step-by-step state tracing help isolate the actual faulty condition or state transition instead of masking the bug.'
+  },
+  {
+    orderIndex: 21,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Variable Usage & Output',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '21. Wrong Variable Used',
+    prompt: `A program calculates the total price:
+
+\`\`\`text
+price = 500
+discount = 50
+
+finalPrice = price - discount
+print(price)
+\`\`\`
+
+What is the bug?`,
+    marks: 10,
+    options: [
+      '`discount` should be added',
+      '`finalPrice` should be printed',
+      '`price` should start at 0',
+      '`discount` should be 0'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The program correctly calculates `finalPrice`, but prints the original `price` instead.'
+  },
+  {
+    orderIndex: 22,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Assignment Order & State Overwrite',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '22. Incorrect Assignment Order',
+    prompt: `A program swaps two values:
+
+\`\`\`text
+a = 10
+b = 20
+
+a = b
+b = a
+\`\`\`
+
+What is the problem?`,
+    marks: 10,
+    options: [
+      '`a` and `b` must be negative',
+      'Both variables become 20',
+      'Both variables become 10',
+      'The values are correctly swapped'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'After `a = b`, the original value of `a` is lost. Then `b = a` also assigns 20.'
+  },
+  {
+    orderIndex: 23,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'State Mutation & Calculation Flow',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '23. Lost Original Value',
+    prompt: `A program wants to calculate the percentage:
+
+\`\`\`text
+total = 500
+obtained = total
+obtained = obtained - 50
+
+percentage = (obtained / total) * 100
+\`\`\`
+
+What should the programmer investigate?`,
+    marks: 10,
+    options: [
+      '`total` should also be changed',
+      'The value of `total` is being used correctly',
+      '`obtained` should start with 50',
+      'Percentage cannot be calculated'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The original total remains unchanged while the obtained value is modified. There is no bug in that specific assignment flow.'
+  },
+  {
+    orderIndex: 24,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Function Arity & Arguments',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '24. Incorrect Function Input',
+    prompt: `A function calculates the area of a rectangle:
+
+\`\`\`text
+area(length, width)
+\`\`\`
+
+The program calls:
+
+\`\`\`text
+area(10)
+\`\`\`
+
+What is the most likely problem?`,
+    marks: 10,
+    options: [
+      'The function receives insufficient input',
+      'The length is too large',
+      'Width must always be zero',
+      'Area cannot be calculated'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'The function requires both length and width, but only one value is supplied.'
+  },
+  {
+    orderIndex: 25,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Loop Control & Premature Return',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '25. Returning Too Early',
+    prompt: `A program searches for the largest number:
+
+\`\`\`text
+largest = first number
+
+for each remaining number:
+    if number > largest:
+        largest = number
+    return largest
+\`\`\`
+
+What is the likely problem?`,
+    marks: 10,
+    options: [
+      '`largest` should start at zero',
+      'The return happens before all numbers are processed',
+      'The comparison should use `<`',
+      'The loop should process only one number'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'Returning from inside the loop ends the function before the remaining elements are checked.'
+  },
+  {
+    orderIndex: 26,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Conditional Logic & Negative Bounds',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '26. Wrong Comparison Target',
+    prompt: `A system should approve a payment only when:
+
+\`\`\`text
+amount <= accountBalance
+\`\`\`
+
+The programmer writes:
+
+\`\`\`text
+if amount <= accountBalance:
+    approved = true
+
+if amount <= 0:
+    approved = true
+\`\`\`
+
+A user enters \`amount = -500\`.
+
+What is the logical problem?`,
+    marks: 10,
+    options: [
+      'Negative payment is incorrectly accepted',
+      'Account balance is ignored completely',
+      'The first condition is always false',
+      'The system cannot compare negative values'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'The second condition allows a negative amount to be approved, even though it is not a valid payment.'
+  },
+  {
+    orderIndex: 27,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Null & Missing Property Handling',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '27. Null or Missing Data',
+    prompt: `A program expects a student's phone number:
+
+\`\`\`text
+phone = student.phone
+print(phone.length)
+\`\`\`
+
+Some student records do not contain a phone number.
+
+What should debugging focus on?`,
+    marks: 10,
+    options: [
+      'Whether missing values are handled before accessing their properties',
+      'Whether the phone number contains digits only',
+      'Whether the student\'s name is correct',
+      'Whether the database contains enough rows'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'Accessing a property of a missing value can cause a runtime failure. The missing-data case needs to be handled.'
+  },
+  {
+    orderIndex: 28,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'State Leakage Across Iterations',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '28. Wrong State Carried Forward',
+    prompt: `A shopping system processes two customers.
+
+\`\`\`text
+discountApplied = false
+
+Customer 1:
+    eligible = true
+    discountApplied = true
+
+Customer 2:
+    eligible = false
+\`\`\`
+
+Customer 2 still receives a discount.
+
+What is the most likely issue?`,
+    marks: 10,
+    options: [
+      'Customer 2 has a larger order',
+      'State from Customer 1 is being reused',
+      'The discount amount is too small',
+      'Customer 2 should always receive a discount'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'A value belonging to one customer is carried into the next customer\'s processing instead of being reset or recreated.'
+  },
+  {
+    orderIndex: 29,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Type Conversion & Arithmetic Operations',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '29. Incorrect Data Conversion',
+    prompt: `A program receives:
+
+\`\`\`text
+age = "20"
+\`\`\`
+
+It tries to perform:
+
+\`\`\`text
+age + 5
+\`\`\`
+
+What should debugging investigate first?`,
+    marks: 10,
+    options: [
+      'Whether `age` is stored as text instead of a numeric value',
+      'Whether 5 is a valid number',
+      'Whether age should be doubled',
+      'Whether the program needs a loop'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'The input may need conversion from text to a numeric type before arithmetic is performed.'
+  },
+  {
+    orderIndex: 30,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Default Values & Business Rules',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '30. Wrong Default Value',
+    prompt: `A system calculates delivery charges:
+
+\`\`\`text
+deliveryCharge = 0
+
+if distance > 10:
+    deliveryCharge = 100
+\`\`\`
+
+The business rule says deliveries up to 10 km cost ₹50.
+
+What is wrong?`,
+    marks: 10,
+    options: [
+      'The distance should always be greater than 10',
+      'The default delivery charge does not match the stated rule',
+      '₹100 should be used for every delivery',
+      'Distance should be ignored'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The initial value should reflect the charge for deliveries of 10 km or less.'
+  },
+  {
+    orderIndex: 31,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Data Structure Mapping & Indices',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '31. Incorrect Data Mapping',
+    prompt: `A program receives:
+
+\`\`\`text
+student = [101, "Arun", 85]
+\`\`\`
+
+The intended structure is:
+
+\`\`\`text
+ID, Name, Marks
+\`\`\`
+
+But the program displays:
+
+\`\`\`text
+Name: 101
+ID: Arun
+Marks: 85
+\`\`\`
+
+What is the likely bug?`,
+    marks: 10,
+    options: [
+      'The input contains too many values',
+      'The fields are mapped to the wrong positions',
+      'Marks cannot be 85',
+      'Student IDs cannot be numbers'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The values exist, but they are being assigned to the wrong fields.'
+  },
+  {
+    orderIndex: 32,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Loop Update & Direction',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '32. Incorrect Loop Direction',
+    prompt: `A program should display:
+
+\`\`\`text
+5 4 3 2 1
+\`\`\`
+
+The logic is:
+
+\`\`\`text
+i = 5
+
+while i >= 1:
+    print(i)
+    i = i + 1
+\`\`\`
+
+What is the most likely issue?`,
+    marks: 10,
+    options: [
+      'The starting value should be 1',
+      'The update moves in the wrong direction',
+      'The condition should use `>`',
+      'Printing numbers in reverse is impossible'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'Since the loop needs to move from 5 toward 1, `i` must decrease rather than increase.'
+  },
+  {
+    orderIndex: 33,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Requirements Compliance & Boolean Fields',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '33. Condition Using the Wrong Field',
+    prompt: `A login system should allow access when:
+
+\`\`\`text
+username is correct
+AND
+password is correct
+\`\`\`
+
+The programmer writes:
+
+\`\`\`text
+if usernameCorrect AND emailVerified:
+    allowAccess
+\`\`\`
+
+What is the bug?`,
+    marks: 10,
+    options: [
+      'Username should be removed',
+      'Email verification should replace the password check',
+      'The condition checks the wrong requirement',
+      'Login should never use conditions'
+    ],
+    correctOptionIndex: 2,
+    explanation: 'The stated requirement depends on password correctness, but the program checks email verification instead.'
+  },
+  {
+    orderIndex: 34,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Post-Loop Overwrite & State Retention',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '34. Data Updated in the Wrong Place',
+    prompt: `A program processes bank transactions:
+
+\`\`\`text
+balance = 1000
+
+for each transaction:
+    process transaction
+
+balance = 0
+\`\`\`
+
+After processing, the correct balance should be retained.
+
+What is the problem?`,
+    marks: 10,
+    options: [
+      'Transactions should not be processed',
+      'The final balance is overwritten after processing',
+      'Starting balance should be zero',
+      'Every transaction must be negative'
+    ],
+    correctOptionIndex: 1,
+    explanation: 'The calculated balance is discarded when the program assigns `balance = 0` afterward.'
+  },
+  {
+    orderIndex: 35,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Variable Binding & Return Value Flow',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '35. Wrong Function Result Used',
+    prompt: `A program calculates the maximum value:
+
+\`\`\`text
+maximum = findMaximum(numbers)
+
+if minimum > 50:
+    print("Qualified")
+\`\`\`
+
+What should debugging investigate?`,
+    marks: 10,
+    options: [
+      'Whether the result from `findMaximum()` is being used where intended',
+      'Whether the array must be sorted',
+      'Whether 50 is a valid number',
+      'Whether maximum values are always negative'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'The program calculates `maximum` but bases the decision on a different variable, `minimum`.'
+  },
+  {
+    orderIndex: 36,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Input Validation & Guard Clauses',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'easy' as const,
+    title: '36. Missing Validation',
+    prompt: `A registration system accepts an age entered by the user.
+
+The program immediately stores:
+
+\`\`\`text
+age = userInput
+\`\`\`
+
+A user enters:
+
+\`\`\`text
+-10
+\`\`\`
+
+What is the missing debugging consideration?`,
+    marks: 10,
+    options: [
+      'The program needs validation for invalid input ranges',
+      'Negative values are always correct',
+      'Age should be stored as a string',
+      'Registration must always succeed'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'User input should be validated against the allowed domain before being accepted.'
+  },
+  {
+    orderIndex: 37,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Accumulator vs Reassignment',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '37. Incorrect Result After Repeated Calls',
+    prompt: `A program has a function that adds an amount to a total.
+
+\`\`\`text
+total = 0
+
+add(100)
+add(200)
+print(total)
+\`\`\`
+
+The output is \`200\`, but the expected output is \`300\`.
+
+What should debugging investigate?`,
+    marks: 10,
+    options: [
+      'Whether the function replaces the total instead of accumulating it',
+      'Whether 300 is too large',
+      'Whether the second call should be removed',
+      'Whether total should start at 300'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'A repeated operation should preserve the previous total and add to it rather than replacing it.'
+  },
+  {
+    orderIndex: 38,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Query Predicate & Key Lookup',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '38. Wrong Record Selected',
+    prompt: `A database contains:
+
+\`\`\`text
+Student 101 → Arun
+Student 102 → Bala
+Student 103 → Charan
+\`\`\`
+
+The user searches for Student 102, but the system displays Arun.
+
+What is the most likely area to investigate?`,
+    marks: 10,
+    options: [
+      'Record selection or query condition',
+      'Student names must be sorted alphabetically',
+      'Student IDs cannot contain 102',
+      'The database should contain only one student'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'The requested ID is 102, but the result belongs to another record, suggesting an incorrect lookup condition or record mapping.'
+  },
+  {
+    orderIndex: 39,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Error Handling & Failure Propagation',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '39. Incorrect Error Handling',
+    prompt: `A file-processing system fails to find a requested file.
+
+Instead of reporting the failure, it continues processing the missing file.
+
+What is the primary debugging concern?`,
+    marks: 10,
+    options: [
+      'The program should handle the failure before continuing',
+      'Missing files should automatically be created',
+      'File names should always contain numbers',
+      'The program should ignore all errors'
+    ],
+    correctOptionIndex: 0,
+    explanation: 'A failure should be detected and handled before later operations depend on unavailable data.'
+  },
+  {
+    orderIndex: 40,
+    type: 'mcq' as const,
+    topic: 'Logic Debugging',
+    subtopic: 'Differential Tracing & Isolation',
+    language: 'general',
+    allowedLanguages: ['general', 'python', 'javascript', 'java', 'cpp', 'c', 'sql'],
+    difficulty: 'medium' as const,
+    title: '40. Best Debugging Strategy',
+    prompt: `A program works correctly for most inputs but fails for one particular input.
+
+Which approach is most useful?`,
+    marks: 10,
+    options: [
+      'Change several parts of the program at once',
+      'Remove the failing test case',
+      'Compare the failing input with a working input and trace where their execution paths differ',
+      'Rewrite the entire program immediately'
+    ],
+    correctOptionIndex: 2,
+    explanation: 'Comparing a failing case with a successful case helps isolate the exact condition, data, or execution path that causes the failure.'
   }
 ];
 
@@ -1765,11 +2398,11 @@ export const DEFAULT_GENERAL_QUESTION_TEMPLATES = [
 export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false): Promise<number> {
   const mcqCount = await QuestionTemplate.countDocuments({ type: 'mcq' });
   const totalCount = await QuestionTemplate.countDocuments();
-  if (mcqCount >= 20 && totalCount >= 38 && !forceRefresh) {
+  if (mcqCount >= 40 && totalCount >= 58 && !forceRefresh) {
     return totalCount;
   }
 
-  console.log('🌱 Seeding Central Question Bank with 20 logic debugging challenges & MCQs...');
+  console.log('🌱 Seeding Central Question Bank with 40 logic debugging challenges & MCQs...');
 
   // Convert Round 1 MCQs to Question Bank Templates
   // Purge obsolete language-prefixed MCQs so only the 20 logic debugging MCQs exist
