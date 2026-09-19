@@ -1774,31 +1774,26 @@ export async function seedDefaultQuestionTemplates(forceRefresh: boolean = false
   // Convert Round 1 MCQs to Question Bank Templates
   // Purge obsolete language-prefixed MCQs so only the 20 logic debugging MCQs exist
   await QuestionTemplate.deleteMany({
-    $or: [
-      {
-        title: {
-          $in: [
-            'Python Variable Shadowing & Closures',
-            'SQL WHERE vs HAVING Execution Pipeline',
-            'JavaScript Microtask vs Macrotask Event Loop',
-            'Java Volatile vs Synchronized Memory Barrier',
-            'Database ACID: Dirty Reads & Isolation Levels',
-            'C++ RAII & Unique Pointer Move Semantics',
-            'Python Mutable Default Arguments',
-            'JavaScript Type Coercion Bug',
-            'C Pointer Arithmetic Pitfall',
-            'Java String Pool vs Operator ==',
-            'C++ Dangling Reference in Lambda',
-            'Integer Overflow in Binary Search',
-            'JavaScript Event Loop Microtask Ordering',
-            'Python Shallow vs Deep Copy Bug',
-            'C Memory Leak with realloc',
-            'Java Concurrency: Double-Checked Locking'
-          ]
-        }
-      },
-      { type: 'mcq', language: { $in: ['python', 'javascript', 'java', 'cpp', 'c', 'sql'] } }
-    ]
+    title: {
+      $in: [
+        'Python Variable Shadowing & Closures',
+        'SQL WHERE vs HAVING Execution Pipeline',
+        'JavaScript Microtask vs Macrotask Event Loop',
+        'Java Volatile vs Synchronized Memory Barrier',
+        'Database ACID: Dirty Reads & Isolation Levels',
+        'C++ RAII & Unique Pointer Move Semantics',
+        'Python Mutable Default Arguments',
+        'JavaScript Type Coercion Bug',
+        'C Pointer Arithmetic Pitfall',
+        'Java String Pool vs Operator ==',
+        'C++ Dangling Reference in Lambda',
+        'Integer Overflow in Binary Search',
+        'JavaScript Event Loop Microtask Ordering',
+        'Python Shallow vs Deep Copy Bug',
+        'C Memory Leak with realloc',
+        'Java Concurrency: Double-Checked Locking'
+      ]
+    }
   });
 
   // Convert Round 1 MCQs to Question Bank Templates

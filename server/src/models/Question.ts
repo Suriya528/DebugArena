@@ -8,10 +8,11 @@ export interface ITestCase {
 }
 
 export interface IQuestion extends Document {
+  templateId?: mongoose.Types.ObjectId;
   collegeId?: mongoose.Types.ObjectId;
   eventId?: mongoose.Types.ObjectId;
   roundNumber: number;
-  type: 'mcq' | 'coding';
+  type: 'mcq' | 'coding' | 'sql' | 'debugging' | 'aptitude' | 'custom';
   orderIndex: number;
   title: string;
   prompt: string;
@@ -46,10 +47,15 @@ const TestCaseSchema = new Schema<ITestCase>(
 
 const QuestionSchema = new Schema<IQuestion>(
   {
+    templateId: { type: Schema.Types.ObjectId, ref: 'QuestionTemplate', index: true },
     collegeId: { type: Schema.Types.ObjectId, ref: 'College', index: true },
     eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
     roundNumber: { type: Number, required: true, index: true },
-    type: { type: String, enum: ['mcq', 'coding'], required: true },
+    type: {
+      type: String,
+      enum: ['mcq', 'coding', 'sql', 'debugging', 'aptitude', 'custom'],
+      required: true
+    },
     orderIndex: { type: Number, required: true, default: 0 },
     title: { type: String, required: true },
     prompt: { type: String, required: true },

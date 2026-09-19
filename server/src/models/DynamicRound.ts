@@ -20,6 +20,7 @@ export interface IDynamicRound extends Document {
   startedAt: Date | null;
   endedAt: Date | null;
   isFrozen: boolean;
+  selectedQuestionIds: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,7 +65,8 @@ const DynamicRoundSchema = new Schema<IDynamicRound>(
     },
     startedAt: { type: Date, default: null },
     endedAt: { type: Date, default: null },
-    isFrozen: { type: Boolean, default: false }
+    isFrozen: { type: Boolean, default: false },
+    selectedQuestionIds: [{ type: Schema.Types.ObjectId, ref: 'QuestionTemplate', default: [] }]
   },
   { timestamps: true }
 );

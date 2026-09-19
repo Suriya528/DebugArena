@@ -19,6 +19,7 @@ import { TieBreakManager } from './components/admin/TieBreakManager.js';
 import { LeaderboardView } from './components/admin/LeaderboardView.js';
 import { EventManager } from './components/admin/EventManager.js';
 import { TournamentWorkspace } from './components/admin/TournamentWorkspace.js';
+import { MasterQuestionBank } from './components/admin/MasterQuestionBank.js';
 import { OfflineSyncBanner } from './components/common/OfflineSyncBanner.js';
 import { EventDirectJoinView } from './components/public/EventDirectJoinView.js';
 import { LandingPage } from './components/home/LandingPage.js';
@@ -29,7 +30,7 @@ import { AdminControlEntryView } from './components/admin/AdminControlEntryView.
 import { useFullscreen } from './hooks/useFullscreen.js';
 import { useTimer } from './hooks/useTimer.js';
 import { api } from './services/api.js';
-import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2, RefreshCw } from 'lucide-react';
+import { Terminal, Shield, LogIn, Lock, AlertTriangle, Maximize2, RefreshCw, Building2, HelpCircle } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, loading: authLoading, login, logout } = useAuth();
@@ -52,6 +53,7 @@ export const App: React.FC = () => {
 
   // Admin Dashboard State
   const [adminTab, setAdminTab] = useState<AdminTab>('events');
+  const [adminGlobalView, setAdminGlobalView] = useState<'tournaments' | 'question_bank'>('tournaments');
   const [activeEventId, setActiveEventId] = useState<string | null>(() => {
     return localStorage.getItem('debugarena_active_event_id');
   });
@@ -423,8 +425,57 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#090d16] flex flex-col relative text-slate-100">
         <Navbar />
+
+        {/* Top-Level Admin Navigation Bar */}
+        <div className="bg-slate-950/80 border-b border-slate-800/80 px-4 sm:px-6 py-2 flex items-center justify-between sticky top-16 z-30 backdrop-blur-md">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setAdminGlobalView('tournaments')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                adminGlobalView === 'tournaments'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
+                  : 'bg-slate-900/90 text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Tournaments &amp; Events</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdminGlobalView('question_bank')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                adminGlobalView === 'question_bank'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
+                  : 'bg-slate-900/90 text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Master Question Bank</span>
+            </button>
+          </div>
+
+          {adminGlobalView === 'tournaments' && activeEventId && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveEventId(null);
+                try {
+                  localStorage.removeItem('debugarena_active_event_id');
+                } catch {}
+              }}
+              className="text-[11px] font-mono font-bold text-slate-400 hover:text-indigo-300 transition-colors cursor-pointer"
+            >
+              ← All Tournaments
+            </button>
+          )}
+        </div>
+
         <main className="flex-1">
-          {activeEventId ? (
+          {adminGlobalView === 'question_bank' ? (
+            <MasterQuestionBank />
+          ) : activeEventId ? (
             <TournamentWorkspace
               eventId={activeEventId}
               onBack={() => {

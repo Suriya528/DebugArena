@@ -35,7 +35,23 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
       await seedDefaultQuestionTemplates(true);
     }
 
-    const { topic, language, difficulty, type, search, eventId, stageNumber, exactEventLanguages } = req.query;
+    const {
+      topic,
+      language,
+      difficulty,
+      type,
+      search,
+      eventId,
+      stageNumber,
+      exactEventLanguages,
+      page: queryPage,
+      limit: queryLimit,
+      sortBy,
+      sortOrder,
+      targetEventId,
+      currentRoundNumber
+    } = req.query;
+
     const filter: Record<string, any> = {};
 
     if (language) {
@@ -55,7 +71,7 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
           $or: [
             { language: cleanLang },
             { allowedLanguages: cleanLang },
-            { type: 'mcq' }, // Universal logic debugging MCQs apply to any language
+            { type: 'mcq' },
             { language: 'general' }
           ]
         });
@@ -64,65 +80,40 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     if (difficulty) filter.difficulty = difficulty;
     if (type) filter.type = type;
     if (search) {
+      const rawSearch = decodeURIComponent(String(search)).replace(/\+/g, ' ').trim();
+      const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { prompt: { $regex: search, $options: 'i' } },
-        { skillTags: { $in: [new RegExp(search as string, 'i')] } }
+        { title: { $regex: escaped, $options: 'i' } },
+        { prompt: { $regex: escaped, $options: 'i' } },
+        { skillTags: { $in: [new RegExp(escaped, 'i')] } }
       ];
     }
 
-    // Inspect event languages if eventId is provided
-    let eventLanguages: string[] = [];
-    if (eventId) {
-      const cleanEventId = mongoose.Types.ObjectId.isValid(eventId as string)
-        ? new mongoose.Types.ObjectId(eventId as string)
-        : eventId;
+    // Pagination & Sorting calculations
+    const page = Math.max(1, parseInt(queryPage as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(queryLimit as string, 10) || 25));
+    const skip = (page - 1) * limit;
 
-      // Event-scoped isolation: Only include this event's questions or shared global templates
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { eventId: cleanEventId },
-          { eventId: null },
-          { eventId: { $exists: false } }
-        ]
-      });
-
-      const roundFilter: any = { eventId: { $in: [eventId, cleanEventId] } };
-      if (stageNumber) {
-        const parsedStage = parseInt(stageNumber as string, 10);
-        if (!isNaN(parsedStage)) {
-          roundFilter.roundNumber = parsedStage;
-        }
-      }
-      const dynRounds = await DynamicRound.find(roundFilter);
-      const langSet = new Set<string>();
-      for (const r of dynRounds) {
-        if (Array.isArray(r.allowedLanguages)) {
-          for (const l of r.allowedLanguages) {
-            if (l && typeof l === 'string') langSet.add(l.toLowerCase().trim());
-          }
-        }
-      }
-      eventLanguages = Array.from(langSet);
+    const sortOrderNum = (sortOrder as string)?.toLowerCase() === 'desc' ? -1 : 1;
+    let sortObj: Record<string, any> = { topic: 1, difficulty: 1, title: 1 };
+    if (sortBy === 'title') {
+      sortObj = { title: sortOrderNum };
+    } else if (sortBy === 'difficulty') {
+      sortObj = { difficulty: sortOrderNum };
+    } else if (sortBy === 'topic') {
+      sortObj = { topic: sortOrderNum };
+    } else if (sortBy === 'createdAt') {
+      sortObj = { createdAt: sortOrderNum };
     }
 
-    // Exact event language filtering
-    if (exactEventLanguages === 'true' && eventLanguages.length > 0) {
-      const langRegexList = eventLanguages.map(l => new RegExp(`^${l}$`, 'i'));
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { language: { $in: langRegexList } },
-          { allowedLanguages: { $in: langRegexList } },
-          { type: 'aptitude' },
-          { type: 'mcq' },
-          { language: 'general' }
-        ]
-      });
-    }
+    const totalMatching = await QuestionTemplate.countDocuments(filter);
+    const totalPages = Math.ceil(totalMatching / limit) || 1;
 
-    const questions = await QuestionTemplate.find(filter).sort({ topic: 1, difficulty: 1 });
+    const questions = await QuestionTemplate.find(filter)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limit);
+
     const topics = await QuestionTemplate.distinct('topic');
     const languages = await QuestionTemplate.distinct('language');
     const types = await QuestionTemplate.distinct('type');
@@ -138,56 +129,70 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
 
     const grandTotal = await QuestionTemplate.countDocuments();
 
-    // Event-scoped deployment mapping
-    let roundCounts: Record<number, number> = {};
-    const deployedMap: Record<string, number[]> = {};
+    // Global Event Usage Aggregation (from DynamicRound.selectedQuestionIds as Single Source of Truth)
+    const allRoundsWithSelections = await DynamicRound.find({
+      'selectedQuestionIds.0': { $exists: true }
+    }).populate('eventId', 'name code');
 
-    if (eventId) {
-      const cleanEventId = mongoose.Types.ObjectId.isValid(eventId as string)
-        ? new mongoose.Types.ObjectId(eventId as string)
-        : eventId;
-      const deployedQuestions = await Question.find(
-        { eventId: { $in: [eventId, cleanEventId] } },
-        'title roundNumber orderIndex'
-      );
-      for (const dq of deployedQuestions) {
-        roundCounts[dq.roundNumber] = (roundCounts[dq.roundNumber] || 0) + 1;
-        if (!deployedMap[dq.title]) {
-          deployedMap[dq.title] = [];
+    const globalUsageMap = new Map<string, Array<{ eventId: string; eventName: string; eventCode: string; roundNumber: number; roundTitle: string }>>();
+    for (const dr of allRoundsWithSelections) {
+      const ev = dr.eventId as any;
+      if (!ev) continue;
+      for (const qid of dr.selectedQuestionIds || []) {
+        const key = qid.toString();
+        if (!globalUsageMap.has(key)) {
+          globalUsageMap.set(key, []);
         }
-        if (!deployedMap[dq.title].includes(dq.roundNumber)) {
-          deployedMap[dq.title].push(dq.roundNumber);
+        globalUsageMap.get(key)!.push({
+          eventId: ev._id.toString(),
+          eventName: ev.name,
+          eventCode: ev.code,
+          roundNumber: dr.roundNumber,
+          roundTitle: dr.title
+        });
+      }
+    }
+
+    // Cross-round duplication detection for a specific target event
+    const effectiveEventId = targetEventId || eventId;
+    const otherRoundAssignedMap = new Map<string, number>();
+    if (effectiveEventId) {
+      const parsedCurrRound = currentRoundNumber ? parseInt(currentRoundNumber as string, 10) : (stageNumber ? parseInt(stageNumber as string, 10) : 0);
+      const targetRounds = await DynamicRound.find({
+        eventId: effectiveEventId,
+        roundNumber: { $ne: parsedCurrRound }
+      });
+      for (const tr of targetRounds) {
+        for (const qid of tr.selectedQuestionIds || []) {
+          otherRoundAssignedMap.set(qid.toString(), tr.roundNumber);
         }
       }
     }
 
     const enrichedQuestions = questions.map(q => {
       const obj: any = q.toObject();
-      obj.deployedInRounds = deployedMap[q.title] || [];
-
-      let matches = true;
-      if (eventLanguages.length > 0) {
-        const qLang = (q.language || '').toLowerCase().trim();
-        const hasLangMatch = qLang ? eventLanguages.includes(qLang) : false;
-        const hasAllowedMatch = Array.isArray(q.allowedLanguages) && q.allowedLanguages.some(al => eventLanguages.includes(al.toLowerCase().trim()));
-        matches = hasLangMatch || hasAllowedMatch || q.type === 'aptitude' || q.type === 'mcq' || qLang === 'general';
-      }
-      obj.matchesEventLanguages = matches;
+      const qidStr = q._id.toString();
+      obj.usedInEvents = globalUsageMap.get(qidStr) || [];
+      obj.isUsedInTargetEventOtherRound = otherRoundAssignedMap.has(qidStr);
+      obj.targetEventOtherRoundNumber = otherRoundAssignedMap.get(qidStr) || null;
       return obj;
     });
 
     res.json({
       questions: enrichedQuestions,
+      page,
+      limit,
+      total: totalMatching,
+      totalCount: totalMatching,
+      totalPages,
+      grandTotal,
       topics,
       languages,
       types,
-      countsByType,
-      totalCount: grandTotal,
-      roundCounts,
-      deployedMap,
-      eventLanguages
+      countsByType
     });
   } catch (err) {
+    console.error('Failed to fetch question bank:', err);
     res.status(500).json({ error: 'Failed to fetch question bank' });
   }
 });
@@ -202,6 +207,22 @@ adminQuestionBankRouter.post('/seed-defaults', async (req: AuthenticatedRequest,
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to seed default questions' });
+  }
+});
+
+// POST /api/admin/questions/bank/by-ids
+adminQuestionBankRouter.post('/by-ids', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.json({ questions: [] });
+      return;
+    }
+    const cleanIds = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
+    const questions = await QuestionTemplate.find({ _id: { $in: cleanIds } });
+    res.json({ questions });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch questions by IDs' });
   }
 });
 
@@ -556,12 +577,34 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
 });
 
 // DELETE /api/admin/questions/bank/:templateId
-// Permanently removes a question template from the bank
+// Permanently removes a question template from the bank (Defensively guarded against deleting assigned questions)
 adminQuestionBankRouter.delete('/:templateId', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const template = await QuestionTemplate.findById(req.params.templateId);
     if (!template) {
       res.status(404).json({ error: 'Question template not found' });
+      return;
+    }
+
+    // Defensive Deletion Invariant: Never silently remove a selected question from an event round!
+    const assignedRounds = await DynamicRound.find({
+      selectedQuestionIds: template._id
+    }).populate('eventId', 'name code');
+
+    if (assignedRounds.length > 0) {
+      const usedIn = assignedRounds.map(r => ({
+        eventId: (r.eventId as any)?._id || r.eventId,
+        eventName: (r.eventId as any)?.name || 'Tournament',
+        eventCode: (r.eventId as any)?.code || '',
+        roundNumber: r.roundNumber,
+        roundTitle: r.title
+      }));
+      const roundListStr = usedIn.map(u => `${u.eventName} (Round ${u.roundNumber})`).join(', ');
+      res.status(409).json({
+        error: `Cannot delete question "${template.title}". It is currently assigned to: ${roundListStr}. Please remove it from those event rounds before deleting.`,
+        usedIn,
+        conflictRounds: usedIn
+      });
       return;
     }
 

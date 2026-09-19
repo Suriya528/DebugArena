@@ -16,6 +16,7 @@ import {
   RefreshCw,
   ShieldCheck,
   AlertCircle,
+  AlertTriangle,
   Award,
   Sparkles,
   Sliders,
@@ -56,6 +57,7 @@ import { ProjectorQrModal } from './ProjectorQrModal.js';
 import { AdminTestSandboxModal } from './AdminTestSandboxModal.js';
 import { PreEventCheckModal } from './PreEventCheckModal.js';
 import { DeleteEventModal } from './DeleteEventModal.js';
+import { RoundQuestionSelectModal } from './RoundQuestionSelectModal.js';
 
 export type TournamentTab = 'overview' | 'participants' | 'questions' | 'control' | 'leaderboard';
 
@@ -79,6 +81,7 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedQuestionRound, setSelectedQuestionRound] = useState<number | undefined>(undefined);
+  const [selectingRound, setSelectingRound] = useState<DynamicRound | null>(null);
 
   // Link copy states
   const [copiedParticipantLink, setCopiedParticipantLink] = useState(false);
@@ -238,13 +241,12 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
   const handleStartEvent = async () => {
     if (!event) return;
 
-    // Check question readiness across all rounds
+    // Check question readiness across all rounds (Universal Start Lockout Invariant)
     const unready = rounds.filter(r => !r.isQuestionReady);
     if (unready.length > 0) {
-      const msg = `Cannot start tournament. The administrator must select questions for all rounds before going live.\n\nIncomplete rounds:\n${unready.map(r => `• Stage ${r.roundNumber} ("${r.title}"): ${r.assignedQuestionCount || 0}/${r.targetQuestionCount || r.questionCount} questions selected`).join('\n')}\n\nWould you like to open Question Manager now to select questions for Stage ${unready[0].roundNumber}?`;
+      const msg = `Cannot start tournament. No individual round can start until every configured round has its complete question set.\n\nIncomplete rounds:\n${unready.map(r => `• Round ${r.roundNumber} ("${r.title}"): ${r.assignedQuestionCount || (r.selectedQuestionIds || []).length}/${r.targetQuestionCount || r.questionCount} selected (${Math.max(0, (r.targetQuestionCount || r.questionCount) - (r.assignedQuestionCount || (r.selectedQuestionIds || []).length))} more required)`).join('\n')}\n\nWould you like to select questions for Round ${unready[0].roundNumber} now?`;
       if (window.confirm(msg)) {
-        setSelectedQuestionRound(unready[0].roundNumber);
-        setActiveTab('questions');
+        setSelectingRound(unready[0]);
       }
       return;
     }
@@ -786,49 +788,74 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2.5 font-mono text-xs max-h-64 overflow-y-auto pr-1">
-                  {rounds.map(r => (
-                    <div
-                      key={r._id || r.roundNumber}
-                      className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-[11px] flex items-center justify-center shrink-0">
-                          {r.roundNumber}
-                        </span>
-                        <div className="truncate">
-                          <div className="text-white font-bold text-xs truncate">{r.title}</div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                            <span className="capitalize text-slate-300 font-semibold">{r.type}</span>
-                            <span>•</span>
-                            <span>{r.durationMinutes} mins</span>
-                            {r.questionCount > 0 && (
-                              <>
-                                <span>•</span>
-                                <span>{r.questionCount} Questions</span>
-                              </>
-                            )}
-                            {r.totalMarks > 0 && (
-                              <>
-                                <span>•</span>
-                                <span>{r.totalMarks} Marks</span>
-                              </>
-                            )}
+                <div className="space-y-2.5 font-mono text-xs max-h-72 overflow-y-auto pr-1">
+                  {rounds.map(r => {
+                    const assigned = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds.length : (r.assignedQuestionCount || 0);
+                    const target = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+                    const isReady = assigned === target && target > 0;
+                    const missing = Math.max(0, target - assigned);
+
+                    return (
+                      <div
+                        key={r._id || r.roundNumber}
+                        className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-750 transition-all"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-7 h-7 rounded-xl bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/30">
+                            {r.roundNumber}
+                          </span>
+                          <div className="truncate">
+                            <div className="text-white font-bold text-xs truncate flex items-center gap-2">
+                              <span>{r.title}</span>
+                              <span className="px-2 py-0.2 rounded text-[10px] font-mono uppercase bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                                {r.type}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                              <span>{r.durationMinutes} mins</span>
+                              <span>•</span>
+                              <span>{target} Qs Required</span>
+                              {r.totalMarks > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span>{r.totalMarks} Marks</span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
-                        r.status === 'active'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : r.status === 'completed' || r.status === 'locked'
-                          ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {r.status === 'locked' ? 'completed' : (r.status || 'pending')}
-                      </span>
-                    </div>
-                  ))}
+                        {/* Right Question Quota & Action */}
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {isReady ? (
+                            <span className="px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              <span>{assigned} / {target} Qs</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3 text-amber-400 animate-pulse" />
+                              <span>{assigned} / {target} Qs ({missing} req)</span>
+                            </span>
+                          )}
+
+                          {event.status !== 'live' && event.status !== 'completed' && event.status !== 'finalized' && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectingRound(r)}
+                              className={`px-3 py-1 rounded-xl text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                                isReady
+                                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/30'
+                              }`}
+                            >
+                              {isReady ? 'Edit Questions' : 'Select Questions'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1096,18 +1123,24 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
                     ) : (
                       <div className="w-full flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            setSelectedQuestionRound(r.roundNumber);
-                            setActiveTab('questions');
-                          }}
-                          className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition-all"
-                          title="Review or edit questions"
+                          onClick={() => setSelectingRound(r)}
+                          className="py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition-all"
+                          title="Review or select questions for this round"
                         >
-                          <HelpCircle className="w-3 h-3" />
-                          <span>Edit</span>
+                          <HelpCircle className="w-3 h-3 text-indigo-400" />
+                          <span>Select Qs</span>
                         </button>
                         <button
                           onClick={async () => {
+                            const unready = rounds.filter(rd => !rd.isQuestionReady);
+                            if (unready.length > 0) {
+                              const msg = `Cannot start Round ${r.roundNumber}. No individual round can start until every configured round has its complete question set.\n\nIncomplete rounds:\n${unready.map(rd => `• Round ${rd.roundNumber} ("${rd.title}"): ${rd.assignedQuestionCount || (rd.selectedQuestionIds || []).length}/${rd.targetQuestionCount || rd.questionCount} selected`).join('\n')}\n\nWould you like to select questions for Round ${unready[0].roundNumber} now?`;
+                              if (window.confirm(msg)) {
+                                setSelectingRound(unready[0]);
+                              }
+                              return;
+                            }
+
                             if (window.confirm(`Start Round ${r.roundNumber} now for all active contestants?`)) {
                               try {
                                 await startDynamicRound(eventId, r.roundNumber);
@@ -1250,6 +1283,20 @@ export const TournamentWorkspace: React.FC<TournamentWorkspaceProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Round Question Selection Modal */}
+      {selectingRound && (
+        <RoundQuestionSelectModal
+          isOpen={Boolean(selectingRound)}
+          onClose={() => setSelectingRound(null)}
+          round={selectingRound}
+          eventId={eventId}
+          onSaved={(updatedRound) => {
+            setRounds(prev => prev.map(r => r.roundNumber === updatedRound.roundNumber ? updatedRound : r));
+            fetchWorkspaceData();
+          }}
+        />
       )}
 
       {/* Delete Event Confirmation Modal */}

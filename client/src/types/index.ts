@@ -88,8 +88,10 @@ export interface DynamicRound {
   endedAt?: string | null;
   deadlineAt?: string | null;
   isFrozen?: boolean;
+  selectedQuestionIds?: string[];
   assignedQuestionCount?: number;
   targetQuestionCount?: number;
+  missingQuestionCount?: number;
   isQuestionReady?: boolean;
 }
 
@@ -137,8 +139,9 @@ export interface TestCase {
 
 export interface Question {
   _id: string;
+  templateId?: string;
   roundNumber: number;
-  type: 'mcq' | 'coding';
+  type: 'mcq' | 'coding' | 'sql' | 'debugging' | 'aptitude' | 'custom';
   orderIndex: number;
   title: string;
   prompt: string;
@@ -153,6 +156,40 @@ export interface Question {
   testCases?: TestCase[];
   timeLimitMs?: number;
   memoryLimitMb?: number;
+}
+
+export interface QuestionTemplate {
+  _id: string;
+  collegeId?: string;
+  eventId?: string;
+  roundNumber?: number;
+  title: string;
+  topic: string;
+  language?: string;
+  type: 'mcq' | 'debugging' | 'coding' | 'sql' | 'aptitude' | 'custom';
+  difficulty: 'easy' | 'medium' | 'hard';
+  expectedSolveTimeMinutes?: number;
+  marks?: number;
+  skillTags?: string[];
+  prompt: string;
+  explanation?: string;
+  options?: { text: string; isCorrect: boolean }[];
+  allowedLanguages?: string[];
+  starterCode?: Record<string, string>;
+  testCases?: { input: string; output: string; isHidden: boolean; weight: number }[];
+  hasDnaMutation?: boolean;
+  status?: 'draft' | 'validated' | 'published' | 'archived';
+  usedInEvents?: Array<{
+    eventId: string;
+    eventName: string;
+    eventCode: string;
+    roundNumber: number;
+    roundTitle: string;
+  }>;
+  isUsedInTargetEventOtherRound?: boolean;
+  targetEventOtherRoundNumber?: number | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface TestCaseResult {

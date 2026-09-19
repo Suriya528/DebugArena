@@ -10,6 +10,7 @@ import { CleanupAudit } from '../models/CleanupAudit.js';
 import { broadcastToAdmins, broadcastToAll, emitToUser } from '../services/socketService.js';
 import { finalizeEvent, setRetentionHold } from '../services/lifecycleService.js';
 import { Question } from '../models/Question.js';
+import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { ViolationLog } from '../models/ViolationLog.js';
 import { CodeMilestone } from '../models/CodeMilestone.js';
 import { Attempt } from '../models/Attempt.js';
@@ -570,12 +571,13 @@ adminEventRouter.post('/:eventId/validate', async (req: AuthenticatedRequest, re
 
     let totalQuestions = 0;
     for (const round of rounds) {
-      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: round.roundNumber });
+      const selectedIds = Array.isArray(round.selectedQuestionIds) ? round.selectedQuestionIds : [];
+      const qCount = selectedIds.length;
       totalQuestions += qCount;
       if (qCount === 0) {
-        errors.push(`Round ${round.roundNumber} ("${round.title}") has 0 questions configured.`);
+        errors.push(`Round ${round.roundNumber} ("${round.title}") has 0 questions selected. Admin must select questions from the Master Question Bank.`);
       } else if (qCount < round.questionCount) {
-        errors.push(`Round ${round.roundNumber} requires ${round.questionCount} questions but only ${qCount} are assigned.`);
+        errors.push(`Round ${round.roundNumber} ("${round.title}") requires ${round.questionCount} questions but only ${qCount} are selected (${round.questionCount - qCount} more required).`);
       }
       if (round.durationMinutes <= 0) {
         errors.push(`Round ${round.roundNumber} duration must be greater than 0 minutes.`);
@@ -626,11 +628,11 @@ adminEventRouter.post('/:eventId/publish', async (req: AuthenticatedRequest, res
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
     for (const r of rounds) {
-      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
+      const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
       const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-      if (qCount < targetCount) {
+      if (selectedIds.length < targetCount) {
         res.status(400).json({
-          error: `Cannot publish event. Round ${r.roundNumber} requires ${targetCount} questions but only ${qCount} are assigned.`,
+          error: `Cannot publish event. No individual round can start until every configured round has its complete question set. Round ${r.roundNumber} requires ${targetCount} questions but only ${selectedIds.length} are selected.`,
           incompleteRound: r.roundNumber
         });
         return;
@@ -665,24 +667,27 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
       return;
     }
 
-    const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number }> = [];
+    const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number; missingCount: number }> = [];
     for (const r of rounds) {
-      const qCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
+      const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
       const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-      if (qCount < targetCount) {
+      if (selectedIds.length !== targetCount) {
         incompleteRounds.push({
           roundNumber: r.roundNumber,
           title: r.title,
-          assignedCount: qCount,
-          requiredCount: targetCount
+          assignedCount: selectedIds.length,
+          requiredCount: targetCount,
+          missingCount: Math.max(0, targetCount - selectedIds.length)
         });
       }
     }
 
     if (incompleteRounds.length > 0) {
-      const summaryList = incompleteRounds.map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected`).join('; ');
+      const summaryList = incompleteRounds
+        .map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected (${r.missingCount} more required)`)
+        .join('; ');
       res.status(400).json({
-        error: `Cannot start event. The administrator must select questions for every round before the competition can go live. Incomplete rounds: ${summaryList}`,
+        error: `Cannot start event. No individual round can start until every configured round has its complete question set. Incomplete rounds: ${summaryList}`,
         incompleteRounds
       });
       return;
@@ -779,25 +784,31 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
 
     let allRoundsQuestionsReady = rounds.length > 0;
-    const unreadyRounds: Array<{ roundNumber: number; title: string; assignedQuestionCount: number; targetQuestionCount: number }> = [];
+    const unreadyRounds: Array<{ roundNumber: number; title: string; assignedQuestionCount: number; targetQuestionCount: number; missingQuestionCount: number }> = [];
     const enrichedRounds = await Promise.all(
       rounds.map(async (r) => {
-        const assignedQuestionCount = await Question.countDocuments({ eventId: r.eventId, roundNumber: r.roundNumber });
+        const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
         const targetQuestionCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-        const isQuestionReady = assignedQuestionCount >= targetQuestionCount;
+        const assignedQuestionCount = selectedIds.length;
+        const missingQuestionCount = Math.max(0, targetQuestionCount - assignedQuestionCount);
+        const isQuestionReady = assignedQuestionCount === targetQuestionCount && missingQuestionCount === 0;
+
         if (!isQuestionReady) {
           allRoundsQuestionsReady = false;
           unreadyRounds.push({
             roundNumber: r.roundNumber,
             title: r.title,
             assignedQuestionCount,
-            targetQuestionCount
+            targetQuestionCount,
+            missingQuestionCount
           });
         }
         return {
           ...r.toObject(),
+          selectedQuestionIds: selectedIds,
           assignedQuestionCount,
           targetQuestionCount,
+          missingQuestionCount,
           isQuestionReady
         };
       })
@@ -1197,6 +1208,202 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber', async (req: AuthenticatedR
   }
 });
 
+// PUT /api/admin/events/:eventId/rounds/:roundNumber/questions
+// Explicit question selection for an event round (Single Source of Truth)
+adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { eventId, roundNumber } = req.params;
+    const parsedRound = parseInt(roundNumber, 10);
+    const rawIds = req.body.questionIds || req.body.questionTemplateIds;
+    if (!Array.isArray(rawIds)) {
+      res.status(400).json({ error: 'questionIds must be an array of QuestionTemplate IDs' });
+      return;
+    }
+    const questionIds = rawIds;
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      res.status(404).json({ error: 'Event not found' });
+      return;
+    }
+
+    // Status lock: Cannot modify questions if tournament is live, completed, or finalized
+    if (event.status === 'live' || event.status === 'completed' || event.status === 'finalized' || event.status === 'cleaned') {
+      res.status(403).json({ error: `Cannot modify round questions: Tournament is currently ${event.status.toUpperCase()}` });
+      return;
+    }
+
+    const round = await DynamicRound.findOne({ eventId, roundNumber: parsedRound });
+    if (!round) {
+      res.status(404).json({ error: 'Round not found' });
+      return;
+    }
+
+    if (round.status === 'active' || round.status === 'completed' || round.status === 'locked') {
+      res.status(403).json({ error: `Cannot modify round questions: Round ${parsedRound} is already ${round.status.toUpperCase()}` });
+      return;
+    }
+
+    const requiredCount = round.questionCount;
+    if (questionIds.length !== requiredCount) {
+      res.status(400).json({
+        error: `Round requires exactly ${requiredCount} questions, but ${questionIds.length} were provided.`,
+        requiredCount,
+        providedCount: questionIds.length
+      });
+      return;
+    }
+
+    // Check duplicate IDs in payload
+    const uniqueIds = new Set(questionIds.map(id => id.toString()));
+    if (uniqueIds.size !== questionIds.length) {
+      res.status(400).json({ error: 'Duplicate question IDs detected in selection. Each question can only be selected once per round.' });
+      return;
+    }
+
+    // Fetch all QuestionTemplates
+    const templates = await QuestionTemplate.find({ _id: { $in: questionIds } });
+    if (templates.length !== questionIds.length) {
+      res.status(400).json({ error: 'One or more selected questions could not be found in the Master Question Bank.' });
+      return;
+    }
+
+    // Validate type invariant for each template
+    for (const tmpl of templates) {
+      let isTypeMatch = false;
+      if (round.type === 'mcq') {
+        isTypeMatch = tmpl.type === 'mcq' || (tmpl.type === 'aptitude' && Array.isArray(tmpl.options) && tmpl.options.length > 0);
+      } else if (round.type === 'coding') {
+        isTypeMatch = tmpl.type === 'coding';
+      } else if (round.type === 'sql') {
+        isTypeMatch = tmpl.type === 'sql';
+      } else if (round.type === 'debugging') {
+        isTypeMatch = tmpl.type === 'debugging' || tmpl.type === 'coding';
+      } else {
+        isTypeMatch = tmpl.type === round.type;
+      }
+
+      if (!isTypeMatch) {
+        res.status(400).json({
+          error: `Question "${tmpl.title}" is of type "${tmpl.type}", which does not match round type "${round.type}".`
+        });
+        return;
+      }
+    }
+
+    // Cross-round duplication prevention within same event
+    const otherRounds = await DynamicRound.find({
+      eventId,
+      roundNumber: { $ne: parsedRound }
+    });
+
+    const otherAssignedMap = new Map<string, number>();
+    for (const r of otherRounds) {
+      if (Array.isArray(r.selectedQuestionIds)) {
+        for (const qid of r.selectedQuestionIds) {
+          otherAssignedMap.set(qid.toString(), r.roundNumber);
+        }
+      }
+    }
+
+    for (const qid of questionIds) {
+      const qidStr = qid.toString();
+      if (otherAssignedMap.has(qidStr)) {
+        const otherRoundNum = otherAssignedMap.get(qidStr);
+        const dupTmpl = templates.find(t => t._id.toString() === qidStr);
+        res.status(400).json({
+          error: `Question "${dupTmpl?.title || qidStr}" is already assigned to Round ${otherRoundNum} in this tournament. Cross-round question duplication is not allowed.`
+        });
+        return;
+      }
+    }
+
+    // Update single source of truth: DynamicRound.selectedQuestionIds
+    round.selectedQuestionIds = questionIds as any;
+    await round.save();
+
+    // Synchronize runtime Question documents for participant execution
+    const existingQuestions = await Question.find({ eventId, roundNumber: parsedRound });
+    const existingByTmplId = new Map<string, any>();
+    for (const eq of existingQuestions) {
+      if (eq.templateId) {
+        existingByTmplId.set(eq.templateId.toString(), eq);
+      }
+    }
+
+    // Remove questions no longer in selectedQuestionIds
+    for (const eq of existingQuestions) {
+      if (!eq.templateId || !uniqueIds.has(eq.templateId.toString())) {
+        await Question.findByIdAndDelete(eq._id);
+      }
+    }
+
+    // Synchronize/Create in exact order of questionIds
+    const templateMap = new Map(templates.map(t => [t._id.toString(), t]));
+    let order = 0;
+    for (const qid of questionIds) {
+      order += 1;
+      const tmpl = templateMap.get(qid.toString())!;
+      const existing = existingByTmplId.get(qid.toString());
+
+      const isMcq = tmpl.type === 'mcq' || (tmpl.type === 'aptitude' && tmpl.options && tmpl.options.length > 0);
+      const questionPayload: any = {
+        roundNumber: parsedRound,
+        orderIndex: order,
+        eventId: event._id,
+        collegeId: event.collegeId,
+        templateId: tmpl._id,
+        type: isMcq ? 'mcq' : (tmpl.type === 'sql' ? 'sql' : tmpl.type === 'debugging' ? 'debugging' : 'coding'),
+        title: tmpl.title,
+        prompt: tmpl.prompt,
+        marks: tmpl.marks || (isMcq ? 10 : 25),
+        options: tmpl.options?.map(o => o.text) || [],
+        correctOptionIndex: tmpl.options?.findIndex(o => o.isCorrect) ?? 0,
+        explanation: tmpl.explanation || '',
+        allowedLanguages: tmpl.allowedLanguages && tmpl.allowedLanguages.length > 0
+          ? tmpl.allowedLanguages
+          : (round.allowedLanguages || ['python', 'cpp', 'java', 'c', 'javascript']),
+        starterCode: tmpl.starterCode instanceof Map ? Object.fromEntries(tmpl.starterCode) : (tmpl.starterCode || {}),
+        testCases: (tmpl.testCases || []).map(tc => ({
+          input: tc.input,
+          expectedOutput: tc.output,
+          isHidden: tc.isHidden,
+          weight: tc.weight
+        }))
+      };
+
+      if (existing) {
+        Object.assign(existing, questionPayload);
+        await existing.save();
+      } else {
+        await Question.create(questionPayload);
+      }
+    }
+
+    // Audit trail
+    await AuditLog.create({
+      adminId: req.user!.userId,
+      adminUsername: req.user!.username,
+      action: 'ROUND_QUESTIONS_CONFIGURED',
+      targetType: 'DynamicRound',
+      targetId: round._id.toString(),
+      details: { eventId, roundNumber: parsedRound, selectedCount: questionIds.length }
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully configured ${questionIds.length} questions for Round ${parsedRound}`,
+      roundNumber: parsedRound,
+      selectedCount: questionIds.length,
+      requiredCount: round.questionCount,
+      selectedQuestionIds: round.selectedQuestionIds
+    });
+  } catch (err: any) {
+    console.error('Failed to configure round questions:', err);
+    res.status(500).json({ error: 'Failed to configure round questions' });
+  }
+});
+
 // POST /api/admin/events/:eventId/rounds/:roundNumber/start
 adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -1220,15 +1427,30 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
       return;
     }
 
-    // Strict question presence & quota check
-    const qCount = await Question.countDocuments({ eventId, roundNumber: parsedRound });
-    const targetCount = round.questionCount || (round.type === 'mcq' ? 10 : 3);
-    if (qCount < targetCount) {
+    // Universal Start Invariant: No individual round can start until every configured round in the tournament has its complete question set!
+    const allRounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+    const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number; missingCount: number }> = [];
+    for (const r of allRounds) {
+      const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
+      const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
+      if (selectedIds.length !== targetCount) {
+        incompleteRounds.push({
+          roundNumber: r.roundNumber,
+          title: r.title,
+          assignedCount: selectedIds.length,
+          requiredCount: targetCount,
+          missingCount: Math.max(0, targetCount - selectedIds.length)
+        });
+      }
+    }
+
+    if (incompleteRounds.length > 0) {
+      const summaryList = incompleteRounds
+        .map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected (${r.missingCount} more required)`)
+        .join('; ');
       res.status(400).json({
-        error: `Cannot start Round ${parsedRound}. Admin must select questions before starting this round. Current: ${qCount}/${targetCount} questions selected.`,
-        roundNumber: parsedRound,
-        requiredCount: targetCount,
-        assignedCount: qCount
+        error: `Cannot start Round ${parsedRound}. No individual round can start until every configured round has its complete question set. Incomplete rounds: ${summaryList}`,
+        incompleteRounds
       });
       return;
     }

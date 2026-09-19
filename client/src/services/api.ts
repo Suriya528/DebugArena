@@ -328,3 +328,36 @@ export async function enterAdminControl(data: { adminToken: string; eventCode: s
   return res.data;
 }
 
+// Question Bank & Round Question Selection API
+export async function getQuestionBank(params?: {
+  page?: number;
+  limit?: number;
+  type?: string;
+  difficulty?: string;
+  topic?: string;
+  language?: string;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  targetEventId?: string;
+  currentRoundNumber?: number;
+}) {
+  const res = await api.get('/admin/questions/bank', { params });
+  return res.data;
+}
+
+export async function getQuestionsByIds(ids: string[]) {
+  const res = await api.post('/admin/questions/bank/by-ids', { ids });
+  return res.data;
+}
+
+export async function updateRoundQuestions(eventId: string, roundNumber: number, questionIds: string[]) {
+  const res = await api.put(`/admin/events/${eventId}/rounds/${roundNumber}/questions`, { questionIds });
+  return res.data;
+}
+
+export async function createQuestionTemplate(data: any) {
+  const res = await api.post('/admin/questions/bank', data);
+  return res.data;
+}
+
