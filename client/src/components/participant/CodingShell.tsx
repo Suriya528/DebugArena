@@ -565,22 +565,84 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Monaco Editor Component */}
-          <div className={`${mobileView === 'code' ? 'flex-1' : 'hidden lg:block lg:flex-1'} min-h-[300px]`}>
+          <div className={`${mobileView === 'code' ? 'flex-1' : 'hidden lg:block lg:flex-1'} min-h-[300px] relative select-text overflow-hidden`}>
             <Editor
               height="100%"
               language={getMonacoLang(currentLang)}
               theme={isDark ? "vs-dark" : "light"}
               value={currentCode}
               onChange={handleCodeChange}
-              onMount={(editor) => { editorRef.current = editor; }}
+              onMount={(editor, monaco) => {
+                editorRef.current = editor;
+                if (typeof window !== 'undefined') {
+                  (window as any).__monacoEditor = editor;
+                  (window as any).__monacoInstance = monaco;
+                }
+
+                const syncFontAndLayout = () => {
+                  try {
+                    monaco.editor.remeasureFonts();
+                    editor.layout();
+                  } catch {}
+                };
+
+                // 1. Initial measurement
+                syncFontAndLayout();
+
+                // 2. Remeasure as soon as fonts are loaded
+                if (typeof document !== 'undefined' && document.fonts) {
+                  document.fonts.ready.then(syncFontAndLayout);
+                  document.fonts.addEventListener('loadingdone', syncFontAndLayout);
+                }
+
+                // 3. Staggered remeasurements for async webfont hydration
+                const t1 = setTimeout(syncFontAndLayout, 50);
+                const t2 = setTimeout(syncFontAndLayout, 200);
+                const t3 = setTimeout(syncFontAndLayout, 600);
+                const t4 = setTimeout(syncFontAndLayout, 1500);
+
+                // 4. Remeasure on window resize and editor focus
+                const onResize = () => syncFontAndLayout();
+                window.addEventListener('resize', onResize);
+                const focusSub = editor.onDidFocusEditorText(syncFontAndLayout);
+
+                editor.onDidDispose(() => {
+                  clearTimeout(t1);
+                  clearTimeout(t2);
+                  clearTimeout(t3);
+                  clearTimeout(t4);
+                  window.removeEventListener('resize', onResize);
+                  focusSub.dispose();
+                  if (typeof document !== 'undefined' && document.fonts) {
+                    document.fonts.removeEventListener('loadingdone', syncFontAndLayout);
+                  }
+                });
+              }}
               options={{
-                fontSize: 13,
-                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 14,
+                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace",
+                fontWeight: '400',
+                letterSpacing: 0,
+                lineHeight: 21,
+                fontLigatures: false,
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                wordWrap: 'on',
+                scrollBeyondLastColumn: 5,
+                wordWrap: 'off',
                 automaticLayout: true,
-                tabSize: 4
+                tabSize: 4,
+                renderWhitespace: 'none',
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                cursorWidth: 2,
+                fixedOverflowWidgets: true,
+                renderLineHighlight: 'all',
+                selectOnLineNumbers: true,
+                selectionHighlight: true,
+                contextmenu: false,
+                renderControlCharacters: false,
+                roundedSelection: false,
+                matchBrackets: 'always'
               }}
             />
           </div>

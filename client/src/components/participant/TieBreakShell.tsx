@@ -187,14 +187,43 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
             </div>
           </div>
 
-          <div className={`${mobileTab === 'code' ? 'flex-1 min-h-[350px]' : 'hidden lg:block lg:flex-1'}`}>
+          <div className={`${mobileTab === 'code' ? 'flex-1 min-h-[350px]' : 'hidden lg:block lg:flex-1'} relative select-text overflow-hidden`}>
             <Editor
               height="100%"
               language={language === 'c' || language === 'cpp' ? 'cpp' : language === 'js' ? 'javascript' : language}
               theme={isDark ? "vs-dark" : "light"}
               value={code}
               onChange={val => setCode(val || '')}
-              options={{ fontSize: 13, minimap: { enabled: false } }}
+              onMount={(editor, monaco) => {
+                const syncFontAndLayout = () => {
+                  try {
+                    monaco.editor.remeasureFonts();
+                    editor.layout();
+                  } catch {}
+                };
+                syncFontAndLayout();
+                if (typeof document !== 'undefined' && document.fonts) {
+                  document.fonts.ready.then(syncFontAndLayout);
+                }
+              }}
+              options={{
+                fontSize: 14,
+                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace",
+                fontWeight: '400',
+                letterSpacing: 0,
+                lineHeight: 21,
+                fontLigatures: false,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                scrollBeyondLastColumn: 5,
+                wordWrap: 'off',
+                automaticLayout: true,
+                tabSize: 4,
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                cursorWidth: 2,
+                fixedOverflowWidgets: true
+              }}
             />
           </div>
 
