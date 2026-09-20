@@ -39,6 +39,19 @@ const corsOptions: cors.CorsOptions = {
       return callback(null, true);
     }
 
+    // Support any *.vercel.app domain (including preview URLs)
+    try {
+      const url = new URL(origin);
+      if (url.hostname.endsWith('.vercel.app') || url.hostname === 'localhost') {
+        return callback(null, true);
+      }
+    } catch {}
+
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    if (ENV.CLIENT_ORIGINS.some(allowed => allowed.replace(/\/+$/, '') === normalizedOrigin)) {
+      return callback(null, true);
+    }
+
     return callback(new Error(`CORS Policy: Origin '${origin}' is not permitted.`));
   },
   credentials: true,

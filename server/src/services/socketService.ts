@@ -14,7 +14,22 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
 
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (ENV.NODE_ENV !== 'production') return callback(null, true);
+        if (ENV.CLIENT_ORIGINS.includes(origin) || ENV.CLIENT_ORIGINS.includes('*')) return callback(null, true);
+        try {
+          const url = new URL(origin);
+          if (url.hostname.endsWith('.vercel.app') || url.hostname === 'localhost') {
+            return callback(null, true);
+          }
+        } catch {}
+        const normalized = origin.replace(/\/+$/, '');
+        if (ENV.CLIENT_ORIGINS.some(allowed => allowed.replace(/\/+$/, '') === normalized)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Socket CORS: Origin '${origin}' is not permitted.`));
+      },
       credentials: true,
       methods: ['GET', 'POST']
     }
