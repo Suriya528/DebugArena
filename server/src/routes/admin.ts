@@ -17,6 +17,7 @@ import { AuditLog } from '../models/AuditLog.js';
 import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
 import { broadcastToParticipants, broadcastToAdmins, emitToUser } from '../services/socketService.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
+import { syncRoundStatus, checkAndExpireRounds } from '../services/timerService.js';
 
 export const adminRouter = Router();
 
@@ -298,14 +299,22 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
     let eventRounds: any[] = [];
     if (eventId) {
       roundMeta = await DynamicRound.findOne({ eventId: eventCondition, roundNumber });
+      if (roundMeta) await syncRoundStatus(roundMeta);
       eventRounds = await DynamicRound.find({ eventId: eventCondition }).sort({ roundNumber: 1 });
+      for (const er of eventRounds) {
+        await syncRoundStatus(er);
+      }
     }
     if (!eventId) {
       if (!roundMeta) {
         roundMeta = await Round.findOne({ roundNumber });
+        if (roundMeta) await syncRoundStatus(roundMeta);
       }
       if (eventRounds.length === 0) {
         eventRounds = await Round.find().sort({ roundNumber: 1 });
+        for (const er of eventRounds) {
+          await syncRoundStatus(er);
+        }
       }
     }
 
@@ -410,7 +419,12 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
 
     // Lifecycle and Preparation Window Metadata (2-Minute Rule)
     const effectiveRoundObj = roundMeta || (eventRounds.find((r: any) => r.roundNumber === roundNumber));
-    const isRoundEnded = effectiveRoundObj?.status === 'completed' || effectiveRoundObj?.status === 'locked' || Boolean(effectiveRoundObj?.endedAt);
+    const isDurationElapsed = Boolean(
+      effectiveRoundObj?.status === 'active' &&
+      effectiveRoundObj?.startedAt &&
+      Date.now() >= new Date(effectiveRoundObj.startedAt).getTime() + (effectiveRoundObj.durationMinutes || 30) * 60 * 1000
+    );
+    const isRoundEnded = effectiveRoundObj?.status === 'completed' || effectiveRoundObj?.status === 'locked' || Boolean(effectiveRoundObj?.endedAt) || isDurationElapsed;
     const endedAt = effectiveRoundObj?.endedAt || null;
     const readyForPublicationAt = endedAt ? new Date(new Date(endedAt).getTime() + 2 * 60 * 1000) : null;
     const isReadyForPublication = isRoundEnded && (
@@ -520,7 +534,14 @@ adminRouter.post('/rounds/:roundNumber/results/publish', async (req: Authenticat
       return;
     }
 
-    const isRoundEnded = round.status === 'completed' || round.status === 'locked' || Boolean(round.endedAt);
+    await syncRoundStatus(round);
+
+    const isDurationElapsed = Boolean(
+      round?.status === 'active' &&
+      round?.startedAt &&
+      Date.now() >= new Date(round.startedAt).getTime() + (round.durationMinutes || 30) * 60 * 1000
+    );
+    const isRoundEnded = round.status === 'completed' || round.status === 'locked' || Boolean(round.endedAt) || isDurationElapsed;
     if (!isRoundEnded) {
       res.status(400).json({
         error: `Cannot publish results for Round ${roundNumber}: Round has not ended yet. Submissions must be finalized first.`

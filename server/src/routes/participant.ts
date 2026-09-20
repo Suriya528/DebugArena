@@ -16,7 +16,7 @@ import { ProcessedOperation } from '../models/ProcessedOperation.js';
 import { CodeMilestone } from '../models/CodeMilestone.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
-import { getRemainingSeconds } from '../services/timerService.js';
+import { getRemainingSeconds, syncRoundStatus, checkAndExpireRounds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
 import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
@@ -595,6 +595,8 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       return;
     }
 
+    await syncRoundStatus(round);
+
     // Check if participant was eliminated in earlier round of this event
     if (roundNumber > 1) {
       const prevQuery: any = { userId, roundNumber: roundNumber - 1 };
@@ -989,6 +991,8 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
       }
     }
 
+    await syncRoundStatus(round);
+
     if (round.status !== 'active') {
       res.status(400).json({
         error: `Cannot start Round ${roundNumber}: round is currently '${round.status}'. Waiting for admin to start.`,
@@ -1168,6 +1172,9 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
       if (!round) {
         round = await Round.findOne({ roundNumber });
       }
+      if (round) {
+        await syncRoundStatus(round);
+      }
       if (!round || round.status !== 'active') {
         res.status(400).json({ error: 'This round is not currently active' });
         return;
@@ -1299,6 +1306,9 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
     }
     if (!round) {
       round = await Round.findOne({ roundNumber: activeRoundNumber });
+    }
+    if (round) {
+      await syncRoundStatus(round);
     }
     if (!round || round.status !== 'active') {
       res.status(400).json({ error: 'Cannot run code: round is not active' });
@@ -1476,6 +1486,9 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       if (!round) {
         round = await Round.findOne({ roundNumber });
       }
+      // Authoritative server-side check: auto-complete round if duration elapsed
+      if (round) await syncRoundStatus(round);
+
       if (!round || round.status !== 'active') {
         res.status(400).json({ error: 'Cannot submit: round is not active' });
         return;

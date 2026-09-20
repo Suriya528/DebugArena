@@ -21,6 +21,7 @@ import { executeCleanupJob } from '../services/cleanupEngine.js';
 import { runTestCases, executeSingleTestCase } from '../services/judgeService.js';
 import { generateSecureToken, hashToken, encryptToken, decryptToken } from '../utils/tokenUtils.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
+import { syncRoundStatus, checkAndExpireRounds } from '../services/timerService.js';
 
 export const adminEventRouter = Router();
 
@@ -452,6 +453,9 @@ adminEventRouter.post('/control-enter', async (req: AuthenticatedRequest, res: R
     }
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    for (const r of rounds) {
+      await syncRoundStatus(r);
+    }
 
     const eventObj = event.toObject();
     delete (eventObj as any).participantAccessTokenHash;
@@ -499,6 +503,9 @@ adminEventRouter.get('/manage/:adminToken', async (req: AuthenticatedRequest, re
     }
 
     const rounds = await DynamicRound.find({ eventId: event._id }).sort({ roundNumber: 1 });
+    for (const r of rounds) {
+      await syncRoundStatus(r);
+    }
 
     const eventObj = event.toObject();
     delete (eventObj as any).participantAccessTokenHash;
@@ -785,6 +792,9 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
     }
 
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+    for (const r of rounds) {
+      await syncRoundStatus(r);
+    }
 
     let allRoundsQuestionsReady = rounds.length > 0;
     const unreadyRounds: Array<{ roundNumber: number; title: string; assignedQuestionCount: number; targetQuestionCount: number; missingQuestionCount: number }> = [];
@@ -1793,6 +1803,9 @@ adminEventRouter.get('/:eventId/sandbox-preview', async (req: AuthenticatedReque
     }
 
     const rounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
+    for (const r of rounds) {
+      await syncRoundStatus(r);
+    }
     const questions = await Question.find({ eventId }).sort({ roundNumber: 1, orderIndex: 1 });
 
     res.json({
