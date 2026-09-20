@@ -90,7 +90,7 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 Round Concluded
               </h2>
               <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                Thank you for participating in Debug Arena. Unfortunately, you were not selected for the next round. We appreciate your effort and encourage you to keep practicing!
+                Sorry, you were not selected. Thank you for participating.
               </p>
               {resultData?.publishedAt && (
                 <div className="text-[11px] text-slate-500 font-mono mb-6">
@@ -111,10 +111,10 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 <span>Tournament Completed</span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
-                Congratulations!
+                🎉 Congratulations!
               </h1>
-              <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                You have finished all rounds of this competition. Final official rankings and scores will be released by the coordinators.
+              <p className="text-sm text-slate-300 mb-8 max-w-md mx-auto leading-relaxed">
+                You have successfully completed the competition. Thank you for participating.
               </p>
             </div>
           )}
@@ -130,10 +130,10 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 <span>Next Round Is Live</span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
-                🎉 Selected for Next Round!
+                🎉 Congratulations!
               </h1>
               <p className="text-sm text-slate-300 mb-8 max-w-md mx-auto leading-relaxed">
-                Congratulations! You have been selected to advance. The next round is now live — click below to proceed to your next challenge.
+                You're selected for the next round. Click below to proceed to your next challenge.
               </p>
               {onEnterNextRound && (
                 <div className="mb-8">
@@ -163,7 +163,7 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 🎉 Congratulations!
               </h1>
               <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                You have been selected for the next round! Please wait for the tournament administrator to start the next stage.
+                You're selected for the next round. Please wait for the tournament organizer to launch the round.
               </p>
               {resultData?.publishedAt && (
                 <div className="text-[11px] text-slate-500 font-mono mb-6">

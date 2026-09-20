@@ -449,12 +449,22 @@ adminRouter.post('/rounds/:roundNumber/results/save', async (req: AuthenticatedR
     const { selections, eventId: bodyEventId } = req.body; // Array of { participantId: string, selection: 'SELECTED' | 'NOT_SELECTED' }
     const eventId = bodyEventId || req.user?.eventId;
 
-    if (!Array.isArray(selections)) {
-      res.status(400).json({ error: 'selections array is required' });
+    let selectionsList: Array<{ participantId: string; selection: string }> = [];
+    if (Array.isArray(selections)) {
+      selectionsList = selections;
+    } else if (selections && typeof selections === 'object') {
+      selectionsList = Object.entries(selections).map(([participantId, selection]) => ({
+        participantId,
+        selection: selection as string
+      }));
+    }
+
+    if (!Array.isArray(selections) && typeof selections !== 'object') {
+      res.status(400).json({ error: 'selections array or object is required' });
       return;
     }
 
-    for (const s of selections) {
+    for (const s of selectionsList) {
       if (!s.participantId || !['SELECTED', 'NOT_SELECTED'].includes(s.selection)) continue;
       const query: any = { roundNumber, participantId: s.participantId };
       if (eventId) query.eventId = eventId;
@@ -480,7 +490,7 @@ adminRouter.post('/rounds/:roundNumber/results/save', async (req: AuthenticatedR
 
     res.json({
       success: true,
-      message: `Saved ${selections.length} participant selection decisions as private draft. Participants will not see results until published.`
+      message: `Saved ${selectionsList.length} participant selection decisions as private draft. Participants will not see results until published.`
     });
   } catch (err: any) {
     console.error('Save results draft error:', err);
@@ -518,6 +528,17 @@ adminRouter.post('/rounds/:roundNumber/results/publish', async (req: Authenticat
       return;
     }
 
+    // If selections was supplied in the publish call, normalize and save draft first
+    let publishSelectionsList: Array<{ participantId: string; selection: string }> = [];
+    if (Array.isArray(selections)) {
+      publishSelectionsList = selections;
+    } else if (selections && typeof selections === 'object') {
+      publishSelectionsList = Object.entries(selections).map(([participantId, selection]) => ({
+        participantId,
+        selection: selection as string
+      }));
+    }
+
     // Find eligible participants
     const userFilter: any = { role: 'participant' };
     if (eventId) {
@@ -526,11 +547,20 @@ adminRouter.post('/rounds/:roundNumber/results/publish', async (req: Authenticat
       userFilter.collegeId = req.user.collegeId;
     }
     const tenantUsers = await User.find(userFilter).select('_id');
-    const tenantUserIds = tenantUsers.map(u => u._id);
+    const tenantUserIds: mongoose.Types.ObjectId[] = tenantUsers.map(u => u._id as mongoose.Types.ObjectId);
 
-    // If selections array was supplied in the publish call, save draft first
-    if (Array.isArray(selections) && selections.length > 0) {
-      for (const s of selections) {
+    // If explicit selections were passed, ensure those participant IDs are included
+    for (const s of publishSelectionsList) {
+      if (s.participantId && mongoose.Types.ObjectId.isValid(s.participantId)) {
+        const sObjId = new mongoose.Types.ObjectId(s.participantId);
+        if (!tenantUserIds.some(id => id.toString() === s.participantId)) {
+          tenantUserIds.push(sObjId);
+        }
+      }
+    }
+
+    if (publishSelectionsList.length > 0) {
+      for (const s of publishSelectionsList) {
         if (!s.participantId || !['SELECTED', 'NOT_SELECTED'].includes(s.selection)) continue;
         const query: any = { roundNumber, participantId: s.participantId };
         if (eventId) query.eventId = eventId;

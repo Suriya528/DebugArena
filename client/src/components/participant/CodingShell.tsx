@@ -50,7 +50,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isSubmittingCode, setIsSubmittingCode] = useState<boolean>(false);
   const [runResults, setRunResults] = useState<Record<string, TestCaseResult[]>>({});
-  const [activeTab, setActiveTab] = useState<'tests' | 'custom'>('tests');
+  const [activeTab, setActiveTab] = useState<'cases' | 'custom' | 'results'>('cases');
+  const [selectedCaseIdx, setSelectedCaseIdx] = useState<number>(0);
   const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
   const [customOutputs, setCustomOutputs] = useState<Record<string, {
     input: string;
@@ -211,8 +212,16 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         }
         if (res.data.isCustom) {
           setCustomOutputs(prev => ({ ...prev, [qId]: res.data.customResult }));
+          setActiveTab('custom');
         } else {
           setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
+          setActiveTab('cases');
+          if (Array.isArray(res.data.results)) {
+            const firstFail = res.data.results.findIndex((r: any) => !r.passed);
+            if (firstFail !== -1) {
+              setSelectedCaseIdx(firstFail);
+            }
+          }
         }
       }
     } catch (err: any) {
@@ -230,7 +239,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const lang = selectedLanguages[qId] || 'python';
 
     setIsSubmittingCode(true);
-    setActiveTab('tests');
+    setActiveTab('results');
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       setMobileView('results');
     }
@@ -275,6 +284,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const currentResults = runResults[currentQ._id] || [];
   const currentScore = scores[currentQ._id] || 0;
 
+  const currentSampleCases = (currentQ.testCases || []).filter(tc => !tc.isHidden);
+  const safeCaseIdx = selectedCaseIdx < currentSampleCases.length ? selectedCaseIdx : 0;
   const visibleCases = currentResults.filter(r => !r.isHidden);
   const totalScoreAcrossQuestions = Object.values(scores).reduce((sum, s) => sum + s, 0);
 
@@ -297,6 +308,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 key={q._id}
                 onClick={() => {
                   debouncedSaveCode.flush();
+                  setSelectedCaseIdx(0);
                   setCurrentQIndex(idx);
                 }}
                 className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-all cursor-pointer border ${
@@ -499,162 +511,298 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Bottom Execution & Results Terminal */}
-          <div className={`${mobileView === 'results' ? 'flex-1' : 'hidden lg:flex'} lg:h-64 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden`}>
+          <div className={`${mobileView === 'results' ? 'flex-1' : 'hidden lg:flex'} lg:h-72 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden`}>
             {/* Terminal Header */}
-            <div className="h-9 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/60">
+            <div className="h-10 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/60 shrink-0">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setActiveTab('tests')}
-                  className={`text-xs font-bold pb-1 pt-1.5 border-b-2 cursor-pointer transition-colors ${
-                    activeTab === 'tests'
+                  type="button"
+                  onClick={() => setActiveTab('cases')}
+                  className={`text-xs font-bold pb-2 pt-2 border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
+                    activeTab === 'cases'
                       ? 'border-indigo-500 text-white'
                       : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  Test Results
+                  <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Test Cases</span>
+                  {currentSampleCases.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300 font-mono">
+                      {currentSampleCases.length}
+                    </span>
+                  )}
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => setActiveTab('custom')}
-                  className={`text-xs font-bold pb-1 pt-1.5 border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
+                  className={`text-xs font-bold pb-2 pt-2 border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
                     activeTab === 'custom'
                       ? 'border-indigo-500 text-white'
                       : 'border-transparent text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <Terminal className="w-3.5 h-3.5" />
-                  <span>Custom Testcase</span>
+                  <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Custom Input</span>
                 </button>
+
+                {currentResults.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('results')}
+                    className={`text-xs font-bold pb-2 pt-2 border-b-2 cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      activeTab === 'results'
+                        ? 'border-indigo-500 text-white'
+                        : 'border-transparent text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>Summary ({visibleCases.filter(c => c.passed).length}/{visibleCases.length})</span>
+                  </button>
+                )}
               </div>
 
-              {activeTab === 'tests' && currentResults.length > 0 && (
-                <div className="flex items-center gap-2 text-xs font-mono">
-                  <span className="text-slate-400">Score:</span>
-                  <span className="font-bold text-emerald-400">{currentScore} pts</span>
-                </div>
-              )}
-
-              {activeTab === 'custom' && customOutputs[currentQ._id] && (
-                <div className="flex items-center gap-2 font-mono">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                    customOutputs[currentQ._id]?.status === 'Success'
-                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
-                      : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
-                  }`}>
-                    {customOutputs[currentQ._id]?.status}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    {customOutputs[currentQ._id]?.runtimeMs}ms
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {currentResults.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs font-mono">
+                    <span className="text-slate-400">Score:</span>
+                    <span className="font-bold text-emerald-400">{currentScore} pts</span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleRunCode}
+                  disabled={isRunning || isSubmittingCode}
+                  className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors"
+                  title="Run current editor code against sample cases"
+                >
+                  {isRunning ? (
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Play className="w-3 h-3 fill-slate-300" />
+                  )}
+                  <span>Run</span>
+                </button>
+              </div>
             </div>
 
-            {/* Terminal Content - Standard Test Results */}
-            {activeTab === 'tests' && (
-              <div className="flex-1 p-4 overflow-y-auto font-mono text-xs space-y-3">
-                {isRunning && (
-                  <div className="flex items-center gap-2 text-indigo-400">
-                    <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
-                    <span>Executing code against sample test cases...</span>
-                  </div>
-                )}
+            {/* Terminal Body */}
+            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
+              {isRunning && (
+                <div className="flex items-center justify-center gap-2 text-indigo-400 py-8">
+                  <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                  <span>Executing current editor code against sample test cases...</span>
+                </div>
+              )}
 
-                {isSubmittingCode && (
-                  <div className="flex items-center gap-2 text-cyan-400">
-                    <span className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
-                    <span>Evaluating code submission...</span>
-                  </div>
-                )}
+              {isSubmittingCode && (
+                <div className="flex items-center justify-center gap-2 text-cyan-400 py-8">
+                  <span className="w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+                  <span>Evaluating code submission against test suite...</span>
+                </div>
+              )}
 
-                {!isRunning && !isSubmittingCode && currentResults.length === 0 && (
-                  <div className="text-slate-500 py-6 text-center">
-                    Click <strong>Run</strong> to execute sample tests or <strong>Submit Code</strong> to evaluate against all test cases.
-                  </div>
-                )}
-
-                {/* Display Test Case Results */}
-                {!isRunning &&
-                  !isSubmittingCode &&
-                  currentResults.length > 0 && (
-                    <div className="space-y-3">
-                      {/* Visible Results */}
-                      {visibleCases.map(r => (
-                        <div
-                          key={r.testNumber}
-                          className={`p-3 rounded-xl border ${
-                            r.passed
-                              ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
-                              : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+              {/* 1. TEST CASES TAB (INPUT / EXPECTED / ACTUAL PER SAMPLE CASE) */}
+              {!isRunning && !isSubmittingCode && activeTab === 'cases' && (
+                <div className="space-y-3">
+                  {/* Case Pills */}
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-800/80 overflow-x-auto">
+                    {currentSampleCases.map((tc, idx) => {
+                      const caseResult = visibleCases[idx];
+                      const isSelected = idx === safeCaseIdx;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedCaseIdx(idx)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-500 shadow'
+                              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2 font-bold">
-                              {r.passed ? (
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          {caseResult ? (
+                            caseResult.passed ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                            )
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                          )}
+                          <span>Case {idx + 1}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Active Case Details */}
+                  {currentSampleCases.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                            Input (stdin):
+                          </span>
+                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-slate-200 text-xs overflow-x-auto whitespace-pre max-h-28">
+                            {currentSampleCases[safeCaseIdx]?.input || '(no input)'}
+                          </pre>
+                        </div>
+
+                        <div className="space-y-1">
+                          <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                            Expected Output:
+                          </span>
+                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-emerald-400 text-xs font-bold overflow-x-auto whitespace-pre max-h-28">
+                            {currentSampleCases[safeCaseIdx]?.expectedOutput || '(empty output)'}
+                          </pre>
+                        </div>
+                      </div>
+
+                      {/* Actual Output if executed */}
+                      {visibleCases[safeCaseIdx] ? (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-300 text-[11px] font-bold flex items-center gap-1.5">
+                              {visibleCases[safeCaseIdx].passed ? (
+                                <span className="text-emerald-400 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> Passed
+                                </span>
                               ) : (
-                                <XCircle className="w-4 h-4 text-rose-400" />
+                                <span className="text-rose-400 flex items-center gap-1">
+                                  <XCircle className="w-3.5 h-3.5" /> {visibleCases[safeCaseIdx].status?.toUpperCase() || 'FAILED'}
+                                </span>
                               )}
-                              <span>Sample Case #{r.testNumber}</span>
-                              <span className="text-[11px] font-normal uppercase px-1.5 rounded bg-slate-800">
-                                {r.status}
-                              </span>
-                            </div>
-                            <span className="text-[11px] text-slate-400">{r.runtimeMs}ms</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Wall time: {visibleCases[safeCaseIdx].runtimeMs}ms
+                            </span>
                           </div>
 
-                          {r.compileError && (
-                            <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                              {r.compileError}
-                            </div>
-                          )}
-                          {r.runtimeError && (
-                            <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                              {r.runtimeError}
+                          {visibleCases[safeCaseIdx].compileError && (
+                            <div className="text-rose-400 bg-rose-950/40 border border-rose-900/50 p-2 rounded text-xs whitespace-pre-wrap">
+                              {visibleCases[safeCaseIdx].compileError}
                             </div>
                           )}
 
-                          {!r.passed && !r.compileError && !r.runtimeError && (
-                            <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
-                              <div>
-                                <span className="text-slate-400 block">Expected:</span>
-                                <pre className="bg-black/30 p-1 rounded text-emerald-400 whitespace-pre">
-                                  {r.expected}
-                                </pre>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 block">Actual:</span>
-                                <pre className="bg-black/30 p-1 rounded text-rose-400 whitespace-pre">
-                                  {r.actual}
-                                </pre>
-                              </div>
+                          {visibleCases[safeCaseIdx].runtimeError && (
+                            <div className="text-rose-400 bg-rose-950/40 border border-rose-900/50 p-2 rounded text-xs whitespace-pre-wrap">
+                              {visibleCases[safeCaseIdx].runtimeError}
+                            </div>
+                          )}
+
+                          {!visibleCases[safeCaseIdx].compileError && !visibleCases[safeCaseIdx].runtimeError && (
+                            <div className="space-y-1">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                                Actual Output:
+                              </span>
+                              <pre className={`p-2.5 rounded-lg text-xs overflow-x-auto whitespace-pre max-h-28 border ${
+                                visibleCases[safeCaseIdx].passed
+                                  ? 'bg-emerald-950/20 text-emerald-300 border-emerald-800/40'
+                                  : 'bg-rose-950/20 text-rose-300 border-rose-800/40'
+                              }`}>
+                                {visibleCases[safeCaseIdx].actual || '(no stdout output)'}
+                              </pre>
                             </div>
                           )}
                         </div>
-                      ))}
-
-                      {/* Submission Overall Status Banner */}
-                      {submissionFeedback[currentQ._id] && (
-                        <div className={`p-3 rounded-xl border flex items-center justify-between font-mono ${
-                          submissionFeedback[currentQ._id].status === 'Accepted'
-                            ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                            : submissionFeedback[currentQ._id].status === 'Compilation Error'
-                            ? 'bg-rose-950/40 border-rose-800/60 text-rose-300'
-                            : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs">
-                              {submissionFeedback[currentQ._id].status}
-                            </span>
-                            <span className="text-xs text-slate-300">
-                              — {submissionFeedback[currentQ._id].message}
-                            </span>
-                          </div>
+                      ) : (
+                        <div className="py-2 text-center text-slate-500 text-xs">
+                          Click <strong className="text-slate-400">Run</strong> to execute your current editor code against this sample case.
                         </div>
                       )}
                     </div>
+                  ) : (
+                    <div className="text-slate-500 py-6 text-center">
+                      No sample test cases defined for this problem.
+                    </div>
                   )}
-              </div>
-            )}
+                </div>
+              )}
+
+              {/* 2. RESULTS SUMMARY VIEW */}
+              {!isRunning && !isSubmittingCode && activeTab === 'results' && (
+                <div className="space-y-3">
+                  {/* Submission Overall Status Banner */}
+                  {submissionFeedback[currentQ._id] && (
+                    <div className={`p-3 rounded-xl border flex items-center justify-between font-mono ${
+                      submissionFeedback[currentQ._id].status === 'Accepted'
+                        ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                        : submissionFeedback[currentQ._id].status === 'Compilation Error'
+                        ? 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                        : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs">
+                          {submissionFeedback[currentQ._id].status}
+                        </span>
+                        <span className="text-xs text-slate-300">
+                          — {submissionFeedback[currentQ._id].message}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {visibleCases.length > 0 ? (
+                    visibleCases.map(r => (
+                      <div
+                        key={r.testNumber}
+                        className={`p-3 rounded-xl border ${
+                          r.passed
+                            ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+                            : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2 font-bold">
+                            {r.passed ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-rose-400" />
+                            )}
+                            <span>Sample Case #{r.testNumber}</span>
+                            <span className="text-[11px] font-normal uppercase px-1.5 rounded bg-slate-800">
+                              {r.status}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400">{r.runtimeMs}ms</span>
+                        </div>
+
+                        {r.compileError && (
+                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
+                            {r.compileError}
+                          </div>
+                        )}
+                        {r.runtimeError && (
+                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
+                            {r.runtimeError}
+                          </div>
+                        )}
+
+                        {!r.passed && !r.compileError && !r.runtimeError && (
+                          <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
+                            <div>
+                              <span className="text-slate-400 block">Expected:</span>
+                              <pre className="bg-black/30 p-1 rounded text-emerald-400 whitespace-pre">
+                                {r.expected}
+                              </pre>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Actual:</span>
+                              <pre className="bg-black/30 p-1 rounded text-rose-400 whitespace-pre">
+                                {r.actual}
+                              </pre>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-slate-500 py-6 text-center">
+                      Click <strong>Run</strong> or <strong>Submit Code</strong> to view results.
+                    </div>
+                  )}
+                </div>
+              )}
 
             {/* Terminal Content - LeetCode-style Arbitrary Custom Testcase Panel */}
             {activeTab === 'custom' && (
@@ -734,6 +882,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>

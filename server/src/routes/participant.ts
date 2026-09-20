@@ -626,9 +626,10 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       }
     }
 
-    // Section 29 Self-Healing: Heal ghost submitted/expired records (0 score & 0 attempts) for active or not_started rounds
+    // Section 29 Self-Healing: Heal ghost submitted/expired records (0 score & 0 attempts & 0 time taken) for active or not_started rounds
     if (
       currentProgress &&
+      (currentProgress.timeTakenSeconds || 0) === 0 &&
       (currentProgress.status === 'submitted' || currentProgress.status === 'expired') &&
       (currentProgress.totalScore || 0) === 0
     ) {
@@ -777,9 +778,29 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     }
 
     let isFinalRound = false;
+    let hasNextRound = false;
+    let nextRoundId: string | null = null;
+
     if (req.user?.eventId) {
-      const maxDyn = await DynamicRound.findOne({ eventId: req.user.eventId }).sort({ roundNumber: -1 });
-      if (maxDyn && maxDyn.roundNumber === round.roundNumber) {
+      const allRounds = await DynamicRound.find({ eventId: req.user.eventId }).sort({ roundNumber: 1 });
+      const currentIdx = allRounds.findIndex(r => r.roundNumber === round.roundNumber);
+      if (currentIdx !== -1 && currentIdx === allRounds.length - 1) {
+        isFinalRound = true;
+      } else if (currentIdx !== -1 && currentIdx < allRounds.length - 1) {
+        hasNextRound = true;
+        nextRoundId = allRounds[currentIdx + 1]._id.toString();
+      } else if (allRounds.length > 0 && round.roundNumber >= allRounds[allRounds.length - 1].roundNumber) {
+        isFinalRound = true;
+      }
+    } else {
+      const allRounds = await Round.find().sort({ roundNumber: 1 });
+      const currentIdx = allRounds.findIndex(r => r.roundNumber === round.roundNumber);
+      if (currentIdx !== -1 && currentIdx === allRounds.length - 1) {
+        isFinalRound = true;
+      } else if (currentIdx !== -1 && currentIdx < allRounds.length - 1) {
+        hasNextRound = true;
+        nextRoundId = (allRounds[currentIdx + 1] as any)._id?.toString() || null;
+      } else if (allRounds.length > 0 && round.roundNumber >= allRounds[allRounds.length - 1].roundNumber) {
         isFinalRound = true;
       }
     }
@@ -863,13 +884,17 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         canStart,
         isQualifiedWaitingNextRound,
         nextRoundAvailable,
-        isFinalRound
+        isFinalRound,
+        hasNextRound,
+        nextRoundId
       },
       result: resultData,
       canStart,
       isQualifiedWaitingNextRound,
       nextRoundAvailable,
       isFinalRound,
+      hasNextRound,
+      nextRoundId,
       questions: sanitizedQuestions,
       attempts: existingAttempts.map(att => ({
         questionId: att.questionId,
@@ -929,30 +954,7 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
       return;
     }
 
-    if (round.status !== 'active') {
-      res.status(400).json({
-        error: `Cannot start Round ${roundNumber}: round is currently '${round.status}'. Waiting for admin to start.`,
-        roundStatus: round.status
-      });
-      return;
-    }
-
-    // Verify question presence & quota before participant starts
-    const qFilter: Record<string, any> = { roundNumber };
-    if (req.user?.eventId) qFilter.eventId = req.user.eventId;
-    const qCount = await Question.countDocuments(qFilter);
-    const targetCount = (round.questionCount !== undefined ? round.questionCount : null) || (roundNumber === 1 ? 10 : (round.type === 'mcq' ? 10 : 3));
-    if (qCount < targetCount) {
-      res.status(400).json({
-        error: `Cannot start Round ${roundNumber}. Administrator has not assigned all required questions (${qCount}/${targetCount}).`,
-        roundNumber,
-        requiredCount: targetCount,
-        assignedCount: qCount
-      });
-      return;
-    }
-
-    // If round > 1, check advancement eligibility
+    // If round > 1, check advancement eligibility first
     if (roundNumber > 1) {
       const prevQuery: any = { userId, roundNumber: roundNumber - 1 };
       if (req.user?.eventId) {
@@ -984,6 +986,29 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
       }
     }
 
+    if (round.status !== 'active') {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}: round is currently '${round.status}'. Waiting for admin to start.`,
+        roundStatus: round.status
+      });
+      return;
+    }
+
+    // Verify question presence & quota before participant starts
+    const qFilter: Record<string, any> = { roundNumber };
+    if (req.user?.eventId) qFilter.eventId = req.user.eventId;
+    const qCount = await Question.countDocuments(qFilter);
+    const targetCount = (round.questionCount !== undefined ? round.questionCount : null) || (roundNumber === 1 ? 10 : (round.type === 'mcq' ? 10 : 3));
+    if (qCount < targetCount) {
+      res.status(400).json({
+        error: `Cannot start Round ${roundNumber}. Administrator has not assigned all required questions (${qCount}/${targetCount}).`,
+        roundNumber,
+        requiredCount: targetCount,
+        assignedCount: qCount
+      });
+      return;
+    }
+
     // Find or create RoundProgress
     const progQuery: any = { userId, roundNumber };
     if (req.user?.eventId) progQuery.eventId = req.user.eventId;
@@ -993,7 +1018,7 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
     }
 
     // Section 29 Self-Healing: Check if existing submitted/expired attempt was a 0-attempt ghost record from the old bug
-    if (progress && (progress.status === 'submitted' || progress.status === 'expired') && (progress.totalScore || 0) === 0) {
+    if (progress && (progress.timeTakenSeconds || 0) === 0 && (progress.status === 'submitted' || progress.status === 'expired') && (progress.totalScore || 0) === 0) {
       const attemptCount = await Attempt.countDocuments({ userId, roundNumber });
       if (attemptCount === 0) {
         // Heal ghost record to not_started so participant can start their real attempt
@@ -1100,6 +1125,16 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
       }
     }
 
+    const targetQuestion = await Question.findById(questionId);
+    if (!targetQuestion) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (req.user?.eventId && targetQuestion.eventId && targetQuestion.eventId.toString() !== req.user.eventId.toString()) {
+      res.status(403).json({ error: 'Question does not belong to this competition event' });
+      return;
+    }
+
     const isTieBreak = roundNumber === 99;
     if (isTieBreak) {
       const activeTie = await TieBreak.findOne({ tiedUserIds: userId, status: 'active' });
@@ -1143,16 +1178,6 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'Time expired: Round duration has elapsed.' });
         return;
       }
-    }
-
-    const targetQuestion = await Question.findById(questionId);
-    if (!targetQuestion) {
-      res.status(404).json({ error: 'Question not found' });
-      return;
-    }
-    if (req.user?.eventId && targetQuestion.eventId && targetQuestion.eventId.toString() !== req.user.eventId.toString()) {
-      res.status(403).json({ error: 'Question does not belong to this competition event' });
-      return;
     }
 
     let attempt = await Attempt.findOne({ userId, roundNumber, questionId });
@@ -1599,6 +1624,7 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     }, collegeIdStr, eventIdStr);
 
     const hasCompileError = results.some(r => r.compileError);
+    const hasTimeout = results.some(r => r.timeout || r.status === 'timeout');
     const hasRuntimeError = results.filter(r => !r.isHidden).some(r => r.runtimeError);
     const allPassed = results.length > 0 && results.every(r => r.passed);
     const visibleResults = results.filter(r => !r.isHidden);
@@ -1609,6 +1635,9 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     if (hasCompileError) {
       status = 'Compilation Error';
       message = 'Compilation Error';
+    } else if (hasTimeout) {
+      status = 'Time Limit Exceeded';
+      message = 'Time Limit Exceeded: Your solution exceeded the execution time limit.';
     } else if (hasRuntimeError) {
       status = 'Runtime Error';
       message = 'Runtime Error';

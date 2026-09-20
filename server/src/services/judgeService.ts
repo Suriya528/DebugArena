@@ -273,7 +273,7 @@ async function executeLocal(
     fs.writeFileSync(scriptFile, code, 'utf-8');
 
     try {
-      const res = await runCommand('node', [scriptFile], stdinText, timeoutMs, tempDir);
+      const res = await runCommand('node', ['--max-old-space-size=256', scriptFile], stdinText, timeoutMs, tempDir);
       const cleanStderr = res.stderr.trim();
       const isSyntaxError = cleanStderr.includes('SyntaxError');
       const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);

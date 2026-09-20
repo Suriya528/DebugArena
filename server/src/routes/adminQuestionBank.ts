@@ -465,6 +465,12 @@ adminQuestionBankRouter.post('/populate-stage', async (req: AuthenticatedRequest
       createdDocs.push(newQ);
     }
 
+    if (dr) {
+      const templateIds = templatesToDeploy.map(t => t._id);
+      dr.selectedQuestionIds = [...(dr.selectedQuestionIds || []), ...templateIds] as any;
+      await dr.save();
+    }
+
     res.json({
       success: true,
       message: `Successfully populated ${createdDocs.length} questions for Stage ${targetRoundNumber}!`,

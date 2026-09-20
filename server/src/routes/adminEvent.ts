@@ -670,14 +670,16 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
     const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number; missingCount: number }> = [];
     for (const r of rounds) {
       const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
+      const runtimeQCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
+      const assignedCount = Math.max(selectedIds.length, runtimeQCount);
       const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-      if (selectedIds.length !== targetCount) {
+      if (assignedCount < targetCount) {
         incompleteRounds.push({
           roundNumber: r.roundNumber,
           title: r.title,
-          assignedCount: selectedIds.length,
+          assignedCount,
           requiredCount: targetCount,
-          missingCount: Math.max(0, targetCount - selectedIds.length)
+          missingCount: Math.max(0, targetCount - assignedCount)
         });
       }
     }
@@ -687,7 +689,7 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
         .map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected (${r.missingCount} more required)`)
         .join('; ');
       res.status(400).json({
-        error: `Cannot start event. No individual round can start until every configured round has its complete question set. Incomplete rounds: ${summaryList}`,
+        error: `Cannot start event. No individual round can start until every configured round has its complete question set. Please select questions for incomplete rounds: ${summaryList}`,
         incompleteRounds
       });
       return;
@@ -736,6 +738,7 @@ adminEventRouter.post('/:eventId/start', async (req: AuthenticatedRequest, res: 
 
     res.json({ message: 'Event is now LIVE!', event, startedAt: now });
   } catch (err) {
+    console.error('Start event error:', err);
     res.status(500).json({ error: 'Failed to start event' });
   }
 });
@@ -788,10 +791,11 @@ adminEventRouter.get('/:eventId', async (req: AuthenticatedRequest, res: Respons
     const enrichedRounds = await Promise.all(
       rounds.map(async (r) => {
         const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
+        const runtimeQCount = await Question.countDocuments({ eventId: event._id, roundNumber: r.roundNumber });
         const targetQuestionCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-        const assignedQuestionCount = selectedIds.length;
+        const assignedQuestionCount = Math.max(selectedIds.length, runtimeQCount);
         const missingQuestionCount = Math.max(0, targetQuestionCount - assignedQuestionCount);
-        const isQuestionReady = assignedQuestionCount === targetQuestionCount && missingQuestionCount === 0;
+        const isQuestionReady = assignedQuestionCount >= targetQuestionCount && missingQuestionCount === 0;
 
         if (!isQuestionReady) {
           allRoundsQuestionsReady = false;
@@ -1432,30 +1436,17 @@ adminEventRouter.post('/:eventId/rounds/:roundNumber/start', async (req: Authent
       return;
     }
 
-    // Universal Start Invariant: No individual round can start until every configured round in the tournament has its complete question set!
-    const allRounds = await DynamicRound.find({ eventId }).sort({ roundNumber: 1 });
-    const incompleteRounds: Array<{ roundNumber: number; title: string; assignedCount: number; requiredCount: number; missingCount: number }> = [];
-    for (const r of allRounds) {
-      const selectedIds = Array.isArray(r.selectedQuestionIds) ? r.selectedQuestionIds : [];
-      const targetCount = r.questionCount || (r.type === 'mcq' ? 10 : 3);
-      if (selectedIds.length !== targetCount) {
-        incompleteRounds.push({
-          roundNumber: r.roundNumber,
-          title: r.title,
-          assignedCount: selectedIds.length,
-          requiredCount: targetCount,
-          missingCount: Math.max(0, targetCount - selectedIds.length)
-        });
-      }
-    }
-
-    if (incompleteRounds.length > 0) {
-      const summaryList = incompleteRounds
-        .map(r => `Round ${r.roundNumber} ("${r.title}"): ${r.assignedCount}/${r.requiredCount} questions selected (${r.missingCount} more required)`)
-        .join('; ');
+    // Verify question presence & quota for this specific round before starting
+    const selectedIds = Array.isArray(round.selectedQuestionIds) ? round.selectedQuestionIds : [];
+    const runtimeQCount = await Question.countDocuments({ eventId, roundNumber: parsedRound });
+    const assignedCount = Math.max(selectedIds.length, runtimeQCount);
+    const targetCount = round.questionCount || (round.type === 'mcq' ? 10 : 3);
+    if (assignedCount < targetCount) {
       res.status(400).json({
-        error: `Cannot start Round ${parsedRound}. No individual round can start until every configured round has its complete question set. Incomplete rounds: ${summaryList}`,
-        incompleteRounds
+        error: `Cannot start Round ${parsedRound}. Administrator has not assigned all required questions (${assignedCount}/${targetCount}). Please select questions for Round ${parsedRound}.`,
+        roundNumber: parsedRound,
+        requiredCount: targetCount,
+        assignedCount
       });
       return;
     }

@@ -210,13 +210,6 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       }
     };
 
-    // Prevent top scroll pull / overscroll
-    const handleWheel = (e: WheelEvent) => {
-      if (window.scrollY <= 0 && e.deltaY < 0) {
-        e.preventDefault();
-      }
-    };
-
     // Prevent navigating away or opening new tabs via hyperlinks in question prompts
     const handleClick = (e: MouseEvent) => {
       if (!isEnabledRef.current) return;
@@ -235,7 +228,6 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('selectstart', handleSelectStart);
-    window.addEventListener('wheel', handleWheel, { passive: false });
     document.addEventListener('click', handleClick, true);
 
     return () => {
@@ -251,7 +243,6 @@ export function useFullscreen({ enabled, onViolation }: UseFullscreenProps) {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('selectstart', handleSelectStart);
-      window.removeEventListener('wheel', handleWheel);
       document.removeEventListener('click', handleClick, true);
     };
   }, [enabled]);

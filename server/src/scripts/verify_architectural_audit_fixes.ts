@@ -173,6 +173,15 @@ async function runTests() {
   dynRound.startedAt = new Date(Date.now() - 60000);
   await dynRound.save();
 
+  await RoundProgress.create({
+    userId: studentId,
+    roundNumber: 2,
+    eventId: event._id,
+    status: 'in_progress',
+    startedAt: new Date(),
+    endsAt: new Date(Date.now() + 30 * 60 * 1000)
+  });
+
   console.log('--- TEST 2: run-code Protected Against Post-Submission & Deadline Expiry ---');
   // First run-code should succeed
   const runRes1 = await fetch(`${baseUrl}/api/participant/run-code`, {

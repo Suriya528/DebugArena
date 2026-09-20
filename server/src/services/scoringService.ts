@@ -119,7 +119,7 @@ export async function finalizeParticipantRoundScore(
   let submittedAt = progress.submittedAt || now;
 
   if (progress.status !== 'submitted' || forceRecalculateTime || !progress.submittedAt) {
-    const rawElapsed = Math.max(0, Math.floor((now.getTime() - new Date(startTime).getTime()) / 1000));
+    const rawElapsed = Math.max(1, Math.floor((now.getTime() - new Date(startTime).getTime()) / 1000));
     timeTakenSeconds = Math.min(maxDurationSec, rawElapsed);
     submittedAt = now;
   }

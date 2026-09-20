@@ -149,7 +149,7 @@ export const TieBreakShell: React.FC<TieBreakShellProps> = ({
             activeLanguage={language}
             onLanguageChange={handleLanguageChange}
             onResetToErrorCode={handleResetToStarter}
-            showSampleCases={true}
+            showSampleCases={false}
           />
         </div>
 
