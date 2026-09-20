@@ -1,5 +1,15 @@
 import dotenv from 'dotenv';
+import { isIsolatedVerificationMode, isVerificationEntryPoint } from '../verification/safety.js';
 dotenv.config();
+
+// Legacy verification scripts used to inherit .env and could therefore reach
+// whatever database a developer had configured. Require the explicit isolated
+// mode marker before those scripts load any application configuration.
+if (isVerificationEntryPoint() && !isIsolatedVerificationMode()) {
+  throw new Error(
+    '[SAFE VERIFICATION] Direct verification scripts are disabled by default. Run npm test, which uses an isolated in-memory database.'
+  );
+}
 
 export const DEFAULT_DEV_JWT_SECRET = 'debugarena-super-secure-jwt-secret-key-2026';
 

@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.verification.json --noEmit",
+    "test": "tsx src/verification/run_verification.ts all",
+    "test:critical": "tsx src/verification/run_verification.ts critical",
+    "test:judge": "tsx src/verification/run_verification.ts judge",
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
     "clean-demo": "tsx src/scripts/purge_demo_data.ts",

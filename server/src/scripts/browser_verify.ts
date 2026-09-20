@@ -1,12 +1,23 @@
 import puppeteer from 'puppeteer-core';
 import path from 'path';
+import fs from 'fs';
 import axios from 'axios';
+import { assertLoopbackVerificationUrl, requireIsolatedVerification } from '../verification/safety.js';
 
-const ARTIFACT_DIR = 'C:/Users/Admin/.gemini/antigravity/brain/ca14c8ba-a716-430a-a329-a9eaf281363b';
-const CHROME_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const API = 'http://localhost:5000/api';
+const ARTIFACT_DIR = process.env.VERIFY_ARTIFACT_DIR || path.resolve(process.cwd(), 'verification-artifacts');
+const CHROME_PATH = process.env.VERIFY_CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const API = process.env.VERIFY_API_URL || 'http://127.0.0.1:5000/api';
+const CLIENT_URL = process.env.VERIFY_CLIENT_URL || 'http://127.0.0.1:5173';
 
 async function runBrowserVerification() {
+  requireIsolatedVerification('Legacy browser verification');
+  assertLoopbackVerificationUrl(API, 'Legacy browser verification API');
+  assertLoopbackVerificationUrl(CLIENT_URL, 'Legacy browser verification client');
+  const health = await axios.get(new URL('/api/health', API).toString(), { timeout: 5_000 });
+  if (health.data?.verificationMode !== true) {
+    throw new Error('[SAFE VERIFICATION] Refusing to run browser checks against a server that is not marked as isolated verification mode.');
+  }
+  fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
   console.log('🌐 Preparing fresh participant for test...');
   const adminRes = await axios.post(`${API}/auth/login`, { username: 'admin', password: 'admin123' });
   const adminToken = adminRes.data.token;
@@ -30,16 +41,16 @@ async function runBrowserVerification() {
   await page.setViewport({ width: 1440, height: 900 });
 
   // 1. Visit Login Page
-  console.log('📸 Step 1: Navigating to Login Page (http://localhost:5173)...');
-  await page.goto('http://localhost:5173', { waitUntil: 'networkidle2' });
+  console.log(`📸 Step 1: Navigating to Login Page (${CLIENT_URL})...`);
+  await page.goto(CLIENT_URL, { waitUntil: 'networkidle2' });
   await page.screenshot({ path: path.join(ARTIFACT_DIR, '01_login_page.png') });
   console.log('✅ Saved 01_login_page.png');
 
   // 2. Login as Admin
   console.log('📸 Step 2: Logging in as Admin...');
-  await page.click('input[placeholder*="team1 or admin"]', { clickCount: 3 });
+  await page.click('input[placeholder*="team1 or admin"]', { count: 3 });
   await page.type('input[placeholder*="team1 or admin"]', 'admin');
-  await page.click('input[type="password"]', { clickCount: 3 });
+  await page.click('input[type="password"]', { count: 3 });
   await page.type('input[type="password"]', 'admin123');
   await page.click('button[type="submit"]');
   await page.waitForSelector('text=Live Assessment Event Feed', { timeout: 10000 });
@@ -83,14 +94,14 @@ async function runBrowserVerification() {
   // 7. Clear localStorage and navigate fresh to Login Page
   console.log('📸 Step 7: Navigating clean to Login Page for Participant...');
   await page.evaluate(() => localStorage.clear());
-  await page.goto('http://localhost:5173', { waitUntil: 'networkidle2' });
+  await page.goto(CLIENT_URL, { waitUntil: 'networkidle2' });
   await page.waitForSelector('text=Sign In to Assessment', { timeout: 10000 });
 
   // 8. Login as Participant (team_demo)
   console.log('📸 Step 8: Logging in as Participant (team_demo)...');
-  await page.click('input[placeholder*="team1 or admin"]', { clickCount: 3 });
+  await page.click('input[placeholder*="team1 or admin"]', { count: 3 });
   await page.type('input[placeholder*="team1 or admin"]', 'team_demo');
-  await page.click('input[type="password"]', { clickCount: 3 });
+  await page.click('input[type="password"]', { count: 3 });
   await page.type('input[type="password"]', 'debug123');
   await page.click('button[type="submit"]');
 
@@ -127,12 +138,12 @@ async function runBrowserVerification() {
   // 11. Clear localStorage and login as team1 to view Coding Shell
   console.log('📸 Step 11: Signing in as team1 to view Coding Shell...');
   await page.evaluate(() => localStorage.clear());
-  await page.goto('http://localhost:5173', { waitUntil: 'networkidle2' });
+  await page.goto(CLIENT_URL, { waitUntil: 'networkidle2' });
   await page.waitForSelector('text=Sign In to Assessment', { timeout: 10000 });
 
-  await page.click('input[placeholder*="team1 or admin"]', { clickCount: 3 });
+  await page.click('input[placeholder*="team1 or admin"]', { count: 3 });
   await page.type('input[placeholder*="team1 or admin"]', 'team1');
-  await page.click('input[type="password"]', { clickCount: 3 });
+  await page.click('input[type="password"]', { count: 3 });
   await page.type('input[type="password"]', 'debug123');
   await page.click('button[type="submit"]');
 

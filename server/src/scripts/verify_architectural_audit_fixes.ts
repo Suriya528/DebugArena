@@ -18,14 +18,18 @@ import { Attempt } from '../models/Attempt.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { authRouter } from '../routes/auth.js';
 import { initSocketIO } from '../services/socketService.js';
+import { assertIsolatedMongoConnection, requireIsolatedVerification } from '../verification/safety.js';
 
 let mongod: MongoMemoryServer;
 let server: http.Server;
 let baseUrl: string;
 
 async function setup() {
+  requireIsolatedVerification('Architectural audit verification');
   mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri());
+  const uri = mongod.getUri();
+  assertIsolatedMongoConnection(uri);
+  await mongoose.connect(uri);
   await User.init();
 
   const app = express();
@@ -109,12 +113,10 @@ async function runTests() {
   });
 
   dynRound1.questionCount = 1;
-  dynRound1.totalQuestions = 1;
   dynRound1.selectedQuestionIds = [question1._id as any];
   await dynRound1.save();
 
   dynRound.questionCount = 1;
-  dynRound.totalQuestions = 1;
   dynRound.selectedQuestionIds = [question._id as any];
   await dynRound.save();
 

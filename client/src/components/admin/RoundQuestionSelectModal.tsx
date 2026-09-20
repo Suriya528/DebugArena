@@ -206,10 +206,10 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
     });
   };
 
-  // Save selected questions
+  // Save selected questions (complete or draft)
   const handleSave = async () => {
-    if (selectedIds.length !== requiredCount) {
-      setErrorMessage(`Please select exactly ${requiredCount} questions. Currently ${selectedIds.length} selected.`);
+    if (selectedIds.length > requiredCount) {
+      setErrorMessage(`Cannot select more than ${requiredCount} questions. Currently ${selectedIds.length} selected.`);
       return;
     }
 
@@ -223,8 +223,8 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
           selectedQuestionIds: selectedIds,
           assignedQuestionCount: selectedIds.length,
           targetQuestionCount: requiredCount,
-          missingQuestionCount: 0,
-          isQuestionReady: true
+          missingQuestionCount: Math.max(0, requiredCount - selectedIds.length),
+          isQuestionReady: selectedIds.length === requiredCount
         });
         onClose();
       }
@@ -770,16 +770,22 @@ export const RoundQuestionSelectModal: React.FC<RoundQuestionSelectModalProps> =
             </button>
             <button
               type="button"
-              disabled={!isComplete || saving}
+              disabled={saving || selectedIds.length > requiredCount}
               onClick={handleSave}
               className={`px-5 py-2 rounded-xl font-mono text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
                 isComplete
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-500/20 active:scale-95'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 active:scale-95'
               }`}
             >
               <Check className="w-4 h-4" />
-              <span>{saving ? 'Saving...' : 'Save Selection'}</span>
+              <span>
+                {saving
+                  ? 'Saving...'
+                  : isComplete
+                  ? 'Save Selection'
+                  : `Save as Draft (${selectedCount}/${requiredCount})`}
+              </span>
             </button>
           </div>
         </div>

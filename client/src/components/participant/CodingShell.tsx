@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import {
   Play,
@@ -39,12 +39,24 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
   const currentQ = questions[currentQIndex];
 
+  // Ref to the live Monaco editor instance to guarantee current code is always executed
+  const editorRef = useRef<any>(null);
+  // Ref to the left problem description panel for scroll management
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+
   // Map of questionId -> language
   const [selectedLanguages, setSelectedLanguages] = useState<Record<string, string>>({});
-  // Map of questionId -> code
+  // Map of `${questionId}_${language}` -> code (per-language buffer prevents cross-language overwrites)
   const [codeBuffers, setCodeBuffers] = useState<Record<string, string>>({});
   // Map of questionId -> best score
   const [scores, setScores] = useState<Record<string, number>>({});
+
+  // Reset left panel scroll position to top whenever active question changes
+  useEffect(() => {
+    if (leftPanelRef.current) {
+      leftPanelRef.current.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [currentQIndex]);
 
   // Execution states
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -76,28 +88,36 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     questions.forEach(q => {
       const existingAttempt = initialAttempts.find(a => a.questionId === q._id);
       const defaultLang = (q.allowedLanguages && q.allowedLanguages[0]) || 'python';
-      const localDraft = localStorage.getItem(`debugarena_code_draft_${roundNumber}_${q._id}`);
       const localLang = localStorage.getItem(`debugarena_lang_draft_${roundNumber}_${q._id}`);
+      const chosenLang = localLang || existingAttempt?.language || defaultLang;
+      langs[q._id] = chosenLang;
 
-      if (localDraft) {
-        langs[q._id] = localLang || existingAttempt?.language || defaultLang;
-        codes[q._id] = localDraft;
-        bestScores[q._id] = existingAttempt?.score || 0;
-        if (existingAttempt?.testCaseResults) {
-          existingResults[q._id] = existingAttempt.testCaseResults;
+      const allowed = q.allowedLanguages && q.allowedLanguages.length > 0
+        ? q.allowedLanguages
+        : ['python', 'cpp', 'java', 'c', 'javascript'];
+
+      allowed.forEach(l => {
+        const bufferKey = `${q._id}_${l}`;
+        const localDraft = localStorage.getItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`);
+        if (localDraft) {
+          codes[bufferKey] = localDraft;
+        } else if (existingAttempt && existingAttempt.language === l && existingAttempt.code) {
+          codes[bufferKey] = existingAttempt.code;
+        } else {
+          const starter = (q.starterCode && (q.starterCode as any)[l]) || '// Write your solution here';
+          codes[bufferKey] = starter;
         }
-      } else if (existingAttempt && existingAttempt.code) {
-        langs[q._id] = existingAttempt.language || defaultLang;
-        codes[q._id] = existingAttempt.code;
-        bestScores[q._id] = existingAttempt.score || 0;
-        if (existingAttempt.testCaseResults) {
-          existingResults[q._id] = existingAttempt.testCaseResults;
-        }
-      } else {
-        langs[q._id] = defaultLang;
-        const starter = (q.starterCode && (q.starterCode as any)[defaultLang]) || '// Write your solution here';
-        codes[q._id] = starter;
-        bestScores[q._id] = 0;
+      });
+
+      // Backward compatibility for legacy drafts saved without language suffix
+      const legacyDraft = localStorage.getItem(`debugarena_code_draft_${roundNumber}_${q._id}`);
+      if (legacyDraft && !codes[`${q._id}_${chosenLang}`]) {
+        codes[`${q._id}_${chosenLang}`] = legacyDraft;
+      }
+
+      bestScores[q._id] = existingAttempt?.score || 0;
+      if (existingAttempt?.testCaseResults) {
+        existingResults[q._id] = existingAttempt.testCaseResults;
       }
     });
 
@@ -143,11 +163,13 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const handleCodeChange = (newCode: string | undefined) => {
     if (!currentQ || newCode === undefined) return;
     const qId = currentQ._id;
-    setCodeBuffers(prev => ({ ...prev, [qId]: newCode }));
+    const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+    const bufferKey = `${qId}_${lang}`;
+    setCodeBuffers(prev => ({ ...prev, [bufferKey]: newCode }));
     try {
-      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${qId}`, newCode);
+      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, newCode);
     } catch {}
-    debouncedSaveCode(qId, newCode, selectedLanguages[qId] || 'python');
+    debouncedSaveCode(qId, newCode, lang);
   };
 
   const handleLanguageChange = (newLang: string) => {
@@ -158,38 +180,45 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       localStorage.setItem(`debugarena_lang_draft_${roundNumber}_${qId}`, newLang);
     } catch {}
 
-    // If current code equals starter code of previous language or is empty, switch to new language starter code
-    const currentCode = codeBuffers[qId];
-    const prevLang = selectedLanguages[qId] || 'python';
-    const prevStarter = (currentQ.starterCode && (currentQ.starterCode as any)[prevLang]) || '';
-    const newStarter = (currentQ.starterCode && (currentQ.starterCode as any)[newLang]) || '';
-
-    if (!currentCode || currentCode === prevStarter) {
-      setCodeBuffers(prev => ({ ...prev, [qId]: newStarter }));
-      try {
-        localStorage.setItem(`debugarena_code_draft_${roundNumber}_${qId}`, newStarter);
-      } catch {}
-      debouncedSaveCode(qId, newStarter, newLang);
-    } else {
-      debouncedSaveCode(qId, currentCode, newLang);
+    const bufferKey = `${qId}_${newLang}`;
+    let langCode = codeBuffers[bufferKey];
+    if (langCode === undefined) {
+      langCode = (currentQ.starterCode && (currentQ.starterCode as any)[newLang]) || '// Write your solution here';
+      setCodeBuffers(prev => ({ ...prev, [bufferKey]: langCode }));
     }
+    debouncedSaveCode(qId, langCode, newLang);
   };
 
   const handleResetToStarter = () => {
     if (!currentQ) return;
     const qId = currentQ._id;
-    const lang = selectedLanguages[qId] || 'python';
+    const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const starter = (currentQ.starterCode && (currentQ.starterCode as any)[lang]) || '';
-    setCodeBuffers(prev => ({ ...prev, [qId]: starter }));
+    const bufferKey = `${qId}_${lang}`;
+    setCodeBuffers(prev => ({ ...prev, [bufferKey]: starter }));
+    try {
+      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, starter);
+    } catch {}
     debouncedSaveCode(qId, starter, lang);
+  };
+
+  // Helper to ensure current live Monaco content is always read
+  const getCurrentLiveCode = (qId: string, lang: string): string => {
+    if (currentQ && currentQ._id === qId && (selectedLanguages[qId] || 'python') === lang && editorRef.current) {
+      try {
+        const liveVal = editorRef.current.getValue();
+        if (typeof liveVal === 'string') return liveVal;
+      } catch {}
+    }
+    return codeBuffers[`${qId}_${lang}`] || '';
   };
 
   // Run Code: against visible sample test cases OR arbitrary custom input
   const handleRunCode = async () => {
     if (!currentQ || isRunning || isSubmittingCode) return;
     const qId = currentQ._id;
-    const code = codeBuffers[qId] || '';
-    const lang = selectedLanguages[qId] || 'python';
+    const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+    const code = getCurrentLiveCode(qId, lang);
 
     setIsRunning(true);
 
@@ -235,8 +264,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const handleSubmitCode = async () => {
     if (!currentQ || isRunning || isSubmittingCode) return;
     const qId = currentQ._id;
-    const code = codeBuffers[qId] || '';
-    const lang = selectedLanguages[qId] || 'python';
+    const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+    const code = getCurrentLiveCode(qId, lang);
 
     setIsSubmittingCode(true);
     setActiveTab('results');
@@ -279,8 +308,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     );
   }
 
-  const currentLang = selectedLanguages[currentQ._id] || 'python';
-  const currentCode = codeBuffers[currentQ._id] || '';
+  const currentLang = selectedLanguages[currentQ._id] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+  const currentCode = codeBuffers[`${currentQ._id}_${currentLang}`] ?? '';
   const currentResults = runResults[currentQ._id] || [];
   const currentScore = scores[currentQ._id] || 0;
 
@@ -388,8 +417,13 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
       {/* Main Split-Pane Workspace */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-        {/* Left Pane: Problem Statement & Test Cases */}
-        <div className={`lg:col-span-5 border-r border-slate-800/80 bg-slate-900/50 flex-col overflow-y-auto ${mobileView === 'problem' ? 'flex flex-1' : 'hidden lg:flex'}`}>
+        {/* Left Pane: Problem Statement */}
+        <div
+          ref={leftPanelRef}
+          className={`lg:col-span-5 border-r border-slate-800/80 bg-slate-900/50 flex flex-col h-full min-h-0 overflow-y-auto overscroll-contain ${
+            mobileView === 'problem' ? 'flex flex-1' : 'hidden lg:flex'
+          }`}
+        >
           <div className="p-4 sm:p-6 space-y-6">
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -405,13 +439,13 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               </h1>
             </div>
 
-            {/* Structured Problem Breakdown: Scenario, Input, Output, Error Code, Sample Cases */}
+            {/* Structured Problem Breakdown: Scenario, Input, Output, Error Code, Constraints */}
             <CodingProblemDetails
               question={currentQ}
               activeLanguage={currentLang}
               onLanguageChange={handleLanguageChange}
               onResetToErrorCode={handleResetToStarter}
-              showSampleCases={true}
+              showSampleCases={false}
             />
           </div>
         </div>
@@ -471,7 +505,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 ) : (
                   <Play className="w-3.5 h-3.5 fill-slate-300" />
                 )}
-                <span>Run</span>
+                <span>Run Sample</span>
               </button>
 
               {/* Submit Code */}
@@ -498,6 +532,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               theme={isDark ? "vs-dark" : "light"}
               value={currentCode}
               onChange={handleCodeChange}
+              onMount={(editor) => { editorRef.current = editor; }}
               options={{
                 fontSize: 13,
                 fontFamily: "'JetBrains Mono', monospace",
@@ -580,7 +615,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   ) : (
                     <Play className="w-3 h-3 fill-slate-300" />
                   )}
-                  <span>Run</span>
+                  <span>Run Sample</span>
                 </button>
               </div>
             </div>

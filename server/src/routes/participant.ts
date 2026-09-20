@@ -575,7 +575,10 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           })),
           timeLimitMs: question.timeLimitMs
         } : null,
-        attempt: attempt || null
+        attempt: attempt ? {
+          ...(typeof (attempt as any).toObject === 'function' ? (attempt as any).toObject() : attempt),
+          testCaseResults: sanitizeResultsForParticipant(attempt.testCaseResults || [])
+        } : null
       });
       return;
     }

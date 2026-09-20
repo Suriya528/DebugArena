@@ -163,14 +163,27 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
       }
     }
   } else if (normLang === 'sql') {
+    // Participant SQL is executed against a per-test in-memory database, but
+    // it must still be a read-only query. The setup SQL belongs to the judge,
+    // not to the participant. Require SELECT/WITH and reject every common DDL,
+    // DML, administrative, or transaction-control operation (including one
+    // nested in a CTE).
+    const readQueryStart = /^\s*(?:(?:--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)\s*)*(?:SELECT|WITH)\b/i;
     const forbiddenPatterns = [
+      /\b(?:INSERT|UPDATE|DELETE|REPLACE|MERGE|UPSERT|CREATE|ALTER|DROP|TRUNCATE|VACUUM|REINDEX|ANALYZE)\b/i,
       /\bATTACH\s+DATABASE\b/i,
-      /\bPRAGMA\s+writable_schema\b/i
+      /\bDETACH\s+DATABASE\b/i,
+      /\bPRAGMA\b/i,
+      /\b(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i
     ];
+
+    if (!readQueryStart.test(code)) {
+      return { safe: false, reason: 'Security Restriction: SQL submissions must be a read-only SELECT or WITH query.' };
+    }
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed SQL administrative command (${pattern.source})` };
+        return { safe: false, reason: `Security Restriction: Disallowed SQL write or administrative command (${pattern.source})` };
       }
     }
   }
@@ -199,10 +212,24 @@ function runCommand(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      if (process.platform === 'win32' && child.pid) {
-        spawn('taskkill', ['/F', '/T', '/PID', child.pid.toString()], { windowsHide: true });
-      } else {
+      // child.kill maps to TerminateProcess on Windows and is the primary,
+      // synchronous best-effort termination path. taskkill remains a fallback
+      // for a compiler/runtime that spawned descendants. Previously Windows
+      // relied only on taskkill and an infinite Node process could survive.
+      try {
         child.kill('SIGKILL');
+      } catch {
+        // The process may already have exited between the timer and kill.
+      }
+      if (process.platform === 'win32' && child.pid) {
+        const killer = spawn('taskkill', ['/F', '/T', '/PID', child.pid.toString()], { windowsHide: true });
+        killer.on('error', () => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // The primary kill attempt is sufficient when the process is gone.
+          }
+        });
       }
     }, timeoutMs);
 

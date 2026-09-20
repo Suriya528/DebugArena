@@ -17,6 +17,7 @@ import { timeSyncRouter } from './routes/timeSync.js';
 import { tenantContext } from './middleware/tenantContext.js';
 import { QuestionTemplate } from './models/QuestionTemplate.js';
 import { seedDefaultQuestionTemplates } from './services/defaultQuestions.js';
+import { isIsolatedVerificationMode } from './verification/safety.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -52,7 +53,12 @@ app.use(tenantContext as any);
 
 // Health Check (Always open and unthrottled)
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', service: 'DebugArena API', timestamp: new Date() });
+  res.json({
+    status: 'ok',
+    service: 'DebugArena API',
+    timestamp: new Date(),
+    verificationMode: isIsolatedVerificationMode()
+  });
 });
 
 // Rate Limiting Guards

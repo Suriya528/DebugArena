@@ -1249,9 +1249,9 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
     }
 
     const requiredCount = round.questionCount;
-    if (questionIds.length !== requiredCount) {
+    if (questionIds.length > requiredCount) {
       res.status(400).json({
-        error: `Round requires exactly ${requiredCount} questions, but ${questionIds.length} were provided.`,
+        error: `Round quota exceeded. Maximum allowed is ${requiredCount} questions, but ${questionIds.length} were provided.`,
         requiredCount,
         providedCount: questionIds.length
       });
@@ -1265,10 +1265,18 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
       return;
     }
 
-    // Fetch all QuestionTemplates
-    const templates = await QuestionTemplate.find({ _id: { $in: questionIds } });
+    // Fetch all QuestionTemplates with Tenant Isolation check
+    const templateFilter: any = { _id: { $in: questionIds } };
+    if (req.user?.role !== 'super_admin' && req.user?.collegeId) {
+      templateFilter.$or = [
+        { collegeId: null },
+        { collegeId: { $exists: false } },
+        { collegeId: req.user.collegeId }
+      ];
+    }
+    const templates = await QuestionTemplate.find(templateFilter);
     if (templates.length !== questionIds.length) {
-      res.status(400).json({ error: 'One or more selected questions could not be found in the Master Question Bank.' });
+      res.status(400).json({ error: 'One or more selected questions could not be found or are not authorized for your organization in the Master Question Bank.' });
       return;
     }
 
