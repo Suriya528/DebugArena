@@ -95,7 +95,11 @@ const QuestionSchema = new Schema<IQuestion>(
       index: true
     }
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toObject: { flattenMaps: true },
+    toJSON: { flattenMaps: true }
+  }
 );
 
 export const Question = mongoose.model<IQuestion>('Question', QuestionSchema);

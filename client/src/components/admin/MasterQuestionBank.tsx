@@ -803,8 +803,11 @@ export const MasterQuestionBank: React.FC = () => {
               )}
 
               {/* Code Inspection (Starter Code vs Reference Solution) */}
-              {((viewingTemplate.starterCode && Object.keys(viewingTemplate.starterCode).length > 0) ||
-                (viewingTemplate.solutionCode && Object.keys(viewingTemplate.solutionCode).length > 0)) && (
+              {(() => {
+                const sc: any = viewingTemplate.starterCode instanceof Map ? Object.fromEntries(viewingTemplate.starterCode) : (viewingTemplate.starterCode || {});
+                const sol: any = viewingTemplate.solutionCode instanceof Map ? Object.fromEntries(viewingTemplate.solutionCode) : (viewingTemplate.solutionCode || {});
+                return (Object.keys(sc).length > 0 || Object.keys(sol).length > 0);
+              })() && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -860,11 +863,18 @@ export const MasterQuestionBank: React.FC = () => {
                     </div>
                     <pre className="p-3 text-xs font-mono text-[#F3F4F6] overflow-x-auto leading-relaxed whitespace-pre-wrap max-h-64">
                       {detailCodeMode === 'starter'
-                        ? ((viewingTemplate.starterCode && (viewingTemplate.starterCode[detailActiveLang] || viewingTemplate.starterCode[detailActiveLang.toLowerCase()])) ||
-                          Object.values(viewingTemplate.starterCode || {})[0] ||
-                          '// No starter code available for this language')
-                        : ((viewingTemplate.solutionCode && ((viewingTemplate.solutionCode as any)[detailActiveLang] || (viewingTemplate.solutionCode as any)[detailActiveLang.toLowerCase()])) ||
-                          '// No reference solution available for this language')}
+                        ? (() => {
+                            const sc: any = viewingTemplate.starterCode instanceof Map
+                              ? Object.fromEntries(viewingTemplate.starterCode)
+                              : (viewingTemplate.starterCode || {});
+                            return sc[detailActiveLang] || sc[detailActiveLang.toLowerCase()] || Object.values(sc)[0] || '// No starter code available for this language';
+                          })()
+                        : (() => {
+                            const sol: any = viewingTemplate.solutionCode instanceof Map
+                              ? Object.fromEntries(viewingTemplate.solutionCode)
+                              : (viewingTemplate.solutionCode || {});
+                            return sol[detailActiveLang] || sol[detailActiveLang.toLowerCase()] || '// No reference solution available for this language';
+                          })()}
                     </pre>
                   </div>
                 </div>

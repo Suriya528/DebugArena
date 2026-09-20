@@ -566,7 +566,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           constraints: question.constraints || '',
           marks: question.marks,
           allowedLanguages: question.allowedLanguages,
-          starterCode: question.starterCode,
+          starterCode: question.starterCode instanceof Map ? Object.fromEntries(question.starterCode) : (question.starterCode || {}),
           testCases: (question.testCases || []).filter(tc => !tc.isHidden).map(tc => ({
             input: tc.input,
             expectedOutput: tc.expectedOutput,
@@ -699,7 +699,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Sanitize questions: strip correct answers for MCQ and apply Question DNA mutation per candidate!
     const sanitizedQuestions = questions.map(q => {
       let prompt = q.prompt;
-      let starterCode = q.starterCode;
+      let starterCode = q.starterCode instanceof Map ? Object.fromEntries(q.starterCode) : (q.starterCode ? { ...q.starterCode } : {});
       let testCases = q.testCases || [];
 
       // Check if question has matching DNA template for mutation per candidate

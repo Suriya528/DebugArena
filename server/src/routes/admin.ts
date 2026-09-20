@@ -1416,7 +1416,21 @@ adminRouter.get('/questions', async (req: AuthenticatedRequest, res: Response): 
     }
 
     const questions = await Question.find(filter).sort({ roundNumber: 1, orderIndex: 1 });
-    res.json({ questions });
+    const formatted = questions.map(q => {
+      const obj: any = q.toObject({ flattenMaps: true });
+      if (obj.starterCode instanceof Map) {
+        obj.starterCode = Object.fromEntries(obj.starterCode);
+      } else if (!obj.starterCode || typeof obj.starterCode !== 'object') {
+        obj.starterCode = {};
+      }
+      if (obj.solutionCode instanceof Map) {
+        obj.solutionCode = Object.fromEntries(obj.solutionCode);
+      } else if (!obj.solutionCode || typeof obj.solutionCode !== 'object') {
+        obj.solutionCode = {};
+      }
+      return obj;
+    });
+    res.json({ questions: formatted });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch questions' });
   }
@@ -1526,8 +1540,43 @@ adminRouter.post('/questions', async (req: AuthenticatedRequest, res: Response):
 // PUT /api/admin/questions/:id
 adminRouter.put('/questions/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const question = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json({ success: true, question });
+    const { starterCode, solutionCode, ...otherFields } = req.body;
+    let updateData: any = { ...otherFields };
+    if (starterCode && typeof starterCode === 'object') {
+      const existing = await Question.findById(req.params.id);
+      if (existing) {
+        const existingStarter = existing.starterCode instanceof Map
+          ? Object.fromEntries(existing.starterCode)
+          : (existing.starterCode ? { ...existing.starterCode } : {});
+        updateData.starterCode = { ...existingStarter, ...starterCode };
+      } else {
+        updateData.starterCode = starterCode;
+      }
+    }
+    if (solutionCode && typeof solutionCode === 'object') {
+      const existing = await Question.findById(req.params.id);
+      if (existing) {
+        const existingSolution = existing.solutionCode instanceof Map
+          ? Object.fromEntries(existing.solutionCode)
+          : (existing.solutionCode ? { ...existing.solutionCode } : {});
+        updateData.solutionCode = { ...existingSolution, ...solutionCode };
+      } else {
+        updateData.solutionCode = solutionCode;
+      }
+    }
+    const question = await Question.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!question) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    const qObj: any = question.toObject({ flattenMaps: true });
+    if (qObj.starterCode instanceof Map) {
+      qObj.starterCode = Object.fromEntries(qObj.starterCode);
+    }
+    if (qObj.solutionCode instanceof Map) {
+      qObj.solutionCode = Object.fromEntries(qObj.solutionCode);
+    }
+    res.json({ success: true, question: qObj });
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Failed to update question' });
   }

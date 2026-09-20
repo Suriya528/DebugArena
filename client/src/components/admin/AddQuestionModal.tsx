@@ -201,16 +201,40 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
       const loadedCodes: Record<string, string> = { ...DEFAULT_STARTER_CODES };
       if (editingTemplate.starterCode) {
         if (editingTemplate.starterCode instanceof Map) {
-          editingTemplate.starterCode.forEach((v: string, k: string) => {
-            loadedCodes[k] = v;
+          editingTemplate.starterCode.forEach((v: any, k: string) => {
+            if (v !== undefined && v !== null) {
+              loadedCodes[k] = typeof v === 'string' ? v : String(v);
+            }
           });
         } else if (typeof editingTemplate.starterCode === 'object') {
           Object.entries(editingTemplate.starterCode).forEach(([k, v]) => {
-            loadedCodes[k] = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+            if (v !== undefined && v !== null) {
+              loadedCodes[k] = typeof v === 'string' ? v : String(v);
+            }
           });
         }
       }
       setStarterCodes(loadedCodes);
+
+      // Defensively load fresh starter code if editing an existing question bank template
+      if (editingTemplate._id && !targetRoundNumber) {
+        api.get(`/admin/questions/bank/${editingTemplate._id}`).then(res => {
+          const fresh = res.data?.template;
+          if (fresh && fresh.starterCode) {
+            const freshCodes: Record<string, string> = { ...DEFAULT_STARTER_CODES };
+            if (fresh.starterCode instanceof Map) {
+              fresh.starterCode.forEach((v: any, k: string) => {
+                if (v !== undefined && v !== null) freshCodes[k] = typeof v === 'string' ? v : String(v);
+              });
+            } else if (typeof fresh.starterCode === 'object') {
+              Object.entries(fresh.starterCode).forEach(([k, v]) => {
+                if (v !== undefined && v !== null) freshCodes[k] = typeof v === 'string' ? v : String(v);
+              });
+            }
+            setStarterCodes(prev => ({ ...prev, ...freshCodes }));
+          }
+        }).catch(() => {});
+      }
 
       // Test cases
       if (editingTemplate.testCases && editingTemplate.testCases.length > 0) {
@@ -390,11 +414,21 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
       } else {
         payload.language = allowedLanguages[0] || 'java';
         payload.allowedLanguages = allowedLanguages;
-        const filteredCodes: Record<string, string> = {};
-        for (const lang of allowedLanguages) {
-          filteredCodes[lang] = (starterCodes[lang] || DEFAULT_STARTER_CODES[lang] || '').trim();
+        payload.codingMode = editingTemplate?.codingMode || (type === 'debugging' ? 'debug' : 'standard');
+        const finalStarterCodes: Record<string, string> = {};
+        // Preserve all edited starter codes across all languages
+        for (const [lang, code] of Object.entries(starterCodes)) {
+          if (typeof code === 'string' && code.trim().length > 0) {
+            finalStarterCodes[lang] = code;
+          }
         }
-        payload.starterCode = filteredCodes;
+        // Ensure every allowed language has starter code defined
+        for (const lang of allowedLanguages) {
+          if (!finalStarterCodes[lang]) {
+            finalStarterCodes[lang] = (DEFAULT_STARTER_CODES[lang] || '').trim();
+          }
+        }
+        payload.starterCode = finalStarterCodes;
         payload.testCases = testCases.map(tc => ({
           input: tc.input,
           output: tc.output.trim(),

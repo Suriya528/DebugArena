@@ -212,11 +212,21 @@ adminQuestionBankRouter.get('/', async (req: AuthenticatedRequest, res: Response
     }
 
     const enrichedQuestions = questions.map(q => {
-      const obj: any = q.toObject();
+      const obj: any = q.toObject({ flattenMaps: true });
       const qidStr = q._id.toString();
       obj.usedInEvents = globalUsageMap.get(qidStr) || [];
       obj.isUsedInTargetEventOtherRound = otherRoundAssignedMap.has(qidStr);
       obj.targetEventOtherRoundNumber = otherRoundAssignedMap.get(qidStr) || null;
+      if (obj.starterCode instanceof Map) {
+        obj.starterCode = Object.fromEntries(obj.starterCode);
+      } else if (!obj.starterCode || typeof obj.starterCode !== 'object') {
+        obj.starterCode = {};
+      }
+      if (obj.solutionCode instanceof Map) {
+        obj.solutionCode = Object.fromEntries(obj.solutionCode);
+      } else if (!obj.solutionCode || typeof obj.solutionCode !== 'object') {
+        obj.solutionCode = {};
+      }
       return obj;
     });
 
@@ -352,7 +362,18 @@ adminQuestionBankRouter.get('/:templateId', async (req: AuthenticatedRequest, re
       res.status(404).json({ error: 'Question template not found' });
       return;
     }
-    res.json({ template });
+    const templateObj: any = template.toObject({ flattenMaps: true });
+    if (templateObj.starterCode instanceof Map) {
+      templateObj.starterCode = Object.fromEntries(templateObj.starterCode);
+    } else if (!templateObj.starterCode || typeof templateObj.starterCode !== 'object') {
+      templateObj.starterCode = {};
+    }
+    if (templateObj.solutionCode instanceof Map) {
+      templateObj.solutionCode = Object.fromEntries(templateObj.solutionCode);
+    } else if (!templateObj.solutionCode || typeof templateObj.solutionCode !== 'object') {
+      templateObj.solutionCode = {};
+    }
+    res.json({ template: templateObj });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch question template' });
   }
@@ -628,7 +649,20 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
     if (memoryLimitMb !== undefined) template.memoryLimitMb = Number(memoryLimitMb);
     if (options) template.options = options;
     if (allowedLanguages) template.allowedLanguages = allowedLanguages;
-    if (starterCode) template.starterCode = starterCode;
+    if (starterCode && typeof starterCode === 'object') {
+      const existingStarter = template.starterCode instanceof Map
+        ? Object.fromEntries(template.starterCode)
+        : (template.starterCode ? { ...template.starterCode } : {});
+      template.starterCode = { ...existingStarter, ...starterCode };
+      template.markModified('starterCode');
+    }
+    if (req.body.solutionCode && typeof req.body.solutionCode === 'object') {
+      const existingSolution = template.solutionCode instanceof Map
+        ? Object.fromEntries(template.solutionCode)
+        : (template.solutionCode ? { ...template.solutionCode } : {});
+      template.solutionCode = { ...existingSolution, ...req.body.solutionCode };
+      template.markModified('solutionCode');
+    }
     if (testCases) template.testCases = testCases;
     if (hasDnaMutation !== undefined) template.hasDnaMutation = Boolean(hasDnaMutation);
     if (dnaConfig) template.dnaConfig = dnaConfig;
@@ -644,7 +678,15 @@ adminQuestionBankRouter.put('/:templateId', async (req: AuthenticatedRequest, re
       details: { title: template.title, topic: template.topic, type: template.type }
     });
 
-    res.json({ success: true, template });
+    const templateObj: any = template.toObject({ flattenMaps: true });
+    if (templateObj.starterCode instanceof Map) {
+      templateObj.starterCode = Object.fromEntries(templateObj.starterCode);
+    }
+    if (templateObj.solutionCode instanceof Map) {
+      templateObj.solutionCode = Object.fromEntries(templateObj.solutionCode);
+    }
+
+    res.json({ success: true, template: templateObj });
   } catch (err: any) {
     console.error('Failed to update question template:', err);
     res.status(500).json({ error: 'Failed to update question template' });

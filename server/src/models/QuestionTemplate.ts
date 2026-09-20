@@ -177,7 +177,11 @@ const QuestionTemplateSchema = new Schema<IQuestionTemplate>(
       index: true
     }
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toObject: { flattenMaps: true },
+    toJSON: { flattenMaps: true }
+  }
 );
 
 QuestionTemplateSchema.index({ topic: 1, difficulty: 1, type: 1 });
