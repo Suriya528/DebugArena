@@ -55,7 +55,7 @@ const LANGUAGE_MAP: Record<string, { language: string; version: string }> = {
 class ExecutionQueue {
   private queue: Array<() => Promise<void>> = [];
   private activeCount = 0;
-  private maxConcurrency = 5;
+  private maxConcurrency = parseInt(process.env.JUDGE_MAX_CONCURRENCY || '15', 10);
 
   async enqueue<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -269,7 +269,9 @@ async function executeLocal(
     fs.writeFileSync(scriptFile, code, 'utf-8');
 
     try {
-      const res = await runCommand('py', ['-3', scriptFile], stdinText, timeoutMs, tempDir);
+      const pyCmd = process.platform === 'win32' ? 'py' : 'python3';
+      const pyArgs = process.platform === 'win32' ? ['-3', scriptFile] : [scriptFile];
+      const res = await runCommand(pyCmd, pyArgs, stdinText, timeoutMs, tempDir);
       // Filter out benign Windows Python initialization messages
       const cleanStderr = res.stderr
         .split('\n')
@@ -369,7 +371,7 @@ async function executeLocal(
   if (norm === 'cpp' || norm === 'c++') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_cpp_'));
     const sourceFile = path.join(tempDir, 'solution.cpp');
-    const exeFile = path.join(tempDir, 'solution.exe');
+    const exeFile = path.join(tempDir, process.platform === 'win32' ? 'solution.exe' : 'solution');
     fs.writeFileSync(sourceFile, code, 'utf-8');
 
     try {
@@ -406,7 +408,7 @@ async function executeLocal(
   if (norm === 'c') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_c_'));
     const sourceFile = path.join(tempDir, 'solution.c');
-    const exeFile = path.join(tempDir, 'solution.exe');
+    const exeFile = path.join(tempDir, process.platform === 'win32' ? 'solution.exe' : 'solution');
     fs.writeFileSync(sourceFile, code, 'utf-8');
 
     try {
@@ -480,7 +482,9 @@ except Exception as e:
     fs.writeFileSync(runnerScript, pythonSqlRunner, 'utf-8');
 
     try {
-      const res = await runCommand('py', ['-3', runnerScript], stdinText, timeoutMs, tempDir);
+      const pyCmd = process.platform === 'win32' ? 'py' : 'python3';
+      const pyArgs = process.platform === 'win32' ? ['-3', runnerScript] : [runnerScript];
+      const res = await runCommand(pyCmd, pyArgs, stdinText, timeoutMs, tempDir);
       const cleanStderr = res.stderr
         .split('\n')
         .filter(line => !line.includes('Could not find platform independent libraries'))
