@@ -230,13 +230,19 @@ export interface Attempt {
 
 export interface RoundProgress {
   status: 'not_started' | 'in_progress' | 'submitted' | 'expired' | 'advanced' | 'eliminated';
-  totalScore: number;
+  totalScore?: number;
   markedForReview: string[];
   violationCount: number;
-  timeTakenSeconds: number;
+  timeTakenSeconds?: number;
   startedAt?: string | null;
   endsAt?: string | null;
   canStart?: boolean;
+}
+
+export interface ParticipantResultData {
+  status: 'RESULT_PENDING' | 'SELECTED' | 'NOT_SELECTED';
+  isPublished: boolean;
+  publishedAt?: string | null;
 }
 
 export interface RoundResultRow {
@@ -253,6 +259,10 @@ export interface RoundResultRow {
   status: 'not_started' | 'in_progress' | 'submitted' | 'expired' | 'advanced' | 'eliminated';
   submittedAt?: string;
   violationCount: number;
+  selectionStatus?: 'NOT_PUBLISHED' | 'SELECTED' | 'NOT_SELECTED';
+  draftSelection?: 'SELECTED' | 'NOT_SELECTED' | null;
+  isPublished?: boolean;
+  publishedAt?: string | null;
 }
 
 export interface LeaderboardRow {

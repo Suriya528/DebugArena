@@ -9,9 +9,10 @@ import {
   Trophy,
   Play,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Hourglass
 } from 'lucide-react';
-import { RoundProgress, Round } from '../../types/index.js';
+import { RoundProgress, Round, ParticipantResultData } from '../../types/index.js';
 
 interface RoundSummaryViewProps {
   round?: Round;
@@ -22,6 +23,7 @@ interface RoundSummaryViewProps {
   isQualifiedWaitingNextRound?: boolean;
   nextRoundAvailable?: boolean;
   isFinalRound?: boolean;
+  resultData?: ParticipantResultData | null;
   onEnterNextRound?: () => void;
 }
 
@@ -34,8 +36,38 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
   isQualifiedWaitingNextRound,
   nextRoundAvailable,
   isFinalRound,
+  resultData,
   onEnterNextRound
 }) => {
+
+  // Derive the display state based on result publication
+  // Priority order: resultData (new system) > legacy flags > default
+  const getDisplayState = () => {
+    // If result data exists and is published, use it
+    if (resultData?.isPublished) {
+      if (resultData.status === 'NOT_SELECTED') return 'not_selected';
+      if (resultData.status === 'SELECTED') {
+        if (isFinalRound) return 'final_round_completed';
+        if (nextRoundAvailable) return 'next_round_available';
+        return 'selected_waiting';
+      }
+    }
+
+    // If result data exists but not published = awaiting results
+    if (resultData && !resultData.isPublished) return 'result_pending';
+
+    // Legacy fallback for backward compatibility
+    if (isEliminated) return 'not_selected';
+    if (isFinalRound && (progress?.status === 'submitted' || progress?.status === 'expired' || progress?.status === 'advanced')) return 'final_round_completed';
+    if (nextRoundAvailable) return 'next_round_available';
+    if (isQualifiedWaitingNextRound) return 'selected_waiting';
+    if (isWaitingAdvancement) return 'result_pending';
+
+    // Default: submission recorded, awaiting results
+    return 'submission_recorded';
+  };
+
+  const displayState = getDisplayState();
 
   return (
     <div className="max-w-2xl mx-auto py-8 sm:py-16 px-3 sm:px-4">
@@ -45,8 +77,8 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10">
-          {/* Case 1: Eliminated (Not Selected) */}
-          {isEliminated ? (
+          {/* State: Not Selected (Eliminated) */}
+          {displayState === 'not_selected' && (
             <div>
               <div className="w-20 h-20 rounded-3xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-rose-950/40">
                 <ShieldAlert className="w-10 h-10 text-rose-500" />
@@ -58,11 +90,18 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 Round Concluded
               </h2>
               <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                Thank you for attending and competing in Debug Arena. You have not been selected for subsequent stages.
+                Thank you for participating in Debug Arena. Unfortunately, you were not selected for the next round. We appreciate your effort and encourage you to keep practicing!
               </p>
+              {resultData?.publishedAt && (
+                <div className="text-[11px] text-slate-500 font-mono mb-6">
+                  Result published: {new Date(resultData.publishedAt).toLocaleString()}
+                </div>
+              )}
             </div>
-          ) : isFinalRound && (progress?.status === 'submitted' || progress?.status === 'advanced') ? (
-            /* Case 2: Final Round Completed */
+          )}
+
+          {/* State: Final Round Completed */}
+          {displayState === 'final_round_completed' && (
             <div>
               <div className="w-20 h-20 rounded-3xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-amber-950/40">
                 <Trophy className="w-10 h-10 text-amber-400" />
@@ -78,8 +117,10 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 You have finished all rounds of this competition. Final official rankings and scores will be released by the coordinators.
               </p>
             </div>
-          ) : nextRoundAvailable ? (
-            /* Case 3: Qualified AND Next Round is LIVE */
+          )}
+
+          {/* State: Selected — Next Round is LIVE */}
+          {displayState === 'next_round_available' && (
             <div>
               <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-950/40 animate-pulse">
                 <Play className="w-10 h-10 text-emerald-400 fill-current" />
@@ -89,10 +130,10 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 <span>Next Round Is Live</span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
-                Selected for Next Round!
+                🎉 Selected for Next Round!
               </h1>
               <p className="text-sm text-slate-300 mb-8 max-w-md mx-auto leading-relaxed">
-                The administrator has launched the next stage of the tournament. Click below to proceed to your next challenge.
+                Congratulations! You have been selected to advance. The next round is now live — click below to proceed to your next challenge.
               </p>
               {onEnterNextRound && (
                 <div className="mb-8">
@@ -106,41 +147,71 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 </div>
               )}
             </div>
-          ) : isQualifiedWaitingNextRound ? (
-            /* Case 4: Qualified BUT Next Round is NOT yet live */
+          )}
+
+          {/* State: Selected but next round NOT yet started */}
+          {displayState === 'selected_waiting' && (
             <div>
-              <div className="w-20 h-20 rounded-3xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-950/40">
-                <CheckCircle2 className="w-10 h-10 text-indigo-400" />
+              <div className="w-20 h-20 rounded-3xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-950/40">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400" />
               </div>
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 mb-3 font-mono uppercase">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 mb-3 font-mono uppercase">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Qualified Candidate</span>
+                <span>Selected</span>
               </div>
               <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-3">
-                Selected for Next Round
+                🎉 Congratulations!
               </h1>
               <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                Congratulations! You have qualified for the next round. Please wait for the tournament administrator to start the round.
+                You have been selected for the next round! Please wait for the tournament administrator to start the next stage.
               </p>
+              {resultData?.publishedAt && (
+                <div className="text-[11px] text-slate-500 font-mono mb-6">
+                  Result published: {new Date(resultData.publishedAt).toLocaleString()}
+                </div>
+              )}
             </div>
-          ) : isWaitingAdvancement ? (
-            /* Case 5: Waiting for Admin to evaluate/advance */
+          )}
+
+          {/* State: Result Pending (Submitted, awaiting admin to publish results) */}
+          {displayState === 'result_pending' && (
             <div>
               <div className="w-20 h-20 rounded-3xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mx-auto mb-6">
-                <Clock className="w-10 h-10 text-cyan-400 animate-spin" />
+                <Hourglass className="w-10 h-10 text-cyan-400 animate-pulse" />
               </div>
               <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-3 font-mono uppercase">
-                <span>Evaluation in Progress</span>
+                <span>Awaiting Results</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-3">
-                Awaiting Round Evaluation
+                Submission Received
               </h2>
-              <p className="text-sm text-slate-400 mb-8 max-w-md mx-auto leading-relaxed">
-                Your submission is securely locked on the server. The tournament administrators are reviewing submissions to announce advancements.
+              <p className="text-sm text-slate-400 mb-6 max-w-md mx-auto leading-relaxed">
+                Your submission has been recorded and locked securely on the server. Results will be announced by the organizer.
               </p>
+
+              {/* Status info grid — NO SCORES */}
+              <div className="grid grid-cols-1 gap-3 mb-6 text-left max-w-lg mx-auto">
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-emerald-400" /> Submission Status
+                  </div>
+                  <div className="text-base font-bold text-emerald-400">
+                    Recorded &amp; Locked
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Integrity hash verified</div>
+                </div>
+              </div>
+
+              {/* Confidentiality Notice */}
+              <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 mb-6 text-left text-xs text-indigo-300 leading-relaxed max-w-lg mx-auto">
+                <strong className="text-white block mb-1">Results Announcement:</strong>
+                Scores, rankings, and selection outcomes will be announced by tournament coordinators after evaluation. You will be notified automatically when results are published.
+              </div>
             </div>
-          ) : (
-            /* Case 6: Standard Initial Submission Recorded */
+          )}
+
+          {/* State: Just Submitted (before result system kicks in — immediate post-submit) */}
+          {displayState === 'submission_recorded' && (
             <div>
               <div className="w-20 h-20 rounded-3xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-950/40">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400" />
@@ -158,8 +229,8 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                 Your responses have been transmitted to the server and locked against further modifications.
               </p>
 
-              {/* Status info grid — STRICTLY NO SCORES OR MARKS DISPLAYED */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8 text-left max-w-lg mx-auto">
+              {/* Status info grid — NO SCORES OR MARKS DISPLAYED */}
+              <div className="grid grid-cols-1 gap-3 mb-6 sm:mb-8 text-left max-w-lg mx-auto">
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-emerald-400" /> Submission Status
@@ -168,18 +239,6 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
                     Recorded &amp; Locked
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">Integrity hash verified</div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-indigo-400" /> Time Elapsed
-                  </div>
-                  <div className="text-base font-bold text-white font-mono">
-                    {progress?.timeTakenSeconds
-                      ? `${Math.floor(progress.timeTakenSeconds / 60)}m ${progress.timeTakenSeconds % 60}s`
-                      : 'Completed'}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Logged on server</div>
                 </div>
               </div>
 
@@ -191,8 +250,8 @@ export const RoundSummaryView: React.FC<RoundSummaryViewProps> = ({
             </div>
           )}
 
-          {/* Refresh Action (not shown if eliminated) */}
-          {!isEliminated && !isFinalRound && !nextRoundAvailable && (
+          {/* Refresh Action (not shown if eliminated/not selected, final round, or next round available) */}
+          {displayState !== 'not_selected' && displayState !== 'final_round_completed' && displayState !== 'next_round_available' && (
             <button
               onClick={onRefresh}
               className="w-full sm:w-auto px-6 sm:px-8 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 mx-auto transition-all cursor-pointer shadow-lg shadow-indigo-600/25 active:scale-[0.98]"

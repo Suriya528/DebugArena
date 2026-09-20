@@ -19,10 +19,13 @@ import {
   FileQuestion,
   Code,
   Terminal,
-  Database
+  Database,
+  Send,
+  Save,
+  AlertTriangle
 } from 'lucide-react';
 import { RoundResultRow, DynamicRound } from '../../types/index.js';
-import { api, autoAdvanceParticipants } from '../../services/api.js';
+import { api, autoAdvanceParticipants, saveRoundResultsDraft, publishRoundResults } from '../../services/api.js';
 
 interface RoundResultsViewProps {
   eventId?: string;
@@ -47,6 +50,18 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
   const [roundMeta, setRoundMeta] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'advanced' | 'eliminated' | 'submitted'>('all');
+  const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
+  const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState<boolean>(false);
+  const [resultsMeta, setResultsMeta] = useState<{
+    isRoundEnded?: boolean;
+    endedAt?: string | null;
+    isReadyForPublication?: boolean;
+    readyForPublicationAt?: string | null;
+    publishedCount?: number;
+    draftSelectedCount?: number;
+    draftNotSelectedCount?: number;
+  } | null>(null);
 
   // Keep eventRounds in sync with props and clamp selectedRound
   useEffect(() => {
@@ -67,6 +82,7 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
       const res = await api.get(url);
       setResults(res.data.results || []);
       setRoundMeta(res.data.roundMeta || null);
+      setResultsMeta(res.data.meta || null);
 
       if (res.data.rounds && res.data.rounds.length > 0) {
         setEventRounds(res.data.rounds);
@@ -75,10 +91,10 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
         }
       }
 
-      // Pre-select already advanced users if any
+      // Pre-select already advanced or draft/published selected users if any
       const alreadyAdvanced = new Set<string>();
       (res.data.results || []).forEach((r: RoundResultRow) => {
-        if (r.status === 'advanced' && r.userId?._id) {
+        if ((r.status === 'advanced' || r.selectionStatus === 'SELECTED' || r.draftSelection === 'SELECTED') && r.userId?._id) {
           alreadyAdvanced.add(r.userId._id);
         }
       });
@@ -306,6 +322,48 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
     document.body.removeChild(link);
   };
 
+  // Save Draft: Persist selection decisions privately (participants cannot see)
+  const handleSaveDraft = async () => {
+    if (selectedUserIds.size === 0) {
+      alert('Please select at least one participant before saving draft.');
+      return;
+    }
+    setIsSavingDraft(true);
+    try {
+      // Mark selected as SELECTED, all others as NOT_SELECTED
+      const selections = results.map(r => ({
+        participantId: r.userId._id,
+        selection: selectedUserIds.has(r.userId._id) ? 'SELECTED' as const : 'NOT_SELECTED' as const
+      }));
+      await saveRoundResultsDraft(selectedRound, selections, eventId);
+      alert(`Draft saved! ${selectedUserIds.size} selected, ${results.length - selectedUserIds.size} not selected.`);
+      await fetchResults();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to save draft selections.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  // Publish Results: Make results visible to participants
+  const handlePublishResults = async () => {
+    setShowPublishConfirm(false);
+    setIsPublishing(true);
+    try {
+      const selections = results.map(r => ({
+        participantId: r.userId._id,
+        selection: selectedUserIds.has(r.userId._id) ? ('SELECTED' as const) : ('NOT_SELECTED' as const)
+      }));
+      const data = await publishRoundResults(selectedRound, eventId, selections);
+      alert(data.message || 'Results published successfully! Participants can now see their selection status.');
+      await fetchResults();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to publish results.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   // Build rounds list for tabs
   const displayRounds = eventRounds.length > 0
     ? eventRounds
@@ -444,6 +502,90 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
                 {stats.avgScore} <span className="text-[10px] text-slate-500">/ {stats.topScore}</span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Result Publication & Participant Announcement Workflow Card */}
+      <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+        {/* Preparation Window Countdown Banner */}
+        {resultsMeta?.isRoundEnded && !resultsMeta?.isReadyForPublication && resultsMeta?.readyForPublicationAt && (
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+            <div>
+              <span className="font-bold">2-Minute Finalization Window Active:</span> Round submissions are being finalized. Coordinator review active until{' '}
+              <span className="font-mono font-bold text-white">{new Date(resultsMeta.readyForPublicationAt).toLocaleTimeString()}</span>.
+            </div>
+          </div>
+        )}
+
+        {/* Results Published Notification */}
+        {resultsMeta?.publishedCount && resultsMeta.publishedCount > 0 ? (
+          <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Official Results Published:</strong> Stage {selectedRound} outcomes have been published to participants ({resultsMeta.publishedCount} evaluated). Participants can now view their selection status.
+              </span>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+              Live to Participants
+            </span>
+          </div>
+        ) : (
+          <div className="p-3 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 text-slate-300 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>
+                <strong>Results Not Published Yet:</strong> Participants currently see <em>"Submission received. Results will be announced by the organizer."</em>
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+              Draft Mode
+            </span>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>Selection Decision:</span>
+            </div>
+            <span className="text-xs font-mono text-emerald-400 font-bold bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+              {selectedUserIds.size} Selected
+            </span>
+            <span className="text-xs font-mono text-rose-400 font-bold bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-500/20">
+              {results.length - selectedUserIds.size} Not Selected
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleSaveDraft}
+              disabled={results.length === 0 || isSavingDraft}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+              title="Save current selections privately as draft (participants will not see results yet)"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{isSavingDraft ? 'Saving Draft...' : 'Save Draft'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowPublishConfirm(true)}
+              disabled={results.length === 0 || isPublishing || resultsMeta?.isRoundEnded === false}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer disabled:opacity-40 transition-all"
+              title={resultsMeta?.isRoundEnded === false ? 'Round must end before publishing results' : 'Publish official results to participants'}
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>
+                {isPublishing
+                  ? 'Publishing...'
+                  : resultsMeta?.publishedCount && resultsMeta.publishedCount > 0
+                  ? 'Re-Publish Results'
+                  : 'Publish Results'}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -751,30 +893,57 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
                           </span>
                         </td>
 
-                        <td className="p-4">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase inline-flex items-center gap-1 border ${
-                              row.status === 'advanced'
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                                : row.status === 'eliminated'
-                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                                : row.status === 'submitted'
-                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                                : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                            }`}
-                          >
-                            {row.status === 'advanced' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                            {row.status === 'eliminated' && <XCircle className="w-3 h-3 text-rose-400" />}
-                            <span>
-                              {row.status === 'advanced'
-                                ? `Advanced to Stage ${selectedRound + 1}`
-                                : row.status === 'eliminated'
-                                ? 'Eliminated'
-                                : row.status === 'submitted'
-                                ? 'Submitted'
-                                : 'In Progress'}
+                        <td className="p-4 space-y-1">
+                          <div>
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase inline-flex items-center gap-1 border ${
+                                row.status === 'advanced'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                  : row.status === 'eliminated'
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                  : row.status === 'submitted'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              }`}
+                            >
+                              {row.status === 'advanced' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                              {row.status === 'eliminated' && <XCircle className="w-3 h-3 text-rose-400" />}
+                              <span>
+                                {row.status === 'advanced'
+                                  ? `Advanced to Stage ${selectedRound + 1}`
+                                  : row.status === 'eliminated'
+                                  ? 'Eliminated'
+                                  : row.status === 'submitted'
+                                  ? 'Submitted'
+                                  : 'In Progress'}
+                              </span>
                             </span>
-                          </span>
+                          </div>
+                          {row.isPublished ? (
+                            <div>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase inline-flex items-center gap-1 border ${
+                                  row.selectionStatus === 'SELECTED'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                }`}
+                              >
+                                {row.selectionStatus === 'SELECTED' ? '✓ Published: Selected' : '✗ Published: Not Selected'}
+                              </span>
+                            </div>
+                          ) : row.draftSelection ? (
+                            <div>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase inline-flex items-center gap-1 border ${
+                                  row.draftSelection === 'SELECTED'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                    : 'bg-slate-700/50 text-slate-400 border-slate-600'
+                                }`}
+                              >
+                                {row.draftSelection === 'SELECTED' ? 'Draft: Selected' : 'Draft: Not Selected'}
+                              </span>
+                            </div>
+                          ) : null}
                         </td>
 
                         <td className="p-4">
@@ -818,6 +987,57 @@ export const RoundResultsView: React.FC<RoundResultsViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Publish Confirmation Modal */}
+      {showPublishConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <Send className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white">Publish Stage {selectedRound} Results</h3>
+                <p className="text-xs text-slate-400">This action will immediately make outcomes visible to participants.</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-300">
+                <span>Selected for Next Stage:</span>
+                <span className="font-bold text-emerald-400">{selectedUserIds.size} candidates</span>
+              </div>
+              <div className="flex justify-between text-slate-300">
+                <span>Not Selected (Eliminated):</span>
+                <span className="font-bold text-rose-400">{results.length - selectedUserIds.size} candidates</span>
+              </div>
+              <div className="border-t border-slate-800 pt-2 text-[11px] text-slate-400 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Strict Privacy Rule: Participant scores, ranks, and percentages will <strong>NEVER</strong> be exposed to participants. Only the Selected/Not Selected status is visible.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowPublishConfirm(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePublishResults}
+                disabled={isPublishing}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition-all"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{isPublishing ? 'Publishing...' : 'Confirm & Publish Now'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

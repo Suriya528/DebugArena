@@ -14,6 +14,7 @@ import { TieBreak } from '../models/TieBreak.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { QuestionTemplate } from '../models/QuestionTemplate.js';
 import { AuditLog } from '../models/AuditLog.js';
+import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
 import { broadcastToParticipants, broadcastToAdmins, emitToUser } from '../services/socketService.js';
 import { finalizeParticipantRoundScore } from '../services/scoringService.js';
 
@@ -341,14 +342,33 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
       return prevProg && prevProg.status === 'advanced';
     });
 
+    const roundResults = await ParticipantRoundResult.find({
+      roundNumber,
+      participantId: { $in: tenantUserIds }
+    });
+    const resultRecordMap = new Map<string, any>();
+    for (const rr of roundResults) {
+      resultRecordMap.set(rr.participantId.toString(), rr);
+    }
+
     const candidateRows = stageCandidates.map(p => {
       const uid = p._id.toString();
       const prog = progressMap.get(uid);
+      const resRec = resultRecordMap.get(uid);
       const totalScore = prog?.totalScore || 0;
       const timeTakenSeconds = prog?.timeTakenSeconds || 0;
       const status = prog?.status || 'not_started';
       const submittedAt = prog?.submittedAt || null;
       const violationCount = prog?.violationCount || 0;
+
+      // Selection status: NOT_PUBLISHED, SELECTED, or NOT_SELECTED
+      const selectionStatus = resRec?.selectionStatus || 'NOT_PUBLISHED';
+      // Draft selection: admin's private choice before publish
+      const draftSelection = resRec?.draftSelection !== undefined && resRec?.draftSelection !== null
+        ? resRec.draftSelection
+        : (prog?.status === 'advanced' ? 'SELECTED' : (prog?.status === 'eliminated' ? 'NOT_SELECTED' : null));
+      const isPublished = Boolean(resRec?.isPublished);
+      const publishedAt = resRec?.publishedAt || null;
 
       return {
         userId: {
@@ -362,7 +382,11 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
         timeTakenSeconds,
         status,
         submittedAt,
-        violationCount
+        violationCount,
+        selectionStatus,
+        draftSelection,
+        isPublished,
+        publishedAt
       };
     });
 
@@ -384,10 +408,270 @@ adminRouter.get('/rounds/:roundNumber/results', async (req: AuthenticatedRequest
       ...r
     }));
 
-    res.json({ roundNumber, roundMeta, rounds: eventRounds, results });
+    // Lifecycle and Preparation Window Metadata (2-Minute Rule)
+    const effectiveRoundObj = roundMeta || (eventRounds.find((r: any) => r.roundNumber === roundNumber));
+    const isRoundEnded = effectiveRoundObj?.status === 'completed' || effectiveRoundObj?.status === 'locked' || Boolean(effectiveRoundObj?.endedAt);
+    const endedAt = effectiveRoundObj?.endedAt || null;
+    const readyForPublicationAt = endedAt ? new Date(new Date(endedAt).getTime() + 2 * 60 * 1000) : null;
+    const isReadyForPublication = isRoundEnded && (
+      !endedAt || Date.now() >= (new Date(endedAt).getTime() + 2 * 60 * 1000) || roundResults.some(r => r.isPublished)
+    );
+    const publishedCount = roundResults.filter(r => r.isPublished).length;
+    const draftSelectedCount = candidateRows.filter(r => r.draftSelection === 'SELECTED').length;
+    const draftNotSelectedCount = candidateRows.filter(r => r.draftSelection === 'NOT_SELECTED').length;
+
+    res.json({
+      roundNumber,
+      roundMeta,
+      rounds: eventRounds,
+      results,
+      meta: {
+        isRoundEnded,
+        endedAt,
+        isReadyForPublication,
+        readyForPublicationAt,
+        publishedCount,
+        draftSelectedCount,
+        draftNotSelectedCount
+      }
+    });
   } catch (err) {
     console.error('Get round results error:', err);
     res.status(500).json({ error: 'Failed to fetch round results' });
+  }
+});
+
+// POST /api/admin/rounds/:roundNumber/results/save
+// Admin saves selection decisions privately as draft (participants cannot see results yet)
+adminRouter.post('/rounds/:roundNumber/results/save', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roundNumber = parseInt(req.params.roundNumber, 10);
+    const { selections, eventId: bodyEventId } = req.body; // Array of { participantId: string, selection: 'SELECTED' | 'NOT_SELECTED' }
+    const eventId = bodyEventId || req.user?.eventId;
+
+    if (!Array.isArray(selections)) {
+      res.status(400).json({ error: 'selections array is required' });
+      return;
+    }
+
+    for (const s of selections) {
+      if (!s.participantId || !['SELECTED', 'NOT_SELECTED'].includes(s.selection)) continue;
+      const query: any = { roundNumber, participantId: s.participantId };
+      if (eventId) query.eventId = eventId;
+
+      await ParticipantRoundResult.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            draftSelection: s.selection,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: s.participantId,
+            eventId: eventId || undefined,
+            roundNumber,
+            selectionStatus: 'NOT_PUBLISHED',
+            isPublished: false
+          }
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: `Saved ${selections.length} participant selection decisions as private draft. Participants will not see results until published.`
+    });
+  } catch (err: any) {
+    console.error('Save results draft error:', err);
+    res.status(500).json({ error: 'Failed to save results draft' });
+  }
+});
+
+// POST /api/admin/rounds/:roundNumber/results/publish
+// Admin explicitly publishes results, making them visible to participants
+adminRouter.post('/rounds/:roundNumber/results/publish', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const roundNumber = parseInt(req.params.roundNumber, 10);
+    const { selections, eventId: bodyEventId } = req.body;
+    const eventId = bodyEventId || req.user?.eventId;
+    const eventObjId = eventId && mongoose.Types.ObjectId.isValid(eventId) ? new mongoose.Types.ObjectId(eventId) : null;
+    const eventCondition = eventObjId ? { $in: [eventId, eventObjId] } : eventId;
+
+    let round: any = null;
+    if (eventId) {
+      round = await DynamicRound.findOne({ eventId: eventCondition, roundNumber });
+    } else {
+      round = await Round.findOne({ roundNumber });
+    }
+
+    if (!round) {
+      res.status(404).json({ error: 'Round not found' });
+      return;
+    }
+
+    const isRoundEnded = round.status === 'completed' || round.status === 'locked' || Boolean(round.endedAt);
+    if (!isRoundEnded) {
+      res.status(400).json({
+        error: `Cannot publish results for Round ${roundNumber}: Round has not ended yet. Submissions must be finalized first.`
+      });
+      return;
+    }
+
+    // Find eligible participants
+    const userFilter: any = { role: 'participant' };
+    if (eventId) {
+      userFilter.eventId = eventCondition;
+    } else if (req.user?.collegeId) {
+      userFilter.collegeId = req.user.collegeId;
+    }
+    const tenantUsers = await User.find(userFilter).select('_id');
+    const tenantUserIds = tenantUsers.map(u => u._id);
+
+    // If selections array was supplied in the publish call, save draft first
+    if (Array.isArray(selections) && selections.length > 0) {
+      for (const s of selections) {
+        if (!s.participantId || !['SELECTED', 'NOT_SELECTED'].includes(s.selection)) continue;
+        const query: any = { roundNumber, participantId: s.participantId };
+        if (eventId) query.eventId = eventId;
+        await ParticipantRoundResult.findOneAndUpdate(
+          query,
+          {
+            $set: {
+              draftSelection: s.selection,
+              updatedBy: req.user!.userId
+            }
+          },
+          { upsert: true }
+        );
+      }
+    }
+
+    // Fetch existing results
+    const existingResults = await ParticipantRoundResult.find({
+      roundNumber,
+      participantId: { $in: tenantUserIds }
+    });
+    const existingMap = new Map<string, any>();
+    for (const r of existingResults) {
+      existingMap.set(r.participantId.toString(), r);
+    }
+
+    const now = new Date();
+    const publishedResults = [];
+    let selectedCount = 0;
+    let notSelectedCount = 0;
+    const selectedUserIds: string[] = [];
+    const notSelectedUserIds: string[] = [];
+
+    for (const uId of tenantUserIds) {
+      const uIdStr = uId.toString();
+      const rec = existingMap.get(uIdStr);
+      const finalSelection = (rec?.draftSelection === 'SELECTED' || rec?.selectionStatus === 'SELECTED')
+        ? 'SELECTED'
+        : 'NOT_SELECTED';
+
+      const query: any = { roundNumber, participantId: uId };
+      if (eventId) query.eventId = eventId;
+
+      const updated = await ParticipantRoundResult.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            selectionStatus: finalSelection,
+            draftSelection: finalSelection,
+            isPublished: true,
+            publishedAt: now,
+            publishedBy: req.user!.userId,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: uId,
+            eventId: eventId || undefined,
+            roundNumber
+          }
+        },
+        { upsert: true, new: true }
+      );
+
+      publishedResults.push(updated);
+
+      if (finalSelection === 'SELECTED') {
+        selectedCount++;
+        selectedUserIds.push(uIdStr);
+        // Sync RoundProgress: advanced
+        const progQuery: any = { roundNumber, userId: uId };
+        if (eventId) progQuery.eventId = eventId;
+        await RoundProgress.findOneAndUpdate(
+          progQuery,
+          { $set: { status: 'advanced' } },
+          { upsert: true }
+        );
+      } else {
+        notSelectedCount++;
+        notSelectedUserIds.push(uIdStr);
+        // Sync RoundProgress: eliminated
+        const progQuery: any = { roundNumber, userId: uId };
+        if (eventId) progQuery.eventId = eventId;
+        await RoundProgress.findOneAndUpdate(
+          progQuery,
+          { $set: { status: 'eliminated' } },
+          { upsert: true }
+        );
+      }
+    }
+
+    // Socket broadcasts to inform all connected participants and admins immediately
+    broadcastToParticipants('round:results_published', {
+      roundNumber,
+      eventId,
+      publishedAt: now
+    });
+    broadcastToParticipants('round:advancement_announced', {
+      roundNumber,
+      advancedUserIds: selectedUserIds
+    });
+    broadcastToAdmins('admin:results_published', {
+      roundNumber,
+      eventId,
+      publishedCount: publishedResults.length,
+      selectedCount,
+      notSelectedCount,
+      publishedAt: now
+    });
+
+    // Record Audit Log
+    try {
+      await AuditLog.create({
+        adminId: req.user!.userId,
+        adminUsername: req.user!.username,
+        eventId: eventId,
+        action: 'RESULTS_PUBLISHED',
+        targetType: eventId ? 'DynamicRound' : 'Round',
+        targetId: round._id.toString(),
+        details: {
+          roundNumber,
+          selectedCount,
+          notSelectedCount,
+          totalPublished: publishedResults.length
+        },
+        reason: `Published Round ${roundNumber} results: ${selectedCount} Selected, ${notSelectedCount} Not Selected`
+      });
+    } catch (logErr) {
+      console.warn('Failed to record audit log for publish results:', logErr);
+    }
+
+    res.json({
+      success: true,
+      message: `Round ${roundNumber} results published successfully!`,
+      publishedCount: publishedResults.length,
+      selectedCount,
+      notSelectedCount,
+      publishedAt: now
+    });
+  } catch (err: any) {
+    console.error('Publish results error:', err);
+    res.status(500).json({ error: 'Failed to publish results' });
   }
 });
 
@@ -416,11 +700,33 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
     const tenantUsers = await User.find(userFilter).select('_id');
     const tenantUserIds = tenantUsers.map(u => u._id);
 
+    const now = new Date();
     // Mark selected participants as 'advanced' in current round (upserting if not present)
     for (const pId of participantIds) {
       await RoundProgress.findOneAndUpdate(
         { roundNumber, userId: pId },
         { $set: { status: 'advanced' } },
+        { upsert: true }
+      );
+      const resQuery: any = { roundNumber, participantId: pId };
+      if (eventId) resQuery.eventId = eventId;
+      await ParticipantRoundResult.findOneAndUpdate(
+        resQuery,
+        {
+          $set: {
+            selectionStatus: 'SELECTED',
+            draftSelection: 'SELECTED',
+            isPublished: true,
+            publishedAt: now,
+            publishedBy: req.user!.userId,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: pId,
+            eventId: eventId || undefined,
+            roundNumber
+          }
+        },
         { upsert: true }
       );
     }
@@ -432,6 +738,27 @@ adminRouter.post('/rounds/:roundNumber/advance', async (req: AuthenticatedReques
       await RoundProgress.findOneAndUpdate(
         { roundNumber, userId: pId },
         { $set: { status: 'eliminated' } },
+        { upsert: true }
+      );
+      const resQuery: any = { roundNumber, participantId: pId };
+      if (eventId) resQuery.eventId = eventId;
+      await ParticipantRoundResult.findOneAndUpdate(
+        resQuery,
+        {
+          $set: {
+            selectionStatus: 'NOT_SELECTED',
+            draftSelection: 'NOT_SELECTED',
+            isPublished: true,
+            publishedAt: now,
+            publishedBy: req.user!.userId,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: pId,
+            eventId: eventId || undefined,
+            roundNumber
+          }
+        },
         { upsert: true }
       );
     }
@@ -582,11 +909,33 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
     const advancedUserIds = selectedProgress.map(p => (p.userId as any)._id || p.userId);
     const advancedIdStrings = advancedUserIds.map(id => id.toString());
 
+    const now = new Date();
     // Mark selected as advanced
     for (const uId of advancedUserIds) {
       await RoundProgress.findOneAndUpdate(
         { roundNumber, userId: uId },
         { $set: { status: 'advanced' } },
+        { upsert: true }
+      );
+      const resQuery: any = { roundNumber, participantId: uId };
+      if (eventId) resQuery.eventId = eventId;
+      await ParticipantRoundResult.findOneAndUpdate(
+        resQuery,
+        {
+          $set: {
+            selectionStatus: 'SELECTED',
+            draftSelection: 'SELECTED',
+            isPublished: true,
+            publishedAt: now,
+            publishedBy: req.user!.userId,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: uId,
+            eventId: eventId || undefined,
+            roundNumber
+          }
+        },
         { upsert: true }
       );
     }
@@ -597,6 +946,27 @@ adminRouter.post('/rounds/:roundNumber/auto-advance', async (req: AuthenticatedR
       await RoundProgress.findOneAndUpdate(
         { roundNumber, userId: uId },
         { $set: { status: 'eliminated' } },
+        { upsert: true }
+      );
+      const resQuery: any = { roundNumber, participantId: uId };
+      if (eventId) resQuery.eventId = eventId;
+      await ParticipantRoundResult.findOneAndUpdate(
+        resQuery,
+        {
+          $set: {
+            selectionStatus: 'NOT_SELECTED',
+            draftSelection: 'NOT_SELECTED',
+            isPublished: true,
+            publishedAt: now,
+            publishedBy: req.user!.userId,
+            updatedBy: req.user!.userId
+          },
+          $setOnInsert: {
+            participantId: uId,
+            eventId: eventId || undefined,
+            roundNumber
+          }
+        },
         { upsert: true }
       );
     }

@@ -15,6 +15,7 @@ import { TieBreak } from '../models/TieBreak.js';
 import { ProcessedOperation } from '../models/ProcessedOperation.js';
 import { CodeMilestone } from '../models/CodeMilestone.js';
 import { DynamicRound } from '../models/DynamicRound.js';
+import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
 import { getRemainingSeconds } from '../services/timerService.js';
 import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
@@ -476,18 +477,11 @@ async function getParticipantAccessibleRound(userId: string, eventId?: string) {
     }
   }
 
-  // Find the highest round the user is eligible for
+  // Find the highest round the user has progress in
   for (let r = maxRound; r >= 1; r--) {
     const prog = progressList.find(p => p.roundNumber === r);
     if (prog) {
-      if (prog.status === 'in_progress' || prog.status === 'submitted' || prog.status === 'expired' || prog.status === 'not_started') {
-        return { roundNumber: r, progress: prog, activeTieBreak };
-      }
-    }
-    // If user has advanced from round r-1, they are eligible for round r
-    const prevProg = progressList.find(p => p.roundNumber === r - 1);
-    if (prevProg && prevProg.status === 'advanced') {
-      return { roundNumber: r, progress: prog || null, activeTieBreak };
+      return { roundNumber: r, progress: prog, activeTieBreak };
     }
   }
 
@@ -507,10 +501,40 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     }
     const eliminatedProg = await RoundProgress.findOne(elimQuery);
     if (eliminatedProg) {
-      res.status(403).json({
-        error: 'You have been eliminated from the competition.',
-        status: 'eliminated',
-        isEliminated: true
+      const pubResult = await ParticipantRoundResult.findOne({
+        participantId: userId,
+        roundNumber: eliminatedProg.roundNumber
+      });
+      res.json({
+        competition: { title: 'Debug Arena', status: 'active', violationLimit: 3 },
+        round: {
+          roundNumber: eliminatedProg.roundNumber,
+          title: `Round ${eliminatedProg.roundNumber}`,
+          status: 'completed',
+          durationMinutes: 30,
+          remainingSeconds: 0
+        },
+        progress: {
+          status: 'eliminated',
+          totalScore: undefined,
+          timeTakenSeconds: undefined,
+          violationCount: eliminatedProg.violationCount || 0,
+          markedForReview: [],
+          canStart: false,
+          isQualifiedWaitingNextRound: false,
+          nextRoundAvailable: false,
+          isFinalRound: false
+        },
+        result: {
+          status: 'NOT_SELECTED',
+          isPublished: pubResult?.isPublished ?? true,
+          publishedAt: pubResult?.publishedAt?.toISOString() || null
+        },
+        isEliminated: true,
+        canStart: false,
+        nextRoundAvailable: false,
+        questions: [],
+        attempts: []
       });
       return;
     }
@@ -760,10 +784,42 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
       }
     }
 
-    const isQualifiedWaitingNextRound = roundNumber > 1 && round.status !== 'active';
-    // nextRoundAvailable is strictly for when participant has completed their current round but an admin has started a subsequent stage
+    // --- Result Publication Integration ---
+    // Look up the participant's published result for this round
+    const resultQuery: any = { participantId: userId, roundNumber };
+    if (req.user?.eventId) {
+      const eventObjId = new (await import('mongoose')).default.Types.ObjectId(req.user.eventId);
+      resultQuery.$or = [{ eventId: req.user.eventId }, { eventId: eventObjId }];
+      delete resultQuery.eventId;
+    }
+    const participantResult = await ParticipantRoundResult.findOne(resultQuery);
+
+    // Derive result status for participant
+    // CRITICAL: Participant ONLY sees their result AFTER admin publishes
+    let resultData: { status: 'RESULT_PENDING' | 'SELECTED' | 'NOT_SELECTED'; isPublished: boolean; publishedAt?: string | null } | null = null;
+    const progressStatus = currentProgress?.status || 'not_started';
+    const isConcluded = ['submitted', 'expired', 'advanced', 'eliminated'].includes(progressStatus);
+
+    if (isConcluded) {
+      if (participantResult && participantResult.isPublished) {
+        resultData = {
+          status: participantResult.selectionStatus as 'SELECTED' | 'NOT_SELECTED',
+          isPublished: true,
+          publishedAt: participantResult.publishedAt?.toISOString() || null
+        };
+      } else {
+        resultData = {
+          status: 'RESULT_PENDING',
+          isPublished: false,
+          publishedAt: null
+        };
+      }
+    }
+
+    // nextRoundAvailable: Only when result is PUBLISHED + SELECTED + next round is active
     let nextRoundAvailable = false;
-    if (currentProgress?.status === 'submitted' && !isFinalRound) {
+    const isQualifiedWaitingNextRound = false; // Deprecated - replaced by result-based flow
+    if (resultData?.status === 'SELECTED' && resultData.isPublished && !isFinalRound) {
       let nextStageRound: any = null;
       if (req.user?.eventId) {
         nextStageRound = await DynamicRound.findOne({ eventId: req.user.eventId, roundNumber: roundNumber + 1 });
@@ -771,12 +827,13 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         nextStageRound = await Round.findOne({ roundNumber: roundNumber + 1 });
       }
       if (nextStageRound && nextStageRound.status === 'active') {
-        const currentRoundProg = await RoundProgress.findOne({ userId, roundNumber });
-        if (currentRoundProg?.status === 'advanced') {
-          nextRoundAvailable = true;
-        }
+        nextRoundAvailable = true;
       }
     }
+
+    // --- Privacy: Strip scores/times from concluded states ---
+    // Participants must NEVER see their scores before official results
+    const shouldStripScores = isConcluded;
 
     res.json({
       competition: {
@@ -796,11 +853,11 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         remainingSeconds
       },
       progress: {
-        status: currentProgress?.status || 'not_started',
-        totalScore: currentProgress?.totalScore || 0,
+        status: progressStatus,
+        totalScore: shouldStripScores ? undefined : (currentProgress?.totalScore || 0),
         markedForReview: currentProgress?.markedForReview || [],
         violationCount: currentProgress?.violationCount || 0,
-        timeTakenSeconds: currentProgress?.timeTakenSeconds || 0,
+        timeTakenSeconds: shouldStripScores ? undefined : (currentProgress?.timeTakenSeconds || 0),
         startedAt: currentProgress?.startedAt || null,
         endsAt: currentProgress?.endsAt || null,
         canStart,
@@ -808,6 +865,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         nextRoundAvailable,
         isFinalRound
       },
+      result: resultData,
       canStart,
       isQualifiedWaitingNextRound,
       nextRoundAvailable,
@@ -818,7 +876,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
         selectedOption: att.selectedOption,
         code: att.code,
         language: att.language,
-        score: att.score,
+        score: shouldStripScores ? undefined : att.score,
         status: att.status,
         lastSavedAt: att.lastSavedAt,
         testCaseResults: sanitizeResultsForParticipant(att.testCaseResults || [])
@@ -905,6 +963,22 @@ participantRouter.post(['/rounds/:roundNumber/start', '/start-round'], async (re
         res.status(403).json({
           error: 'You have not been advanced to this round yet.',
           status: 'waiting_advancement'
+        });
+        return;
+      }
+
+      // Additionally verify that the previous round's result was PUBLISHED as SELECTED
+      const prevResultQuery: any = { participantId: userId, roundNumber: roundNumber - 1 };
+      if (req.user?.eventId) {
+        const mongoose = (await import('mongoose')).default;
+        const eventObjId = new mongoose.Types.ObjectId(req.user.eventId);
+        prevResultQuery.$or = [{ eventId: req.user.eventId }, { eventId: eventObjId }];
+      }
+      const prevResult = await ParticipantRoundResult.findOne(prevResultQuery);
+      if (!prevResult || !prevResult.isPublished || prevResult.selectionStatus !== 'SELECTED') {
+        res.status(403).json({
+          error: 'Results for the previous round have not been published yet. Please wait for the organizer to announce results.',
+          status: 'waiting_results'
         });
         return;
       }

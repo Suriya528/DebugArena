@@ -303,6 +303,10 @@ export const App: React.FC = () => {
       if (user?.role === 'participant') fetchRoundState();
     });
 
+    socket.on('round:results_published', () => {
+      if (user?.role === 'participant') fetchRoundState();
+    });
+
     socket.on('tiebreak:started', () => {
       if (user?.role === 'participant') fetchRoundState();
     });
@@ -319,6 +323,7 @@ export const App: React.FC = () => {
       socket.off('round:locked');
       socket.off('round:auto_submitted');
       socket.off('round:advancement_announced');
+      socket.off('round:results_published');
       socket.off('tiebreak:started');
       socket.off('participant:disqualified');
     };
@@ -583,12 +588,13 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 3A. Participant Inactive / Concluded States (Eliminated, Waiting Advancement, Qualified, Next Round Available, or Final Round) */}
+          {/* 3A. Participant Inactive / Concluded States */}
           {!roundState?.isTieBreak && (
             roundState?.isEliminated ||
             roundState?.isWaitingAdvancement ||
             roundState?.isQualifiedWaitingNextRound ||
             roundState?.nextRoundAvailable ||
+            roundState?.result ||
             (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'expired' || currentProgress?.status === 'advanced')) ||
             currentProgress?.status === 'submitted' ||
             currentProgress?.status === 'expired' ||
@@ -606,6 +612,7 @@ export const App: React.FC = () => {
                   isQualifiedWaitingNextRound={roundState?.isQualifiedWaitingNextRound}
                   nextRoundAvailable={roundState?.nextRoundAvailable}
                   isFinalRound={roundState?.isFinalRound}
+                  resultData={roundState?.result}
                   onEnterNextRound={() => {
                     setHasStartedActiveRoundState(false);
                     fetchRoundState();

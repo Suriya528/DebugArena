@@ -368,3 +368,12 @@ export async function startParticipantRound(roundNumber: number) {
   return res.data;
 }
 
+export async function saveRoundResultsDraft(roundNumber: number, selections: { participantId: string; selection: 'SELECTED' | 'NOT_SELECTED' }[], eventId?: string) {
+  const res = await api.post(`/admin/rounds/${roundNumber}/results/save`, { selections, eventId });
+  return res.data;
+}
+
+export async function publishRoundResults(roundNumber: number, eventId?: string, selections?: { participantId: string; selection: 'SELECTED' | 'NOT_SELECTED' }[]) {
+  const res = await api.post(`/admin/rounds/${roundNumber}/results/publish`, { eventId, selections });
+  return res.data;
+}
