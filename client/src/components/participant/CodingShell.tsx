@@ -9,16 +9,38 @@ import {
   XCircle,
   Clock,
   AlertTriangle,
+  AlertOctagon,
   RotateCcw,
   Check,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Sparkles
 } from 'lucide-react';
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
 import { useDebouncedCallback } from '../../hooks/useDebounce.js';
 import { useTheme } from '../../context/ThemeContext.js';
 import { CodingProblemDetails } from '../common/CodingProblemDetails.js';
+
+export interface SubmissionFeedbackData {
+  status: string;
+  message: string;
+  score?: number;
+  submissionScore?: number;
+  language?: string;
+  passedCount?: number;
+  totalCount?: number;
+  failedCount?: number;
+  hiddenTotalCount?: number;
+  hiddenFailedCount?: number;
+  hiddenPassedCount?: number;
+  failedHiddenIndices?: number[];
+  avgRuntimeMs?: number;
+  maxRuntimeMs?: number;
+  timeLimitMs?: number;
+  compileOutput?: string | null;
+  runtimeOutput?: string | null;
+}
 
 interface CodingShellProps {
   questions: Question[];
@@ -76,7 +98,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<'problem' | 'code' | 'results'>('problem');
-  const [submissionFeedback, setSubmissionFeedback] = useState<Record<string, { status: string; message: string }>>({});
+  const [submissionFeedback, setSubmissionFeedback] = useState<Record<string, SubmissionFeedbackData>>({});
 
   // Initialize from attempts or default starter code
   useEffect(() => {
@@ -286,10 +308,28 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       if (res.data.success) {
         setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
         setScores(prev => ({ ...prev, [qId]: res.data.score }));
-        if (res.data.status && res.data.message) {
+        if (res.data.status) {
           setSubmissionFeedback(prev => ({
             ...prev,
-            [qId]: { status: res.data.status, message: res.data.message }
+            [qId]: {
+              status: res.data.status,
+              message: res.data.message || '',
+              score: res.data.score,
+              submissionScore: res.data.submissionScore,
+              language: res.data.language || lang,
+              passedCount: res.data.passedCount ?? res.data.results?.filter((r: any) => r.passed).length ?? 0,
+              totalCount: res.data.totalCount ?? res.data.results?.length ?? 0,
+              failedCount: res.data.failedCount ?? 0,
+              hiddenTotalCount: res.data.hiddenTotalCount ?? 0,
+              hiddenFailedCount: res.data.hiddenFailedCount ?? 0,
+              hiddenPassedCount: res.data.hiddenPassedCount ?? 0,
+              failedHiddenIndices: res.data.failedHiddenIndices ?? [],
+              avgRuntimeMs: res.data.avgRuntimeMs ?? 0,
+              maxRuntimeMs: res.data.maxRuntimeMs ?? 0,
+              timeLimitMs: res.data.timeLimitMs ?? (currentQ.timeLimitMs || 3000),
+              compileOutput: res.data.compileOutput ?? null,
+              runtimeOutput: res.data.runtimeOutput ?? null
+            }
           }));
         }
       }
@@ -546,7 +586,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           {/* Bottom Execution & Results Terminal */}
-          <div className={`${mobileView === 'results' ? 'flex-1' : 'hidden lg:flex'} lg:h-72 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden`}>
+          <div className={`${mobileView === 'results' ? 'flex-1' : 'hidden lg:flex'} lg:min-h-[14rem] lg:max-h-[50vh] lg:flex-1 border-t border-slate-800 bg-slate-950 flex flex-col shrink-0 overflow-hidden`}>
             {/* Terminal Header */}
             <div className="h-10 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/60 shrink-0">
               <div className="flex items-center gap-4">
@@ -581,7 +621,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   <span>Custom Input</span>
                 </button>
 
-                {currentResults.length > 0 && (
+                {(currentResults.length > 0 || submissionFeedback[currentQ._id]) && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('results')}
@@ -591,7 +631,20 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                         : 'border-transparent text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    <span>Summary ({visibleCases.filter(c => c.passed).length}/{visibleCases.length})</span>
+                    {submissionFeedback[currentQ._id] ? (
+                      <>
+                        <span className={`w-2 h-2 rounded-full ${
+                          submissionFeedback[currentQ._id].status === 'Accepted'
+                            ? 'bg-emerald-400 animate-pulse'
+                            : submissionFeedback[currentQ._id].status === 'Wrong Answer'
+                            ? 'bg-amber-400'
+                            : 'bg-rose-400'
+                        }`} />
+                        <span>Submission ({submissionFeedback[currentQ._id].status})</span>
+                      </>
+                    ) : (
+                      <span>Summary ({visibleCases.filter(c => c.passed).length}/{visibleCases.length})</span>
+                    )}
                   </button>
                 )}
               </div>
@@ -621,7 +674,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             </div>
 
             {/* Terminal Body */}
-            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 font-mono text-xs select-text">
               {isRunning && (
                 <div className="flex items-center justify-center gap-2 text-indigo-400 py-8">
                   <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
@@ -678,7 +731,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                           <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
                             Input (stdin):
                           </span>
-                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-slate-200 text-xs overflow-x-auto whitespace-pre max-h-28">
+                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-slate-200 text-xs overflow-x-auto whitespace-pre">
                             {currentSampleCases[safeCaseIdx]?.input || '(no input)'}
                           </pre>
                         </div>
@@ -687,7 +740,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                           <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
                             Expected Output:
                           </span>
-                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-emerald-400 text-xs font-bold overflow-x-auto whitespace-pre max-h-28">
+                          <pre className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-lg text-emerald-400 text-xs font-bold overflow-x-auto whitespace-pre">
                             {currentSampleCases[safeCaseIdx]?.expectedOutput || '(empty output)'}
                           </pre>
                         </div>
@@ -714,14 +767,28 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                           </div>
 
                           {visibleCases[safeCaseIdx].compileError && (
-                            <div className="text-rose-400 bg-rose-950/40 border border-rose-900/50 p-2 rounded text-xs whitespace-pre-wrap">
-                              {visibleCases[safeCaseIdx].compileError}
+                            <div className="space-y-1 pt-1">
+                              <div className="text-[11px] font-bold text-rose-400 flex items-center gap-1.5 uppercase font-mono">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Compilation Error ({currentLang})</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">Compiler diagnostics (stderr):</div>
+                              <pre className="text-rose-300 bg-black/60 border border-rose-900/60 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner">
+                                {visibleCases[safeCaseIdx].compileError}
+                              </pre>
                             </div>
                           )}
 
                           {visibleCases[safeCaseIdx].runtimeError && (
-                            <div className="text-rose-400 bg-rose-950/40 border border-rose-900/50 p-2 rounded text-xs whitespace-pre-wrap">
-                              {visibleCases[safeCaseIdx].runtimeError}
+                            <div className="space-y-1 pt-1">
+                              <div className="text-[11px] font-bold text-rose-400 flex items-center gap-1.5 uppercase font-mono">
+                                <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Runtime Error ({currentLang})</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">Runtime error trace (stderr):</div>
+                              <pre className="text-rose-300 bg-black/60 border border-rose-900/60 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner">
+                                {visibleCases[safeCaseIdx].runtimeError}
+                              </pre>
                             </div>
                           )}
 
@@ -730,7 +797,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                               <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
                                 Actual Output:
                               </span>
-                              <pre className={`p-2.5 rounded-lg text-xs overflow-x-auto whitespace-pre max-h-28 border ${
+                              <pre className={`p-2.5 rounded-lg text-xs overflow-x-auto whitespace-pre border select-text ${
                                 visibleCases[safeCaseIdx].passed
                                   ? 'bg-emerald-950/20 text-emerald-300 border-emerald-800/40'
                                   : 'bg-rose-950/20 text-rose-300 border-rose-800/40'
@@ -754,86 +821,292 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 </div>
               )}
 
-              {/* 2. RESULTS SUMMARY VIEW */}
+              {/* 2. RESULTS / SUBMISSION SUMMARY VIEW (OA Grade Assessment) */}
               {!isRunning && !isSubmittingCode && activeTab === 'results' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {/* Submission Overall Status Banner */}
-                  {submissionFeedback[currentQ._id] && (
-                    <div className={`p-3 rounded-xl border flex items-center justify-between font-mono ${
-                      submissionFeedback[currentQ._id].status === 'Accepted'
-                        ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                        : submissionFeedback[currentQ._id].status === 'Compilation Error'
-                        ? 'bg-rose-950/40 border-rose-800/60 text-rose-300'
-                        : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
-                    }`}>
+                  {submissionFeedback[currentQ._id] ? (
+                    (() => {
+                      const fb = submissionFeedback[currentQ._id];
+                      const isAccepted = fb.status === 'Accepted';
+                      const isCompileError = fb.status === 'Compilation Error';
+                      const isRuntimeError = fb.status === 'Runtime Error';
+                      const isTimeLimit = fb.status === 'Time Limit Exceeded';
+                      const isMemoryLimit = fb.status === 'Memory Limit Exceeded';
+
+                      return (
+                        <div className="space-y-4">
+                          {/* OA Header Card */}
+                          <div className={`p-4 sm:p-5 rounded-2xl border ${
+                            isAccepted
+                              ? 'bg-emerald-950/40 border-emerald-500/50 shadow-lg shadow-emerald-950/30'
+                              : isCompileError || isRuntimeError
+                              ? 'bg-rose-950/40 border-rose-500/50 shadow-lg shadow-rose-950/30'
+                              : isTimeLimit || isMemoryLimit
+                              ? 'bg-amber-950/40 border-amber-500/50 shadow-lg shadow-amber-950/30'
+                              : 'bg-slate-900/90 border-slate-700/80 shadow-lg'
+                          }`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                  isAccepted
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : isCompileError || isRuntimeError
+                                    ? 'bg-rose-500/20 text-rose-400'
+                                    : 'bg-amber-500/20 text-amber-400'
+                                }`}>
+                                  {isAccepted ? (
+                                    <CheckCircle2 className="w-6 h-6 stroke-[2.5]" />
+                                  ) : isCompileError ? (
+                                    <Code2 className="w-6 h-6 stroke-[2.5]" />
+                                  ) : isTimeLimit ? (
+                                    <Clock className="w-6 h-6 stroke-[2.5]" />
+                                  ) : isRuntimeError ? (
+                                    <AlertOctagon className="w-6 h-6 stroke-[2.5]" />
+                                  ) : (
+                                    <XCircle className="w-6 h-6 stroke-[2.5]" />
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h3 className={`text-base sm:text-lg font-black tracking-tight uppercase ${
+                                      isAccepted
+                                        ? 'text-emerald-400'
+                                        : isCompileError || isRuntimeError
+                                        ? 'text-rose-400'
+                                        : isTimeLimit || isMemoryLimit
+                                        ? 'text-amber-400'
+                                        : 'text-rose-400'
+                                    }`}>
+                                      {fb.status}
+                                    </h3>
+                                    {isAccepted && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                        All Tests Passed
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-300 font-sans mt-0.5">
+                                    {fb.message}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Badges / Language Pill */}
+                              <div className="flex items-center gap-2 font-mono text-xs">
+                                <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-300">
+                                  Language: <strong className="text-white uppercase">{fb.language || currentLang}</strong>
+                                </span>
+                                {fb.score !== undefined && (
+                                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
+                                    Score: {fb.score} pts
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Execution Metrics Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 font-mono text-xs">
+                              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Tests Passed</div>
+                                <div className="text-sm font-bold text-white mt-0.5">
+                                  <span className={isAccepted ? 'text-emerald-400' : 'text-slate-200'}>
+                                    {fb.passedCount ?? visibleCases.filter(c => c.passed).length}
+                                  </span>
+                                  <span className="text-slate-500"> / {fb.totalCount ?? visibleCases.length}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  {isAccepted ? '100% Passed' : `${fb.failedCount ?? 0} Failed`}
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Execution Time</div>
+                                <div className="text-sm font-bold text-slate-200 mt-0.5">
+                                  {fb.avgRuntimeMs !== undefined ? `${fb.avgRuntimeMs} ms` : '—'}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  Avg per test case
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Time Limit</div>
+                                <div className="text-sm font-bold text-slate-200 mt-0.5">
+                                  {fb.timeLimitMs ? `${(fb.timeLimitMs / 1000).toFixed(1)}s` : '3.0s'}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  Configured ceiling
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Memory</div>
+                                <div className="text-sm font-bold text-slate-200 mt-0.5">
+                                  256 MB
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  Execution limit
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Dedicated Compiler Error Diagnostics */}
+                          {isCompileError && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-rose-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                  <Terminal className="w-3.5 h-3.5 text-rose-400" />
+                                  Compiler Output &amp; Diagnostics (stderr)
+                                </span>
+                                <span className="text-slate-500 text-[10px] font-mono">
+                                  Language: {fb.language || currentLang}
+                                </span>
+                              </div>
+                              <pre className="bg-slate-950 border border-rose-900/60 p-3.5 rounded-xl font-mono text-xs text-rose-300 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
+                                {fb.compileOutput || visibleCases[0]?.compileError || 'Compilation failed with non-zero exit code'}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* Dedicated Runtime Error Diagnostics */}
+                          {isRuntimeError && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-rose-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                  <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+                                  Runtime Error Output &amp; Stack Trace (stderr)
+                                </span>
+                                <span className="text-slate-500 text-[10px] font-mono">
+                                  Language: {fb.language || currentLang}
+                                </span>
+                              </div>
+                              <pre className="bg-slate-950 border border-rose-900/60 p-3.5 rounded-xl font-mono text-xs text-rose-300 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
+                                {fb.runtimeOutput || visibleCases.find(c => c.runtimeError)?.runtimeError || 'Runtime exception caught'}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* Safe Hidden Test Failure Summary (Never expose confidential test data) */}
+                          {(fb.hiddenFailedCount ?? 0) > 0 && (
+                            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-amber-800/40 text-xs">
+                              <div className="font-bold text-amber-400 mb-1 flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <span>Private Test Cases Evaluation</span>
+                              </div>
+                              <p className="text-slate-400 leading-relaxed mb-2.5">
+                                Your submission failed <strong className="text-amber-300">{fb.hiddenFailedCount}</strong> private test case{fb.hiddenFailedCount === 1 ? '' : 's'}. Hidden test inputs and expected outputs are confidential to preserve assessment integrity.
+                              </p>
+                              {fb.failedHiddenIndices && fb.failedHiddenIndices.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {fb.failedHiddenIndices.map(idx => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-mono"
+                                    >
+                                      Hidden Test #{idx} Failed
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    /* Sample Run Summary (when Run Sample was clicked without full Submit) */
+                    <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs flex items-center justify-between font-mono">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs">
-                          {submissionFeedback[currentQ._id].status}
-                        </span>
-                        <span className="text-xs text-slate-300">
-                          — {submissionFeedback[currentQ._id].message}
+                        <span className="font-bold text-slate-200">Sample Execution Summary</span>
+                        <span className="text-slate-400">
+                          — {visibleCases.filter(c => c.passed).length} of {visibleCases.length} sample cases passed
                         </span>
                       </div>
+                      <span className="text-slate-500 text-[10px]">
+                        Click "Submit" to evaluate all test cases
+                      </span>
                     </div>
                   )}
 
-                  {visibleCases.length > 0 ? (
-                    visibleCases.map(r => (
-                      <div
-                        key={r.testNumber}
-                        className={`p-3 rounded-xl border ${
-                          r.passed
-                            ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
-                            : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 font-bold">
-                            {r.passed ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <XCircle className="w-4 h-4 text-rose-400" />
-                            )}
-                            <span>Sample Case #{r.testNumber}</span>
-                            <span className="text-[11px] font-normal uppercase px-1.5 rounded bg-slate-800">
-                              {r.status}
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-slate-400">{r.runtimeMs}ms</span>
-                        </div>
-
-                        {r.compileError && (
-                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                            {r.compileError}
-                          </div>
-                        )}
-                        {r.runtimeError && (
-                          <div className="mt-2 text-rose-400 bg-black/40 p-2 rounded whitespace-pre-wrap">
-                            {r.runtimeError}
-                          </div>
-                        )}
-
-                        {!r.passed && !r.compileError && !r.runtimeError && (
-                          <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
-                            <div>
-                              <span className="text-slate-400 block">Expected:</span>
-                              <pre className="bg-black/30 p-1 rounded text-emerald-400 whitespace-pre">
-                                {r.expected}
-                              </pre>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block">Actual:</span>
-                              <pre className="bg-black/30 p-1 rounded text-rose-400 whitespace-pre">
-                                {r.actual}
-                              </pre>
-                            </div>
-                          </div>
-                        )}
+                  {/* Sample Test Cases Breakdown List (Visible Cases) */}
+                  {visibleCases.length > 0 && (
+                    <div className="space-y-2.5 pt-2">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <span>Sample Test Cases Details</span>
+                        <span className="text-[10px] text-slate-500 font-mono font-normal">
+                          ({visibleCases.filter(c => c.passed).length}/{visibleCases.length} passed)
+                        </span>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-slate-500 py-6 text-center">
-                      Click <strong>Run</strong> or <strong>Submit Code</strong> to view results.
+
+                      {visibleCases.map(r => (
+                        <div
+                          key={r.testNumber}
+                          className={`p-3 rounded-xl border ${
+                            r.passed
+                              ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+                              : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2 font-bold">
+                              {r.passed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-rose-400" />
+                              )}
+                              <span>Sample Case #{r.testNumber}</span>
+                              <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${
+                                r.passed
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                              }`}>
+                                {r.status}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-400 font-mono">{r.runtimeMs}ms</span>
+                          </div>
+
+                          {r.compileError && (
+                            <div className="mt-2 text-rose-300 bg-black/60 border border-rose-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
+                              {r.compileError}
+                            </div>
+                          )}
+                          {r.runtimeError && (
+                            <div className="mt-2 text-rose-300 bg-black/60 border border-rose-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
+                              {r.runtimeError}
+                            </div>
+                          )}
+
+                          {!r.compileError && !r.runtimeError && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] font-mono">
+                              <div>
+                                <span className="text-slate-400 block mb-1">Expected Output:</span>
+                                <pre className="bg-black/50 border border-slate-800/80 p-2 rounded-lg text-emerald-400 whitespace-pre overflow-x-auto select-text">
+                                  {r.expected}
+                                </pre>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block mb-1">Actual Output:</span>
+                                <pre className={`border p-2 rounded-lg whitespace-pre overflow-x-auto select-text ${
+                                  r.passed
+                                    ? 'bg-emerald-950/30 border-emerald-900/40 text-emerald-300'
+                                    : 'bg-rose-950/30 border-rose-900/40 text-rose-300'
+                                }`}>
+                                  {r.actual || '(no stdout output)'}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {visibleCases.length === 0 && !submissionFeedback[currentQ._id] && (
+                    <div className="text-slate-500 py-6 text-center font-sans text-xs">
+                      Click <strong className="text-slate-400">Run</strong> or <strong className="text-slate-400">Submit Code</strong> to evaluate your solution.
                     </div>
                   )}
                 </div>

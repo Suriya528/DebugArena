@@ -1422,8 +1422,13 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       resultsSummary: `${results.filter(r => r.passed).length}/${results.length} sample cases passed`
     });
 
+    const firstCompileErr = results.find(r => r.compileError)?.compileError || null;
+    const firstRuntimeErr = results.find(r => r.runtimeError)?.runtimeError || null;
+
     res.json({
       success: true,
+      compileOutput: firstCompileErr,
+      runtimeOutput: firstRuntimeErr,
       results: sanitizeResultsForParticipant(results)
     });
   } catch (err: any) {
@@ -1639,31 +1644,67 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       eventId: eventIdStr
     }, collegeIdStr, eventIdStr);
 
-    const hasCompileError = results.some(r => r.compileError);
+    const hasCompileError = results.some(r => r.compileError || r.status === 'compile_error');
     const hasTimeout = results.some(r => r.timeout || r.status === 'timeout');
-    const hasRuntimeError = results.filter(r => !r.isHidden).some(r => r.runtimeError);
+    const hasMemoryError = results.some(r => {
+      const err = (r.runtimeError || r.stderr || '').toLowerCase();
+      return err.includes('outofmemory') || err.includes('heap out of memory') || err.includes('bad_alloc') || err.includes('memoryerror');
+    });
+    const hasRuntimeError = !hasCompileError && !hasTimeout && !hasMemoryError && results.some(r => r.runtimeError || r.status === 'runtime_error');
     const allPassed = results.length > 0 && results.every(r => r.passed);
     const visibleResults = results.filter(r => !r.isHidden);
+    const hiddenResults = results.filter(r => r.isHidden);
     const visibleAllPassed = visibleResults.length > 0 && visibleResults.every(r => r.passed);
 
     let status = 'Wrong Answer';
-    let message = 'Sample test cases failed.';
+    let message = 'One or more test cases failed.';
     if (hasCompileError) {
       status = 'Compilation Error';
-      message = 'Compilation Error';
+      message = 'Compilation failed. Please inspect the compiler output below.';
     } else if (hasTimeout) {
       status = 'Time Limit Exceeded';
-      message = 'Time Limit Exceeded: Your solution exceeded the execution time limit.';
+      message = `Execution exceeded the ${question.timeLimitMs || 3000}ms time limit.`;
+    } else if (hasMemoryError) {
+      status = 'Memory Limit Exceeded';
+      message = 'Execution exceeded the memory limit.';
     } else if (hasRuntimeError) {
       status = 'Runtime Error';
-      message = 'Runtime Error';
+      message = 'Program crashed during execution. Check the runtime error trace below.';
     } else if (allPassed) {
       status = 'Accepted';
-      message = 'Accepted! All test cases passed.';
+      message = 'Accepted! All test cases passed successfully.';
     } else if (visibleAllPassed) {
       status = 'Wrong Answer';
-      message = 'Your solution failed one or more private test cases.';
+      const hiddenFailures = hiddenResults.filter(r => !r.passed).length;
+      message = `Passed all visible sample cases, but failed ${hiddenFailures} hidden test case${hiddenFailures === 1 ? '' : 's'}.`;
     }
+
+    const totalCount = results.length;
+    const passedCount = results.filter(r => r.passed).length;
+    const failedCount = totalCount - passedCount;
+    const hiddenTotalCount = hiddenResults.length;
+    const hiddenFailedCount = hiddenResults.filter(r => !r.passed).length;
+    const hiddenPassedCount = hiddenTotalCount - hiddenFailedCount;
+
+    const totalRuntimeMs = results.reduce((acc, r) => acc + (r.runtimeMs || 0), 0);
+    const avgRuntimeMs = results.length > 0 ? Math.round(totalRuntimeMs / results.length) : 0;
+    const maxRuntimeMs = results.reduce((max, r) => Math.max(max, r.runtimeMs || 0), 0);
+
+    const firstCompileError = results.find(r => r.compileError)?.compileError 
+      || results.find(r => r.status === 'compile_error')?.stderr 
+      || null;
+
+    const firstRuntimeResult = results.find(r => r.runtimeError || r.status === 'runtime_error');
+    const firstRuntimeError = firstRuntimeResult?.runtimeError 
+      || (firstRuntimeResult?.stderr ? firstRuntimeResult.stderr.trim() : null)
+      || null;
+
+    const failedHiddenIndices: number[] = [];
+    hiddenResults.forEach((tc, idx) => {
+      if (!tc.passed) {
+        failedHiddenIndices.push(idx + 1);
+      }
+    });
 
     const responsePayload = {
       success: true,
@@ -1671,6 +1712,19 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       message,
       score: attempt.score,
       submissionScore: currentScore,
+      language,
+      passedCount,
+      totalCount,
+      failedCount,
+      hiddenTotalCount,
+      hiddenFailedCount,
+      hiddenPassedCount,
+      failedHiddenIndices,
+      avgRuntimeMs,
+      maxRuntimeMs,
+      timeLimitMs: question.timeLimitMs || 3000,
+      compileOutput: firstCompileError,
+      runtimeOutput: firstRuntimeError,
       results: sanitizeResultsForParticipant(results)
     };
 

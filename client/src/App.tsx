@@ -588,113 +588,141 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 3A. Participant Inactive / Concluded States */}
-          {!roundState?.isTieBreak && (
-            roundState?.isEliminated ||
-            roundState?.isWaitingAdvancement ||
-            roundState?.isQualifiedWaitingNextRound ||
-            roundState?.nextRoundAvailable ||
-            roundState?.result ||
-            (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'expired' || currentProgress?.status === 'advanced')) ||
-            currentProgress?.status === 'submitted' ||
-            currentProgress?.status === 'expired' ||
-            currentProgress?.status === 'advanced'
-          ) && (
-            <>
-              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
-              <main className="flex-1 flex items-center justify-center p-4">
-                <RoundSummaryView
-                  round={currentRound || ({ roundNumber: 1, title: 'Debug Arena', status: 'completed' } as any)}
-                  progress={currentProgress || ({ totalScore: 0, timeTakenSeconds: 0, status: roundState?.isEliminated ? 'eliminated' : (currentProgress?.status || 'submitted') } as any)}
-                  onRefresh={fetchRoundState}
-                  isEliminated={roundState?.isEliminated}
-                  isWaitingAdvancement={roundState?.isWaitingAdvancement}
-                  isQualifiedWaitingNextRound={roundState?.isQualifiedWaitingNextRound}
-                  nextRoundAvailable={roundState?.nextRoundAvailable}
-                  isFinalRound={roundState?.isFinalRound}
-                  resultData={roundState?.result}
-                  onEnterNextRound={() => {
-                    setHasStartedActiveRoundState(false);
-                    fetchRoundState();
-                  }}
-                />
-              </main>
-            </>
-          )}
+          {(() => {
+            // Compute a single mutually-exclusive participant view to prevent duplicate headers/shells
+            type ParticipantView = 'concluded' | 'tiebreak' | 'briefing' | 'active_session';
 
-          {/* 3B. Sudden Death Tie-Breaker */}
-          {roundState?.isTieBreak && roundState?.question && (
-            <>
-              <Navbar roundTitle="Sudden-Death Tie-Breaker" />
-              <main className="flex-1">
-                <TieBreakShell
-                  question={roundState.question}
-                  attempt={roundState.attempt}
-                  tieBreakId={roundState.tieBreakId}
-                  onCompleted={fetchRoundState}
-                />
-              </main>
-            </>
-          )}
+            let participantView: ParticipantView = 'briefing'; // default
 
-          {/* 3D. Assessment Briefing (Before starting active round) */}
-          {!roundState?.isTieBreak &&
-            currentProgress?.status !== 'submitted' &&
-            currentProgress?.status !== 'expired' &&
-            currentProgress?.status !== 'advanced' &&
-            !hasStartedActiveRound && (
-            <>
-              <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
-              <main className="flex-1 flex items-center justify-center p-4">
-                {currentRound ? (
-                  <InstructionsView
-                    round={currentRound}
-                    onStartRound={handleStartRoundAssessment}
-                    isLoading={isStartingRound}
-                  />
-                ) : (
-                  <div className="text-center text-slate-400 py-20 text-xs">
-                    No active round found. Please wait for the tournament administrator.
-                  </div>
-                )}
-              </main>
-            </>
-          )}
+            if (roundState?.isTieBreak && roundState?.question) {
+              participantView = 'tiebreak';
+            } else if (
+              !roundState?.isTieBreak && (
+                roundState?.isEliminated ||
+                roundState?.isWaitingAdvancement ||
+                roundState?.isQualifiedWaitingNextRound ||
+                roundState?.nextRoundAvailable ||
+                roundState?.result ||
+                (roundState?.isFinalRound && (currentProgress?.status === 'submitted' || currentProgress?.status === 'expired' || currentProgress?.status === 'advanced')) ||
+                currentProgress?.status === 'submitted' ||
+                currentProgress?.status === 'expired' ||
+                currentProgress?.status === 'advanced' ||
+                currentProgress?.status === 'eliminated'
+              )
+            ) {
+              participantView = 'concluded';
+            } else if (
+              !roundState?.isTieBreak && hasStartedActiveRound &&
+              currentProgress?.status !== 'submitted' &&
+              currentProgress?.status !== 'expired' &&
+              currentProgress?.status !== 'advanced' &&
+              currentProgress?.status !== 'eliminated'
+            ) {
+              participantView = 'active_session';
+            } else {
+              participantView = 'briefing';
+            }
 
-          {/* 3E. Active Assessment Shell (MCQ / Coding) */}
-          {!roundState?.isTieBreak && currentProgress?.status !== 'submitted' && currentProgress?.status !== 'advanced' && hasStartedActiveRound && (
-            <>
-              <Navbar
-                roundTitle={currentRound?.title}
-                roundNumber={currentRound?.roundNumber}
-                timerFormatted={formattedTime}
-                isTimerUrgent={isUrgent}
-                proctoringMode={true}
-                violationCount={violationCount}
-                violationLimit={violationLimit}
-              />
-              <main className="flex-1 relative z-10">
-                {currentRound?.type === 'mcq' ? (
-                  <McqShell
-                    questions={roundState.questions || []}
-                    roundNumber={currentRound.roundNumber}
-                    initialAttempts={roundState.attempts || []}
-                    initialMarkedForReview={currentProgress?.markedForReview || []}
-                    onSubmitRound={handleSubmitRoundExplicitly}
-                    isSubmitting={isSubmittingRound}
+            // 3A. Participant Inactive / Concluded States (terminal result page)
+            if (participantView === 'concluded') {
+              return (
+                <>
+                  <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
+                  <main className="flex-1 flex items-center justify-center p-4">
+                    <RoundSummaryView
+                      round={currentRound || ({ roundNumber: 1, title: 'Debug Arena', status: 'completed' } as any)}
+                      progress={currentProgress || ({ totalScore: 0, timeTakenSeconds: 0, status: roundState?.isEliminated ? 'eliminated' : (currentProgress?.status || 'submitted') } as any)}
+                      onRefresh={fetchRoundState}
+                      isEliminated={roundState?.isEliminated}
+                      isWaitingAdvancement={roundState?.isWaitingAdvancement}
+                      isQualifiedWaitingNextRound={roundState?.isQualifiedWaitingNextRound}
+                      nextRoundAvailable={roundState?.nextRoundAvailable}
+                      isFinalRound={roundState?.isFinalRound}
+                      resultData={roundState?.result}
+                      onEnterNextRound={() => {
+                        setHasStartedActiveRoundState(false);
+                        fetchRoundState();
+                      }}
+                    />
+                  </main>
+                </>
+              );
+            }
+
+            // 3B. Sudden Death Tie-Breaker
+            if (participantView === 'tiebreak') {
+              return (
+                <>
+                  <Navbar roundTitle="Sudden-Death Tie-Breaker" />
+                  <main className="flex-1">
+                    <TieBreakShell
+                      question={roundState.question}
+                      attempt={roundState.attempt}
+                      tieBreakId={roundState.tieBreakId}
+                      onCompleted={fetchRoundState}
+                    />
+                  </main>
+                </>
+              );
+            }
+
+            // 3E. Active Assessment Shell (MCQ / Coding)
+            if (participantView === 'active_session') {
+              return (
+                <>
+                  <Navbar
+                    roundTitle={currentRound?.title}
+                    roundNumber={currentRound?.roundNumber}
+                    timerFormatted={formattedTime}
+                    isTimerUrgent={isUrgent}
+                    proctoringMode={true}
+                    violationCount={violationCount}
+                    violationLimit={violationLimit}
                   />
-                ) : (
-                  <CodingShell
-                    questions={roundState.questions || []}
-                    roundNumber={currentRound.roundNumber}
-                    initialAttempts={roundState.attempts || []}
-                    onSubmitRound={handleSubmitRoundExplicitly}
-                    isSubmittingRound={isSubmittingRound}
-                  />
-                )}
-              </main>
-            </>
-          )}
+                  <main className="flex-1 relative z-10">
+                    {currentRound?.type === 'mcq' ? (
+                      <McqShell
+                        questions={roundState.questions || []}
+                        roundNumber={currentRound.roundNumber}
+                        initialAttempts={roundState.attempts || []}
+                        initialMarkedForReview={currentProgress?.markedForReview || []}
+                        onSubmitRound={handleSubmitRoundExplicitly}
+                        isSubmitting={isSubmittingRound}
+                      />
+                    ) : (
+                      <CodingShell
+                        questions={roundState.questions || []}
+                        roundNumber={currentRound.roundNumber}
+                        initialAttempts={roundState.attempts || []}
+                        onSubmitRound={handleSubmitRoundExplicitly}
+                        isSubmittingRound={isSubmittingRound}
+                      />
+                    )}
+                  </main>
+                </>
+              );
+            }
+
+            // 3D. Assessment Briefing (default: before starting active round)
+            return (
+              <>
+                <Navbar roundTitle={currentRound?.title} roundNumber={currentRound?.roundNumber} />
+                <main className="flex-1 flex items-center justify-center p-4">
+                  {currentRound ? (
+                    <InstructionsView
+                      round={currentRound}
+                      onStartRound={handleStartRoundAssessment}
+                      isLoading={isStartingRound}
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400 py-20 text-xs">
+                      No active round found. Please wait for the tournament administrator.
+                    </div>
+                  )}
+                </main>
+              </>
+            );
+          })()}
         </>
       )}
 
