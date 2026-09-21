@@ -111,6 +111,17 @@ export function resolveJavaRuntime(forceRefresh = false): JavaRuntimeInfo {
     if (p) candidateDirs.push(p);
   }
 
+  // 2b. Project-relative portable JDK paths (e.g. Render/Linux .jdk directory)
+  const localJdkDirs = [
+    path.join(process.cwd(), '.jdk', 'bin'),
+    path.join(process.cwd(), 'server', '.jdk', 'bin'),
+    path.join(process.cwd(), '..', '.jdk', 'bin'),
+    path.join(process.cwd(), '..', 'server', '.jdk', 'bin')
+  ];
+  for (const dir of localJdkDirs) {
+    if (fs.existsSync(dir)) candidateDirs.push(dir);
+  }
+
   // 3. Current process PATH directories
   const currentPath = process.env.PATH || process.env.Path || '';
   for (const dir of currentPath.split(path.delimiter)) {
