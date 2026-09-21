@@ -253,6 +253,31 @@ function runCommand(
   });
 }
 
+// Sanitize compiler and runtime diagnostics (remove server paths and internals while preserving line/column and compiler error messages)
+export function sanitizeDiagnostics(output?: string | null, tempDir?: string): string {
+  if (!output) return '';
+  let sanitized = output;
+
+  if (tempDir) {
+    const normBackslash = tempDir.replace(/\//g, '\\');
+    const normForwardSlash = tempDir.replace(/\\/g, '/');
+    sanitized = sanitized.split(normBackslash).join('');
+    sanitized = sanitized.split(normForwardSlash).join('');
+  }
+
+  // Strip absolute directories, leaving only the filename (e.g. Solution.java:12: error)
+  sanitized = sanitized.replace(/[A-Za-z]:\\[^:\n\r]+[\\/]([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))/gi, '$1');
+  sanitized = sanitized.replace(/(?:\/[^:\n\r\s]+)+\/([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))/gi, '$1');
+
+  // Remove internal server/user paths
+  sanitized = sanitized.replace(/[A-Za-z]:\\(?:Users|Documents|Program Files|Windows)[^:\n\r]*/gi, '');
+  sanitized = sanitized.replace(/\/home\/[^:\n\r]*/gi, '');
+  sanitized = sanitized.replace(/\/tmp\/[^:\n\r]*/gi, '');
+  sanitized = sanitized.replace(/["']?[\/\\]+([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))["']?/gi, '"$1"');
+
+  return sanitized.trim();
+}
+
 // Multi-Language Native Local Runner
 async function executeLocal(
   code: string,
@@ -281,12 +306,13 @@ async function executeLocal(
 
       const isSyntaxError = cleanStderr.includes('SyntaxError') || cleanStderr.includes('IndentationError');
       const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
+      const sanitizedStderr = sanitizeDiagnostics(cleanStderr, tempDir);
 
       return {
         stdout: res.stdout.trim(),
-        stderr: cleanStderr,
-        compileError: isSyntaxError ? cleanStderr : undefined,
-        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `Process exited with code ${res.exitCode}`) : undefined,
+        stderr: sanitizedStderr,
+        compileError: isSyntaxError ? sanitizedStderr : undefined,
+        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : sanitizedStderr || `Process exited with code ${res.exitCode}`) : undefined,
         timeout: res.timedOut,
         exitCode: res.exitCode
       };
@@ -306,12 +332,13 @@ async function executeLocal(
       const cleanStderr = res.stderr.trim();
       const isSyntaxError = cleanStderr.includes('SyntaxError');
       const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
+      const sanitizedStderr = sanitizeDiagnostics(cleanStderr, tempDir);
 
       return {
         stdout: res.stdout.trim(),
-        stderr: cleanStderr,
-        compileError: isSyntaxError ? cleanStderr : undefined,
-        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `Process exited with code ${res.exitCode}`) : undefined,
+        stderr: sanitizedStderr,
+        compileError: isSyntaxError ? sanitizedStderr : undefined,
+        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : sanitizedStderr || `Process exited with code ${res.exitCode}`) : undefined,
         timeout: res.timedOut,
         exitCode: res.exitCode
       };
@@ -341,10 +368,11 @@ async function executeLocal(
       // Step A: Compilation
       const compileRes = await runCommand('javac', [sourceFile], '', 10000, tempDir);
       if (compileRes.exitCode !== 0) {
+        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'Java compilation failed';
         return {
           stdout: '',
-          stderr: compileRes.stderr.trim(),
-          compileError: compileRes.stderr.trim() || 'Java compilation failed',
+          stderr: sanitizedErr,
+          compileError: sanitizedErr,
           timeout: false,
           exitCode: compileRes.exitCode
         };
@@ -353,12 +381,13 @@ async function executeLocal(
       // Step B: Execution
       const runRes = await runCommand('java', ['-Xmx256m', '-cp', tempDir, className], stdinText, timeoutMs, tempDir);
       const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
 
       return {
         stdout: runRes.stdout.trim(),
-        stderr: runRes.stderr.trim(),
+        stderr: sanitizedRunErr,
         compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
         timeout: runRes.timedOut,
         exitCode: runRes.exitCode
       };
@@ -378,10 +407,11 @@ async function executeLocal(
       // Step A: Compilation
       const compileRes = await runCommand('g++', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
       if (compileRes.exitCode !== 0) {
+        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'C++ compilation failed';
         return {
           stdout: '',
-          stderr: compileRes.stderr.trim(),
-          compileError: compileRes.stderr.trim() || 'C++ compilation failed',
+          stderr: sanitizedErr,
+          compileError: sanitizedErr,
           timeout: false,
           exitCode: compileRes.exitCode
         };
@@ -390,12 +420,13 @@ async function executeLocal(
       // Step B: Execution
       const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
       const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
 
       return {
         stdout: runRes.stdout.trim(),
-        stderr: runRes.stderr.trim(),
+        stderr: sanitizedRunErr,
         compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
         timeout: runRes.timedOut,
         exitCode: runRes.exitCode
       };
@@ -415,10 +446,11 @@ async function executeLocal(
       // Step A: Compilation
       const compileRes = await runCommand('gcc', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
       if (compileRes.exitCode !== 0) {
+        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'C compilation failed';
         return {
           stdout: '',
-          stderr: compileRes.stderr.trim(),
-          compileError: compileRes.stderr.trim() || 'C compilation failed',
+          stderr: sanitizedErr,
+          compileError: sanitizedErr,
           timeout: false,
           exitCode: compileRes.exitCode
         };
@@ -427,12 +459,13 @@ async function executeLocal(
       // Step B: Execution
       const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
       const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
+      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
 
       return {
         stdout: runRes.stdout.trim(),
-        stderr: runRes.stderr.trim(),
+        stderr: sanitizedRunErr,
         compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : runRes.stderr.trim() || `Process exited with code ${runRes.exitCode}`) : undefined,
+        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
         timeout: runRes.timedOut,
         exitCode: runRes.exitCode
       };
@@ -765,8 +798,7 @@ export function sanitizeResultsForParticipant(
       isHidden: false,
       input: r.input,
       expected: r.expected,
-      actual: r.actual,
-      compileError: r.compileError,
-      runtimeError: r.runtimeError
+      compileError: r.compileError ? sanitizeDiagnostics(r.compileError) : undefined,
+      runtimeError: r.runtimeError ? sanitizeDiagnostics(r.runtimeError) : undefined
     }));
 }

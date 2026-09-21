@@ -254,13 +254,17 @@ export const App: React.FC = () => {
     await requestFullscreen();
   };
 
-  const handleSubmitRoundExplicitly = useCallback(async () => {
+  const handleSubmitRoundExplicitly = useCallback(async (codingSubmissions?: Array<{ questionId: string; language: string; code: string }>) => {
     if (!roundState) return;
     setIsSubmittingRound(true);
     try {
-      await api.post('/participant/submit-round', {
+      const payload: any = {
         roundNumber: roundState.round?.roundNumber || 1
-      });
+      };
+      if (Array.isArray(codingSubmissions) && codingSubmissions.length > 0) {
+        payload.codingSubmissions = codingSubmissions;
+      }
+      await api.post('/participant/submit-round', payload);
       setHasStartedActiveRound(false);
       try {
         const rNum = roundState.round?.roundNumber || 1;

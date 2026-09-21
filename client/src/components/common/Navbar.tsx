@@ -97,6 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-400 shrink-0" />
             <span>{timerFormatted}</span>
+            <span className="text-[10px] sm:text-xs text-slate-400 font-sans font-normal hidden xs:inline">remaining</span>
           </div>
         )}
       </div>

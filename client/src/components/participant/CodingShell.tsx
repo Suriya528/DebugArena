@@ -14,7 +14,8 @@ import {
   Check,
   ChevronRight,
   ChevronLeft,
-  Sparkles
+  Sparkles,
+  Shield
 } from 'lucide-react';
 import { Question, Attempt, TestCaseResult } from '../../types/index.js';
 import { api, queueOfflineUpdate, generateOperationId, getNextSeqId } from '../../services/api.js';
@@ -35,6 +36,18 @@ export interface SubmissionFeedbackData {
   hiddenFailedCount?: number;
   hiddenPassedCount?: number;
   failedHiddenIndices?: number[];
+  hiddenTests?: {
+    total: number;
+    passed: number;
+    failed: number;
+    status: 'PASSED' | 'FAILED';
+  };
+  visibleTests?: {
+    total: number;
+    passed: number;
+    failed: number;
+    status: 'PASSED' | 'FAILED';
+  };
   avgRuntimeMs?: number;
   maxRuntimeMs?: number;
   timeLimitMs?: number;
@@ -42,11 +55,30 @@ export interface SubmissionFeedbackData {
   runtimeOutput?: string | null;
 }
 
+function extractDiagnosticLocation(diagnostic?: string | null): { line: number; col?: number } | null {
+  if (!diagnostic) return null;
+  const colonMatch = diagnostic.match(/:(\d+)(?::(\d+))?:/);
+  if (colonMatch) {
+    return {
+      line: parseInt(colonMatch[1], 10),
+      col: colonMatch[2] ? parseInt(colonMatch[2], 10) : undefined
+    };
+  }
+  const lineMatch = diagnostic.match(/(?:line|Line)\s+(\d+)(?:,\s*(?:column|col)\s*(\d+))?/i);
+  if (lineMatch) {
+    return {
+      line: parseInt(lineMatch[1], 10),
+      col: lineMatch[2] ? parseInt(lineMatch[2], 10) : undefined
+    };
+  }
+  return null;
+}
+
 interface CodingShellProps {
   questions: Question[];
   roundNumber: number;
   initialAttempts: Attempt[];
-  onSubmitRound: () => void;
+  onSubmitRound: (submissions?: Array<{ questionId: string; language: string; code: string }>) => void;
   isSubmittingRound?: boolean;
 }
 
@@ -100,6 +132,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const [mobileView, setMobileView] = useState<'problem' | 'code' | 'results'>('problem');
   const [submissionFeedback, setSubmissionFeedback] = useState<Record<string, SubmissionFeedbackData>>({});
 
+  // Token to prevent stale async runs/submissions from overwriting active view
+  const activeExecutionTokenRef = useRef<string>('');
+
   // Initialize from attempts or default starter code
   useEffect(() => {
     const langs: Record<string, string> = {};
@@ -139,7 +174,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
       bestScores[q._id] = existingAttempt?.score || 0;
       if (existingAttempt?.testCaseResults) {
-        existingResults[q._id] = existingAttempt.testCaseResults;
+        existingResults[`${q._id}_${chosenLang}`] = existingAttempt.testCaseResults;
       }
     });
 
@@ -197,16 +232,33 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const handleLanguageChange = (newLang: string) => {
     if (!currentQ) return;
     const qId = currentQ._id;
+    const prevLang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+
+    // 1. Flush current editor live value into buffer for prevLang before switching
+    const currentLiveCode = getCurrentLiveCode(qId, prevLang);
+    const prevBufferKey = `${qId}_${prevLang}`;
+    setCodeBuffers(prev => ({ ...prev, [prevBufferKey]: currentLiveCode }));
+    try {
+      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${prevBufferKey}`, currentLiveCode);
+    } catch {}
+
+    // 2. Set new language
     setSelectedLanguages(prev => ({ ...prev, [qId]: newLang }));
     try {
       localStorage.setItem(`debugarena_lang_draft_${roundNumber}_${qId}`, newLang);
     } catch {}
 
-    const bufferKey = `${qId}_${newLang}`;
-    let langCode = codeBuffers[bufferKey];
+    // 3. Retrieve or initialize code for newLang
+    const newBufferKey = `${qId}_${newLang}`;
+    let langCode = codeBuffers[newBufferKey];
     if (langCode === undefined) {
-      langCode = (currentQ.starterCode && (currentQ.starterCode as any)[newLang]) || '// Write your solution here';
-      setCodeBuffers(prev => ({ ...prev, [bufferKey]: langCode }));
+      const localDraft = localStorage.getItem(`debugarena_code_draft_${roundNumber}_${newBufferKey}`);
+      if (localDraft) {
+        langCode = localDraft;
+      } else {
+        langCode = (currentQ.starterCode && (currentQ.starterCode as any)[newLang]) || '// Write your solution here';
+      }
+      setCodeBuffers(prev => ({ ...prev, [newBufferKey]: langCode }));
     }
     debouncedSaveCode(qId, langCode, newLang);
   };
@@ -235,12 +287,48 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     return codeBuffers[`${qId}_${lang}`] || '';
   };
 
+  // Safely switch active question preserving current Monaco draft
+  const switchQuestion = (newIdx: number) => {
+    if (currentQ) {
+      const qId = currentQ._id;
+      const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+      const liveCode = getCurrentLiveCode(qId, lang);
+      const bufferKey = `${qId}_${lang}`;
+      setCodeBuffers(prev => ({ ...prev, [bufferKey]: liveCode }));
+      try {
+        localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, liveCode);
+      } catch {}
+    }
+    debouncedSaveCode.flush();
+    setSelectedCaseIdx(0);
+    setCurrentQIndex(newIdx);
+  };
+
+  // Prepare and open submit modal with flushed live drafts
+  const handleOpenSubmitModal = () => {
+    if (currentQ) {
+      const qId = currentQ._id;
+      const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+      const liveCode = getCurrentLiveCode(qId, lang);
+      const bufferKey = `${qId}_${lang}`;
+      setCodeBuffers(prev => ({ ...prev, [bufferKey]: liveCode }));
+      try {
+        localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, liveCode);
+      } catch {}
+    }
+    debouncedSaveCode.flush();
+    setShowSubmitModal(true);
+  };
+
   // Run Code: against visible sample test cases OR arbitrary custom input
   const handleRunCode = async () => {
     if (!currentQ || isRunning || isSubmittingCode) return;
     const qId = currentQ._id;
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const code = getCurrentLiveCode(qId, lang);
+    const bufferKey = `${qId}_${lang}`;
+    const execToken = `${bufferKey}_run_${Date.now()}_${Math.random()}`;
+    activeExecutionTokenRef.current = execToken;
 
     setIsRunning(true);
 
@@ -258,27 +346,38 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
       const res = await api.post('/participant/run-code', payload);
       if (res.data.success) {
-        if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-          setMobileView('results');
-        }
         if (res.data.isCustom) {
-          setCustomOutputs(prev => ({ ...prev, [qId]: res.data.customResult }));
-          setActiveTab('custom');
+          setCustomOutputs(prev => ({ ...prev, [bufferKey]: res.data.customResult }));
         } else {
-          setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
-          setActiveTab('cases');
-          if (Array.isArray(res.data.results)) {
-            const firstFail = res.data.results.findIndex((r: any) => !r.passed);
-            if (firstFail !== -1) {
-              setSelectedCaseIdx(firstFail);
+          setRunResults(prev => ({ ...prev, [bufferKey]: res.data.results }));
+        }
+
+        // Stale async response protection: Only change active UI view if this response is still for the active execution
+        if (activeExecutionTokenRef.current === execToken) {
+          if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            setMobileView('results');
+          }
+          if (res.data.isCustom) {
+            setActiveTab('custom');
+          } else {
+            setActiveTab('cases');
+            if (Array.isArray(res.data.results)) {
+              const firstFail = res.data.results.findIndex((r: any) => !r.passed);
+              if (firstFail !== -1) {
+                setSelectedCaseIdx(firstFail);
+              }
             }
           }
         }
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to run code.');
+      if (activeExecutionTokenRef.current === execToken) {
+        alert(err.response?.data?.error || 'Failed to run code.');
+      }
     } finally {
-      setIsRunning(false);
+      if (activeExecutionTokenRef.current === execToken) {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -288,6 +387,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const qId = currentQ._id;
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const code = getCurrentLiveCode(qId, lang);
+    const bufferKey = `${qId}_${lang}`;
+    const execToken = `${bufferKey}_submit_${Date.now()}_${Math.random()}`;
+    activeExecutionTokenRef.current = execToken;
 
     setIsSubmittingCode(true);
     setActiveTab('results');
@@ -305,13 +407,14 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         seqId: getNextSeqId(),
         clientTimestamp: Date.now()
       });
+
       if (res.data.success) {
-        setRunResults(prev => ({ ...prev, [qId]: res.data.results }));
+        setRunResults(prev => ({ ...prev, [bufferKey]: res.data.results }));
         setScores(prev => ({ ...prev, [qId]: res.data.score }));
         if (res.data.status) {
           setSubmissionFeedback(prev => ({
             ...prev,
-            [qId]: {
+            [bufferKey]: {
               status: res.data.status,
               message: res.data.message || '',
               score: res.data.score,
@@ -324,6 +427,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               hiddenFailedCount: res.data.hiddenFailedCount ?? 0,
               hiddenPassedCount: res.data.hiddenPassedCount ?? 0,
               failedHiddenIndices: res.data.failedHiddenIndices ?? [],
+              hiddenTests: res.data.hiddenTests,
+              visibleTests: res.data.visibleTests,
               avgRuntimeMs: res.data.avgRuntimeMs ?? 0,
               maxRuntimeMs: res.data.maxRuntimeMs ?? 0,
               timeLimitMs: res.data.timeLimitMs ?? (currentQ.timeLimitMs || 3000),
@@ -334,9 +439,13 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         }
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to submit code.');
+      if (activeExecutionTokenRef.current === execToken) {
+        alert(err.response?.data?.error || 'Failed to submit code.');
+      }
     } finally {
-      setIsSubmittingCode(false);
+      if (activeExecutionTokenRef.current === execToken) {
+        setIsSubmittingCode(false);
+      }
     }
   };
 
@@ -349,8 +458,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   }
 
   const currentLang = selectedLanguages[currentQ._id] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
-  const currentCode = codeBuffers[`${currentQ._id}_${currentLang}`] ?? '';
-  const currentResults = runResults[currentQ._id] || [];
+  const currentBufferKey = `${currentQ._id}_${currentLang}`;
+  const currentCode = codeBuffers[currentBufferKey] ?? '';
+  const currentResults = runResults[currentBufferKey] || [];
+  const currentFeedback = submissionFeedback[currentBufferKey] || null;
   const currentScore = scores[currentQ._id] || 0;
 
   const currentSampleCases = (currentQ.testCases || []).filter(tc => !tc.isHidden);
@@ -375,11 +486,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             return (
               <button
                 key={q._id}
-                onClick={() => {
-                  debouncedSaveCode.flush();
-                  setSelectedCaseIdx(0);
-                  setCurrentQIndex(idx);
-                }}
+                onClick={() => switchQuestion(idx)}
                 className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-all cursor-pointer border ${
                   isCurrent
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow'
@@ -400,10 +507,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           </div>
 
           <button
-            onClick={() => {
-              debouncedSaveCode.flush();
-              setShowSubmitModal(true);
-            }}
+            onClick={handleOpenSubmitModal}
             className="px-3 sm:px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow transition-all cursor-pointer whitespace-nowrap"
           >
             <Send className="w-3.5 h-3.5" />
@@ -887,9 +991,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               {!isRunning && !isSubmittingCode && activeTab === 'results' && (
                 <div className="space-y-4">
                   {/* Submission Overall Status Banner */}
-                  {submissionFeedback[currentQ._id] ? (
+                  {currentFeedback ? (
                     (() => {
-                      const fb = submissionFeedback[currentQ._id];
+                      const fb = currentFeedback;
                       const isAccepted = fb.status === 'Accepted';
                       const isCompileError = fb.status === 'Compilation Error';
                       const isRuntimeError = fb.status === 'Runtime Error';
@@ -1014,14 +1118,111 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                             </div>
                           </div>
 
-                          {/* Dedicated Compiler Error Diagnostics */}
+                          {/* Visible & Hidden Test Suite Aggregate Summary Cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Visible Test Cases Card */}
+                            {(() => {
+                              const vTotal = fb.visibleTests?.total ?? visibleCases.length;
+                              const vPassed = fb.visibleTests?.passed ?? visibleCases.filter(c => c.passed).length;
+                              const isVisiblePassed = vTotal > 0 ? vPassed === vTotal : true;
+
+                              return (
+                                <div className={`p-4 rounded-xl border font-mono text-xs ${
+                                  isVisiblePassed
+                                    ? 'bg-emerald-950/25 border-emerald-500/40 text-emerald-300'
+                                    : 'bg-rose-950/25 border-rose-500/40 text-rose-300'
+                                }`}>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-bold uppercase tracking-wider text-[11px] text-slate-300 flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
+                                      Visible Test Cases
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                      isVisiblePassed
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                    }`}>
+                                      {isVisiblePassed ? 'PASSED' : 'FAILED'}
+                                    </span>
+                                  </div>
+                                  <div className="text-base font-black text-white flex items-center gap-2">
+                                    <span>{isVisiblePassed ? '✓' : '✗'}</span>
+                                    <span>{vPassed}/{vTotal} passed</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 mt-1">
+                                    Sample tests with full input &amp; output visibility
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Hidden Test Cases Card — ALWAYS shown when hidden tests exist, NEVER omitted when all pass! */}
+                            {(fb.hiddenTests?.total || fb.hiddenTotalCount || 0) > 0 ? (
+                              (() => {
+                                const hTotal = fb.hiddenTests?.total ?? fb.hiddenTotalCount ?? 0;
+                                const hPassed = fb.hiddenTests?.passed ?? fb.hiddenPassedCount ?? (hTotal - (fb.hiddenFailedCount ?? 0));
+                                const hFailed = fb.hiddenTests?.failed ?? fb.hiddenFailedCount ?? 0;
+                                const isHiddenAllPassed = hTotal > 0 && hFailed === 0;
+
+                                return (
+                                  <div className={`p-4 rounded-xl border font-mono text-xs ${
+                                    isHiddenAllPassed
+                                      ? 'bg-emerald-950/25 border-emerald-500/40 text-emerald-300'
+                                      : 'bg-rose-950/25 border-rose-500/40 text-rose-300'
+                                  }`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="font-bold uppercase tracking-wider text-[11px] text-slate-300 flex items-center gap-1.5">
+                                        <Shield className="w-3.5 h-3.5 text-amber-400" />
+                                        Hidden Test Cases
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        isHiddenAllPassed
+                                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                      }`}>
+                                        {isHiddenAllPassed ? 'PASSED' : 'FAILED'}
+                                      </span>
+                                    </div>
+                                    <div className="text-base font-black text-white flex items-center gap-2">
+                                      <span>{isHiddenAllPassed ? '✓' : '✗'}</span>
+                                      <span>{hPassed}/{hTotal} passed</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-1">
+                                      {isHiddenAllPassed
+                                        ? '✓ All private evaluation test cases passed'
+                                        : `✗ ${hFailed} of ${hTotal} private test cases failed`}
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-slate-400 font-mono text-xs">
+                                <div className="font-bold uppercase tracking-wider text-[11px] text-slate-400 mb-2">
+                                  Hidden Test Cases
+                                </div>
+                                <div className="text-sm font-semibold text-slate-300">No private tests configured</div>
+                                <div className="text-[10px] text-slate-500 mt-1">Evaluated purely against visible sample cases</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Dedicated Compiler Error Diagnostics with Line/Col Badge */}
                           {isCompileError && (
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <span className="text-rose-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                                   <Terminal className="w-3.5 h-3.5 text-rose-400" />
-                                  Compiler Output &amp; Diagnostics (stderr)
+                                  Compiler Output &amp; Diagnostics
                                 </span>
+                                {(() => {
+                                  const diagText = fb.compileOutput || visibleCases[0]?.compileError || '';
+                                  const loc = extractDiagnosticLocation(diagText);
+                                  return loc ? (
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                      Line {loc.line}{loc.col ? `, Column ${loc.col}` : ''}
+                                    </span>
+                                  ) : null;
+                                })()}
                                 <span className="text-slate-500 text-[10px] font-mono">
                                   Language: {fb.language || currentLang}
                                 </span>
@@ -1263,8 +1464,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           <button
             onClick={() => {
               if (currentQIndex > 0) {
-                debouncedSaveCode.flush();
-                setCurrentQIndex(currentQIndex - 1);
+                switchQuestion(currentQIndex - 1);
               }
             }}
             disabled={currentQIndex === 0}
@@ -1279,8 +1479,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
           <button
             onClick={() => {
               if (currentQIndex < questions.length - 1) {
-                debouncedSaveCode.flush();
-                setCurrentQIndex(currentQIndex + 1);
+                switchQuestion(currentQIndex + 1);
               }
             }}
             disabled={currentQIndex === questions.length - 1}
@@ -1336,7 +1535,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono mb-6 space-y-1.5">
               {questions.map((q, i) => (
                 <div key={q._id} className="flex justify-between text-slate-300">
-                  <span>Problem {i + 1}:</span>
+                  <span>Q{i + 1}:</span>
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> Ready for Evaluation
                   </span>
@@ -1354,8 +1553,37 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               <button
                 onClick={() => {
                   debouncedSaveCode.flush();
+                  // Flush current editor live value
+                  if (currentQ) {
+                    const qId = currentQ._id;
+                    const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
+                    const liveCode = getCurrentLiveCode(qId, lang);
+                    const bufferKey = `${qId}_${lang}`;
+                    setCodeBuffers(prev => ({ ...prev, [bufferKey]: liveCode }));
+                    try {
+                      localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, liveCode);
+                    } catch {}
+                  }
+
+                  // Collect latest draft for all questions
+                  const allSubmissions = questions.map(q => {
+                    const lang = selectedLanguages[q._id] || (q.allowedLanguages && q.allowedLanguages[0]) || 'python';
+                    let code = codeBuffers[`${q._id}_${lang}`] || '';
+                    if (q._id === currentQ?._id && lang === currentLang && editorRef.current) {
+                      try {
+                        const live = editorRef.current.getValue();
+                        if (typeof live === 'string') code = live;
+                      } catch {}
+                    }
+                    return {
+                      questionId: q._id,
+                      language: lang,
+                      code
+                    };
+                  });
+
                   setShowSubmitModal(false);
-                  onSubmitRound();
+                  onSubmitRound(allSubmissions);
                 }}
                 disabled={isSubmittingRound}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"

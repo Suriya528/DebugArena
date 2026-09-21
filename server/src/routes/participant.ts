@@ -17,7 +17,7 @@ import { CodeMilestone } from '../models/CodeMilestone.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
 import { getRemainingSeconds, syncRoundStatus, checkAndExpireRounds } from '../services/timerService.js';
-import { runTestCases, sanitizeResultsForParticipant } from '../services/judgeService.js';
+import { runTestCases, sanitizeResultsForParticipant, sanitizeDiagnostics } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
 import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
 import { User } from '../models/User.js';
@@ -1424,11 +1424,20 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
 
     const firstCompileErr = results.find(r => r.compileError)?.compileError || null;
     const firstRuntimeErr = results.find(r => r.runtimeError)?.runtimeError || null;
+    const visibleTotal = results.length;
+    const visiblePassed = results.filter(r => r.passed).length;
+    const visibleFailed = visibleTotal - visiblePassed;
 
     res.json({
       success: true,
-      compileOutput: firstCompileErr,
-      runtimeOutput: firstRuntimeErr,
+      compileOutput: firstCompileErr ? sanitizeDiagnostics(firstCompileErr) : null,
+      runtimeOutput: firstRuntimeErr ? sanitizeDiagnostics(firstRuntimeErr) : null,
+      visibleTests: {
+        total: visibleTotal,
+        passed: visiblePassed,
+        failed: visibleFailed,
+        status: visibleTotal > 0 ? (visibleFailed === 0 ? 'PASSED' : 'FAILED') : 'PASSED'
+      },
       results: sanitizeResultsForParticipant(results)
     });
   } catch (err: any) {
@@ -1706,6 +1715,10 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       }
     });
 
+    const visibleTotal = visibleResults.length;
+    const visiblePassed = visibleResults.filter(r => r.passed).length;
+    const visibleFailed = visibleTotal - visiblePassed;
+
     const responsePayload = {
       success: true,
       status,
@@ -1720,11 +1733,23 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       hiddenFailedCount,
       hiddenPassedCount,
       failedHiddenIndices,
+      hiddenTests: {
+        total: hiddenTotalCount,
+        passed: hiddenPassedCount,
+        failed: hiddenFailedCount,
+        status: (hiddenTotalCount > 0 ? (hiddenFailedCount === 0 ? 'PASSED' : 'FAILED') : 'PASSED') as 'PASSED' | 'FAILED'
+      },
+      visibleTests: {
+        total: visibleTotal,
+        passed: visiblePassed,
+        failed: visibleFailed,
+        status: (visibleTotal > 0 ? (visibleFailed === 0 ? 'PASSED' : 'FAILED') : 'PASSED') as 'PASSED' | 'FAILED'
+      },
       avgRuntimeMs,
       maxRuntimeMs,
       timeLimitMs: question.timeLimitMs || 3000,
-      compileOutput: firstCompileError,
-      runtimeOutput: firstRuntimeError,
+      compileOutput: firstCompileError ? sanitizeDiagnostics(firstCompileError) : null,
+      runtimeOutput: firstRuntimeError ? sanitizeDiagnostics(firstRuntimeError) : null,
       results: sanitizeResultsForParticipant(results)
     };
 
@@ -1783,7 +1808,7 @@ participantRouter.post('/log-paste', async (req: AuthenticatedRequest, res: Resp
 participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user!.userId;
-    const { roundNumber, operationId, seqId, clientTimestamp } = req.body;
+    const { roundNumber, codingSubmissions, operationId, seqId, clientTimestamp } = req.body;
 
     if (operationId) {
       const existingOp = await ProcessedOperation.findOne({ operationId });
@@ -1828,6 +1853,48 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
     if (!round) {
       res.status(404).json({ error: 'Round not found' });
       return;
+    }
+
+    // Auto-evaluate coding questions from latest unsaved client drafts submitted with the round
+    if (Array.isArray(codingSubmissions) && codingSubmissions.length > 0) {
+      for (const sub of codingSubmissions) {
+        if (!sub.questionId || !sub.code) continue;
+        const question = await Question.findById(sub.questionId);
+        if (!question || question.type === 'mcq') continue;
+
+        let attempt = await Attempt.findOne({ userId, questionId: sub.questionId, roundNumber });
+        const allCases = question.testCases || [];
+        const lang = sub.language || 'python';
+        const results = await runTestCases(sub.code, lang, allCases, question.timeLimitMs);
+        const passedCount = results.filter(r => r.passed).length;
+        const currentScore = Math.round((passedCount / (allCases.length || 1)) * (question.marks || 25));
+
+        if (!attempt) {
+          attempt = new Attempt({
+            userId,
+            questionId: sub.questionId,
+            roundNumber,
+            score: currentScore,
+            code: sub.code,
+            language: lang,
+            testCaseResults: results,
+            status: 'submitted',
+            submissionCount: 1,
+            lastSubmittedAt: new Date()
+          });
+        } else {
+          if (currentScore >= (attempt.score || 0)) {
+            attempt.score = currentScore;
+            attempt.code = sub.code;
+            attempt.language = lang;
+            attempt.testCaseResults = results;
+          }
+          attempt.status = 'submitted';
+          attempt.submissionCount = (attempt.submissionCount || 0) + 1;
+          attempt.lastSubmittedAt = new Date();
+        }
+        await attempt.save();
+      }
     }
 
     // Auto-grade MCQs: Evaluate all MCQ attempts for this participant in this round
