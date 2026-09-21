@@ -7,7 +7,8 @@ import {
   sanitizeDiagnostics,
   sanitizeResultsForParticipant,
   summarizeTestResults,
-  validateCodeSecurity
+  validateCodeSecurity,
+  resolveJavaRuntime
 } from '../services/judgeService.js';
 import { requireIsolatedVerification } from './safety.js';
 
@@ -37,7 +38,7 @@ function reportBlocked(language: string, reason: string): void {
 }
 
 async function verifyLanguage(scenario: LanguageScenario): Promise<void> {
-  const correct = await executeSingleTestCase(scenario.correct, scenario.language, '2\n', 1_000);
+  const correct = await executeSingleTestCase(scenario.correct, scenario.language, '2\n', 2_000);
   assert.equal(correct.verdict, 'accepted', `${scenario.language}: correct solution must run`);
   assert.equal(compareOutputs(correct.stdout, '4'), true, `${scenario.language}: correct solution output`);
 
@@ -257,8 +258,8 @@ export async function runJudgeVerification(): Promise<void> {
     },
     {
       label: 'Java',
-      available: commandAvailable('javac') && commandAvailable('java'),
-      reason: 'javac and java are not both available on PATH.',
+      available: resolveJavaRuntime().available,
+      reason: resolveJavaRuntime().error || 'Java runtime/compiler is not available in the execution environment.',
       scenario: {
         language: 'java',
         correct: 'import java.util.*; public class Solution { public static void main(String[] args) { Scanner s = new Scanner(System.in); System.out.println(s.nextInt() * 2); } }',

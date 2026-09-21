@@ -49,7 +49,7 @@ interface ProcessResult {
 }
 
 const DEFAULT_MEMORY_LIMIT_MB = 256;
-const COMPILATION_TIMEOUT_MS = 10_000;
+const COMPILATION_TIMEOUT_MS = Math.max(15_000, Number.parseInt(process.env.JUDGE_COMPILATION_TIMEOUT_MS || '20000', 10) || 20_000);
 const MAX_CAPTURED_STDOUT_BYTES = Math.max(32_768, Number.parseInt(process.env.JUDGE_MAX_STDOUT_BYTES || '1048576', 10) || 1_048_576);
 const MAX_CAPTURED_STDERR_BYTES = Math.max(8_192, Number.parseInt(process.env.JUDGE_MAX_STDERR_BYTES || '65536', 10) || 65_536);
 const MAX_PARTICIPANT_DIAGNOSTIC_CHARS = Math.max(4_096, Number.parseInt(process.env.JUDGE_MAX_DIAGNOSTIC_CHARS || '24000', 10) || 24_000);
@@ -61,9 +61,159 @@ const EXTRA_COMPILER_PATHS = [
 ];
 
 for (const p of EXTRA_COMPILER_PATHS) {
-  if (fs.existsSync(p) && !process.env.PATH?.includes(p)) {
-    process.env.PATH = `${p}${path.delimiter}${process.env.PATH || ''}`;
+  if (fs.existsSync(p)) {
+    const curPath = process.env.PATH || process.env.Path || '';
+    if (!curPath.toLowerCase().includes(p.toLowerCase())) {
+      process.env.PATH = `${p}${path.delimiter}${curPath}`;
+      process.env.Path = process.env.PATH;
+    }
   }
+}
+
+export interface JavaRuntimeInfo {
+  available: boolean;
+  javacPath?: string;
+  javaPath?: string;
+  binDir?: string;
+  version?: string;
+  error?: string;
+}
+
+let cachedJavaRuntime: JavaRuntimeInfo | null = null;
+
+export function resolveJavaRuntime(forceRefresh = false): JavaRuntimeInfo {
+  if (cachedJavaRuntime && !forceRefresh) {
+    return cachedJavaRuntime;
+  }
+
+  const isWin = process.platform === 'win32';
+  const javacName = isWin ? 'javac.exe' : 'javac';
+  const javaName = isWin ? 'java.exe' : 'java';
+
+  const candidateDirs: string[] = [];
+
+  // 1. Explicit environment variable overrides
+  if (process.env.JAVAC_PATH) {
+    candidateDirs.push(path.dirname(process.env.JAVAC_PATH));
+  }
+  if (process.env.JAVA_PATH) {
+    candidateDirs.push(path.dirname(process.env.JAVA_PATH));
+  }
+  if (process.env.JAVA_HOME) {
+    candidateDirs.push(path.join(process.env.JAVA_HOME, 'bin'));
+  }
+  if (process.env.JDK_HOME) {
+    candidateDirs.push(path.join(process.env.JDK_HOME, 'bin'));
+  }
+
+  // 2. Extra configured compiler paths
+  for (const p of EXTRA_COMPILER_PATHS) {
+    if (p) candidateDirs.push(p);
+  }
+
+  // 3. Current process PATH directories
+  const currentPath = process.env.PATH || process.env.Path || '';
+  for (const dir of currentPath.split(path.delimiter)) {
+    if (dir && dir.trim()) candidateDirs.push(dir.trim());
+  }
+
+  // 4. Windows standard JDK locations
+  if (isWin) {
+    const programFilesRoots = [
+      process.env['ProgramFiles'] || 'C:\\Program Files',
+      process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+      process.env['LOCALAPPDATA'] ? path.join(process.env['LOCALAPPDATA'], 'Programs') : null
+    ].filter(Boolean) as string[];
+
+    for (const progRoot of programFilesRoots) {
+      if (!fs.existsSync(progRoot)) continue;
+
+      // Check Tableau JRE (common bundled OpenJDK on Windows)
+      const tableauDir = path.join(progRoot, 'Tableau');
+      if (fs.existsSync(tableauDir)) {
+        try {
+          const entries = fs.readdirSync(tableauDir);
+          for (const entry of entries) {
+            const jreBin = path.join(tableauDir, entry, 'bin', 'jre', 'bin');
+            if (fs.existsSync(jreBin)) candidateDirs.push(jreBin);
+          }
+        } catch {}
+      }
+
+      // Check standard JDK vendor directories
+      const vendorFolders = ['Java', 'Eclipse Adoptium', 'Microsoft', 'Amazon Corretto', 'Zulu', 'BellSoft', 'Semeru'];
+      for (const vendor of vendorFolders) {
+        const vendorDir = path.join(progRoot, vendor);
+        if (fs.existsSync(vendorDir)) {
+          try {
+            const jdks = fs.readdirSync(vendorDir);
+            for (const jdk of jdks) {
+              const bin = path.join(vendorDir, jdk, 'bin');
+              if (fs.existsSync(bin)) candidateDirs.push(bin);
+            }
+          } catch {}
+        }
+      }
+    }
+  } else {
+    // 5. POSIX standard JDK locations
+    const posixLocations = [
+      '/usr/bin',
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      '/usr/lib/jvm/default-java/bin'
+    ];
+    for (const loc of posixLocations) {
+      candidateDirs.push(loc);
+    }
+    if (fs.existsSync('/usr/lib/jvm')) {
+      try {
+        const jvms = fs.readdirSync('/usr/lib/jvm');
+        for (const jvm of jvms) {
+          candidateDirs.push(path.join('/usr/lib/jvm', jvm, 'bin'));
+        }
+      } catch {}
+    }
+  }
+
+  // Deduplicate candidate directories
+  const seen = new Set<string>();
+  const uniqueDirs = candidateDirs.filter(d => {
+    const normalized = path.normalize(d).toLowerCase();
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+
+  // Evaluate candidate directories
+  for (const dir of uniqueDirs) {
+    const javacCandidate = path.join(dir, javacName);
+    const javaCandidate = path.join(dir, javaName);
+
+    if (fs.existsSync(javacCandidate) && fs.existsSync(javaCandidate)) {
+      // Sync PATH with this bin directory so any child processes inherit it
+      const existingPath = process.env.PATH || process.env.Path || '';
+      if (!existingPath.toLowerCase().includes(dir.toLowerCase())) {
+        const newPath = `${dir}${path.delimiter}${existingPath}`;
+        process.env.PATH = newPath;
+        process.env.Path = newPath;
+      }
+
+      cachedJavaRuntime = {
+        available: true,
+        javacPath: javacCandidate,
+        javaPath: javaCandidate,
+        binDir: dir
+      };
+      return cachedJavaRuntime;
+    }
+  }
+
+  cachedJavaRuntime = {
+    available: false,
+    error: 'Java compiler (javac) is not available in the execution environment. Please contact the tournament administrator or configure JAVA_HOME.'
+  };
+  return cachedJavaRuntime;
 }
 
 interface PistonRunResponse {
@@ -305,11 +455,18 @@ function runCommand(
       terminate();
     }, Math.max(1, timeoutMs));
 
+    const childEnv = { ...process.env };
+    if (process.platform === 'win32') {
+      const currentPath = childEnv.PATH || childEnv.Path || '';
+      childEnv.PATH = currentPath;
+      childEnv.Path = currentPath;
+    }
+
     try {
       child = spawn(cmd, args, {
         windowsHide: true,
         cwd: cwd || process.cwd(),
-        env: process.env
+        env: childEnv
       });
     } catch (error) {
       finish({
@@ -401,6 +558,7 @@ export function sanitizeDiagnostics(output?: string | null, tempDir?: string): s
   // component from Windows and POSIX source paths.
   sanitized = sanitized.replace(/[A-Za-z]:[\\/](?:[^:\n\r\\/]+[\\/])*([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|cc|cxx|js|mjs|ts|sql))/gi, '$1');
   sanitized = sanitized.replace(/(?:\/(?:[^:\n\r\/]+))+\/([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|cc|cxx|js|mjs|ts|sql))/gi, '$1');
+  sanitized = sanitized.replace(/^[\\/]+([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|cc|cxx|js|mjs|ts|sql))/gm, '$1');
 
   // Remaining absolute paths are infrastructure details rather than source
   // references that a participant can act on.
@@ -655,6 +813,15 @@ async function executeLocal(
 
   // 3. Java Execution (javac + java)
   if (norm === 'java') {
+    const javaRuntime = resolveJavaRuntime();
+    if (!javaRuntime.available || !javaRuntime.javacPath || !javaRuntime.javaPath) {
+      const infrastructureMsg = javaRuntime.error || 'Java compiler (javac) is not available in the execution environment.';
+      console.error(`[JUDGE INFRASTRUCTURE ERROR] ${infrastructureMsg} (Searched PATH, JAVA_HOME, JDK_HOME, and standard JDK installation directories)`);
+      return executionEnvironmentError(
+        `[Judge Infrastructure Error] ${infrastructureMsg} Please contact the tournament administrator or configure JAVA_HOME.`
+      );
+    }
+
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_java_'));
 
     // Extract class name (handles public class X or class X)
@@ -672,13 +839,25 @@ async function executeLocal(
 
     try {
       // Step A: Compilation
-      const compileRes = await runCommand('javac', [sourceFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      const compileRes = await runCommand(
+        javaRuntime.javacPath,
+        ['-encoding', 'UTF-8', '-d', tempDir, sourceFile],
+        '',
+        COMPILATION_TIMEOUT_MS,
+        tempDir
+      );
       const compilationFailure = compilationOutcome(compileRes, 'Java', tempDir);
       if (compilationFailure) return compilationFailure;
 
       // Step B: Execution
       const memoryLimit = resolvedMemoryLimitMb(memoryLimitMb);
-      const runRes = await runCommand('java', [`-Xmx${memoryLimit}m`, '-cp', tempDir, className], stdinText, timeoutMs, tempDir);
+      const runRes = await runCommand(
+        javaRuntime.javaPath,
+        [`-Xmx${memoryLimit}m`, '-cp', tempDir, className],
+        stdinText,
+        timeoutMs,
+        tempDir
+      );
       return runtimeOutcome(runRes, tempDir);
     } finally {
       safeRemoveTempDir(tempDir);
@@ -1117,7 +1296,9 @@ export function summarizeTestResults(
   const runtimeOutput = visibleResults.find(result => result.runtimeError)?.runtimeError
     || visibleResults.find(result => result.memoryError)?.memoryError
     || null;
-  const executionOutput = visibleResults.find(result => result.executionError)?.executionError || null;
+  const executionOutput = (visibleResults.find(result => result.executionError)?.executionError)
+    || (results.find(result => result.executionError)?.executionError)
+    || null;
 
   // Judge setup/parse failures are global to a submission, so they take
   // precedence over per-test outcomes. The rest use a deterministic severity
@@ -1141,12 +1322,13 @@ export function summarizeTestResults(
       };
   }
   if (results.some(result => result.status === 'execution_error')) {
+      const execDiag = executionOutput ? sanitizeDiagnostics(executionOutput) : null;
       return {
         status: 'Execution Error',
-        message: 'The judge could not complete this execution.',
+        message: execDiag || 'The judge could not complete this execution.',
         compileOutput: null,
         runtimeOutput: null,
-        executionOutput: executionOutput ? sanitizeDiagnostics(executionOutput) : null
+        executionOutput: execDiag
       };
   }
   if (results.some(result => result.status === 'memory_limit')) {
