@@ -18,7 +18,7 @@ export const KioskRecoveryPortal: React.FC<KioskRecoveryPortalProps> = ({
   onResumeSuccess,
   onSwitchUser
 }) => {
-  const { login, user } = useAuth();
+  const { login, joinEventByCode, user } = useAuth();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,7 +63,17 @@ export const KioskRecoveryPortal: React.FC<KioskRecoveryPortalProps> = ({
           setLoading(false);
           return;
         }
-        await login(identifier, password.trim());
+
+        if (recoveryData.eventCode) {
+          await joinEventByCode({
+            eventCode: recoveryData.eventCode,
+            name: recoveryData.name || '',
+            regNo: identifier,
+            password: password.trim()
+          });
+        } else {
+          await login(identifier, password.trim());
+        }
       }
 
       onResumeSuccess();
