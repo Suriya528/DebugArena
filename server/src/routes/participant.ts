@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Types } from 'mongoose';
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../config/env.js';
@@ -17,7 +18,7 @@ import { CodeMilestone } from '../models/CodeMilestone.js';
 import { DynamicRound } from '../models/DynamicRound.js';
 import { ParticipantRoundResult } from '../models/ParticipantRoundResult.js';
 import { getRemainingSeconds, syncRoundStatus, checkAndExpireRounds } from '../services/timerService.js';
-import { runTestCases, sanitizeResultsForParticipant, sanitizeDiagnostics } from '../services/judgeService.js';
+import { runTestCases, sanitizeResultsForParticipant, sanitizeDiagnostics, summarizeTestResults } from '../services/judgeService.js';
 import { computeQuestionScore, finalizeParticipantRoundScore } from '../services/scoringService.js';
 import { broadcastToAdmins, broadcastToAll } from '../services/socketService.js';
 import { User } from '../models/User.js';
@@ -30,6 +31,26 @@ export const participantRouter = Router();
 // In-memory concurrency locks and anti-cheat debounce state
 const activeEvaluationLocks = new Set<string>();
 const recentViolationMap = new Map<string, { time: number; type: string; count: number }>();
+
+function executionAssociation(params: {
+  executionId: string;
+  eventId?: string | Types.ObjectId;
+  roundId?: { toString(): string } | string | null;
+  roundNumber: number;
+  questionId: string;
+  attemptId?: { toString(): string } | string | null;
+  language: string;
+}) {
+  return {
+    executionId: params.executionId,
+    eventId: params.eventId ? params.eventId.toString() : null,
+    roundId: params.roundId ? params.roundId.toString() : null,
+    roundNumber: params.roundNumber,
+    questionId: params.questionId,
+    attemptId: params.attemptId ? params.attemptId.toString() : null,
+    language: (params.language || '').toLowerCase().trim()
+  };
+}
 
 // -------------------- PUBLIC PARTICIPANT ACCESS --------------------
 
@@ -685,9 +706,9 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     // Fetch questions for this round (Strictly isolated to candidate's event)
     let questions: any[] = [];
     if (req.user?.eventId) {
-      questions = await Question.find({ eventId: req.user.eventId, roundNumber }).sort({ orderIndex: 1 });
+      questions = await Question.find({ eventId: req.user.eventId, roundNumber }).sort({ orderIndex: 1, _id: 1 });
     } else {
-      questions = await Question.find({ roundNumber, eventId: null }).sort({ orderIndex: 1 });
+      questions = await Question.find({ roundNumber, eventId: null }).sort({ orderIndex: 1, _id: 1 });
     }
 
     // Lookup dynamic round for event-specific allowed languages
@@ -702,7 +723,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
     const questionTemplates = await QuestionTemplate.find();
 
     // Sanitize questions: strip correct answers for MCQ and apply Question DNA mutation per candidate!
-    const sanitizedQuestions = questions.map(q => {
+    const sanitizedQuestions = questions.map((q, displayIndex) => {
       let prompt = q.prompt;
       let starterCode = q.starterCode instanceof Map ? Object.fromEntries(q.starterCode) : (q.starterCode ? { ...q.starterCode } : {});
       let testCases = q.testCases || [];
@@ -733,6 +754,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           roundNumber: q.roundNumber,
           type: q.type,
           orderIndex: q.orderIndex,
+          displayNumber: displayIndex + 1,
           title: q.title,
           prompt,
           marks: q.marks,
@@ -744,6 +766,7 @@ participantRouter.get('/round-state', async (req: AuthenticatedRequest, res: Res
           roundNumber: q.roundNumber,
           type: q.type,
           orderIndex: q.orderIndex,
+          displayNumber: displayIndex + 1,
           title: q.title,
           prompt,
           inputFormat: q.inputFormat || '',
@@ -1141,6 +1164,10 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
       res.status(403).json({ error: 'Question does not belong to this competition event' });
       return;
     }
+    if (targetQuestion.roundNumber !== roundNumber) {
+      res.status(403).json({ error: 'Question does not belong to this round' });
+      return;
+    }
 
     const isTieBreak = roundNumber === 99;
     if (isTieBreak) {
@@ -1194,10 +1221,15 @@ participantRouter.post('/save-answer', async (req: AuthenticatedRequest, res: Re
     if (!attempt) {
       attempt = new Attempt({
         userId,
+        ...(req.user?.eventId ? { eventId: req.user.eventId } : {}),
         roundNumber,
         questionId,
         status: 'saved'
       });
+    }
+
+    if (!attempt.eventId && req.user?.eventId) {
+      attempt.eventId = req.user.eventId as any;
     }
 
     if (selectedOption !== undefined) {
@@ -1267,8 +1299,10 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
   const userId = req.user!.userId;
   const { questionId, code, language, roundNumber } = req.body;
 
-  // Concurrency Lock: Prevent race conditions & simultaneous run-code evaluations per user/question
-  const lockKey = `run:${userId}:${questionId}`;
+  // Scope the lock to the same participant/event/round/question/language. This
+  // prevents an execution response for one coding context from blocking or
+  // being confused with another context.
+  const lockKey = `run:${userId}:${req.user?.eventId || 'legacy'}:${roundNumber || 'unknown'}:${questionId}:${String(language || '').toLowerCase().trim()}`;
   if (activeEvaluationLocks.has(lockKey)) {
     res.status(429).json({ error: 'Code execution is already running. Please wait.' });
     return;
@@ -1334,6 +1368,10 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       res.status(403).json({ error: 'Question does not belong to this competition event' });
       return;
     }
+    if (question.roundNumber !== activeRoundNumber) {
+      res.status(403).json({ error: 'Question does not belong to this round' });
+      return;
+    }
 
     // Validate language against permitted languages for this round
     let allowedLangs = question.allowedLanguages && question.allowedLanguages.length > 0
@@ -1358,6 +1396,37 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    const executionId = randomUUID();
+
+    // A run is a first-class execution even before a formal submission. Create
+    // or refresh its draft attempt so every persisted execution has a concrete
+    // attempt ID as well as event/round/question/language context. Do not
+    // overwrite the code retained for an already submitted best-score attempt;
+    // the CodeMilestone below records this transient run independently.
+    let executionAttempt = await Attempt.findOne({ userId, roundNumber: activeRoundNumber, questionId });
+    if (!executionAttempt) {
+      executionAttempt = new Attempt({
+        userId,
+        ...(req.user?.eventId ? { eventId: req.user.eventId } : {}),
+        roundNumber: activeRoundNumber,
+        questionId,
+        code,
+        language: normalizedLang,
+        status: 'saved'
+      });
+    } else {
+      if (!executionAttempt.eventId && req.user?.eventId) executionAttempt.eventId = req.user.eventId as any;
+      if (executionAttempt.status !== 'submitted') {
+        executionAttempt.code = code;
+        executionAttempt.language = normalizedLang;
+        if (executionAttempt.status === 'unattempted') executionAttempt.status = 'saved';
+        executionAttempt.lastSavedAt = new Date();
+      }
+    }
+    executionAttempt.lastExecutionId = executionId;
+    executionAttempt.lastExecutionAt = new Date();
+    await executionAttempt.save();
+
     // Support arbitrary custom input execution (LeetCode-style custom testcase playground)
     if (req.body.customInput !== undefined && req.body.customInput !== null) {
       const sanitizedCustomInput = String(req.body.customInput).slice(0, 10000);
@@ -1367,18 +1436,52 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
         weight: 0,
         isHidden: false
       }];
-      const results = await runTestCases(code, language, customCases, question.timeLimitMs);
+      const results = await runTestCases(code, normalizedLang, customCases, question.timeLimitMs, question.memoryLimitMb);
       const res0 = results[0] || null;
+      const customSummary = summarizeTestResults(results, question.timeLimitMs);
+      const association = executionAssociation({
+        executionId,
+        eventId: req.user?.eventId,
+        roundId: round._id,
+        roundNumber: activeRoundNumber,
+        questionId,
+        attemptId: executionAttempt._id,
+        language: normalizedLang
+      });
+
+      await CodeMilestone.create({
+        executionId,
+        userId,
+        eventId: req.user?.eventId,
+        roundId: round._id,
+        questionId,
+        attemptId: executionAttempt._id,
+        roundNumber: activeRoundNumber,
+        code,
+        language: normalizedLang,
+        eventType: 'run',
+        passedTestsCount: 0,
+        totalTestsCount: 0,
+        charDelta: code.length,
+        metadata: { mode: 'custom', verdict: customSummary.status }
+      });
+
       res.json({
         success: true,
         isCustom: true,
+        execution: association,
         customResult: res0 ? {
           input: sanitizedCustomInput,
           actualOutput: res0.actual || res0.stdout || '',
           runtimeMs: res0.runtimeMs || 0,
-          status: res0.compileError ? 'Compilation Error' : (res0.runtimeError ? 'Runtime Error' : 'Success'),
-          compileError: res0.compileError,
-          runtimeError: res0.runtimeError
+          // No expected output is supplied for a custom run, so successful
+          // execution is "Executed" rather than a misleading Accepted/WA.
+          status: res0.status === 'passed' || res0.status === 'failed' ? 'Executed' : customSummary.status,
+          compileError: res0.compileError ? sanitizeDiagnostics(res0.compileError) : undefined,
+          syntaxError: res0.syntaxError ? sanitizeDiagnostics(res0.syntaxError) : undefined,
+          runtimeError: res0.runtimeError ? sanitizeDiagnostics(res0.runtimeError) : undefined,
+          memoryError: res0.memoryError ? sanitizeDiagnostics(res0.memoryError) : undefined,
+          executionError: res0.executionError ? sanitizeDiagnostics(res0.executionError) : undefined
         } : null
       });
       return;
@@ -1399,39 +1502,59 @@ participantRouter.post('/run-code', async (req: AuthenticatedRequest, res: Respo
       }
     }
 
-    const results = await runTestCases(code, language, visibleCases, question.timeLimitMs);
+    const results = await runTestCases(code, normalizedLang, visibleCases, question.timeLimitMs, question.memoryLimitMb);
+    const summary = summarizeTestResults(results, question.timeLimitMs);
+    const association = executionAssociation({
+      executionId,
+      eventId: req.user?.eventId,
+      roundId: round._id,
+      roundNumber: activeRoundNumber,
+      questionId,
+      attemptId: executionAttempt._id,
+      language: normalizedLang
+    });
 
     // Record debugging journey milestone
     await CodeMilestone.create({
+      executionId,
       userId,
+      eventId: req.user?.eventId,
+      roundId: round._id,
       questionId,
+      attemptId: executionAttempt._id,
       roundNumber: activeRoundNumber,
       code,
-      language,
+      language: normalizedLang,
       eventType: 'run',
       passedTestsCount: results.filter(r => r.passed).length,
       totalTestsCount: visibleCases.length,
-      charDelta: code.length
-    }).catch(() => {});
+      charDelta: code.length,
+      metadata: { verdict: summary.status }
+    });
 
     broadcastToAdmins('admin:run_code', {
       userId,
       username: req.user!.username,
       questionId,
-      language,
+      language: normalizedLang,
       resultsSummary: `${results.filter(r => r.passed).length}/${results.length} sample cases passed`
     });
 
-    const firstCompileErr = results.find(r => r.compileError)?.compileError || null;
-    const firstRuntimeErr = results.find(r => r.runtimeError)?.runtimeError || null;
     const visibleTotal = results.length;
     const visiblePassed = results.filter(r => r.passed).length;
     const visibleFailed = visibleTotal - visiblePassed;
 
     res.json({
       success: true,
-      compileOutput: firstCompileErr ? sanitizeDiagnostics(firstCompileErr) : null,
-      runtimeOutput: firstRuntimeErr ? sanitizeDiagnostics(firstRuntimeErr) : null,
+      status: summary.status,
+      message: summary.message,
+      language: normalizedLang,
+      execution: association,
+      compileOutput: summary.compileOutput,
+      runtimeOutput: summary.runtimeOutput,
+      executionOutput: summary.executionOutput,
+      timeLimitMs: question.timeLimitMs || 3000,
+      memoryLimitMb: question.memoryLimitMb || 256,
       visibleTests: {
         total: visibleTotal,
         passed: visiblePassed,
@@ -1453,8 +1576,9 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
   const userId = req.user!.userId;
   const { questionId, code, language, roundNumber, operationId, seqId, clientTimestamp } = req.body;
 
-  // Concurrency Lock: Prevent race conditions & simultaneous evaluations per user/question
-  const lockKey = `${userId}:${questionId}`;
+  // Scope a submission lock to its full execution context. A different event,
+  // round, question, or language must never inherit this request's result.
+  const lockKey = `submit:${userId}:${req.user?.eventId || 'legacy'}:${roundNumber}:${questionId}:${String(language || '').toLowerCase().trim()}`;
   if (activeEvaluationLocks.has(lockKey)) {
     res.status(429).json({ error: 'Code submission is currently being evaluated. Please wait.' });
     return;
@@ -1470,6 +1594,7 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       }
     }
 
+    let executionRound: any = null;
     const isTieBreak = roundNumber === 99;
     if (isTieBreak) {
       const activeTie = await TieBreak.findOne({ tiedUserIds: userId, status: 'active' });
@@ -1477,6 +1602,7 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'Cannot submit: No active tie-break session found' });
         return;
       }
+      executionRound = activeTie;
     } else {
       // Check participant round attempt state
       const progress = await RoundProgress.findOne({ userId, roundNumber });
@@ -1507,6 +1633,7 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
         res.status(400).json({ error: 'Cannot submit: round is not active' });
         return;
       }
+      executionRound = round;
 
       // Check personal attempt expiry (with 5s network grace period)
       const deadline = progress.endsAt
@@ -1526,6 +1653,10 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
 
     if (req.user?.eventId && question.eventId && question.eventId.toString() !== req.user.eventId.toString()) {
       res.status(403).json({ error: 'Question does not belong to this competition event' });
+      return;
+    }
+    if (question.roundNumber !== roundNumber) {
+      res.status(403).json({ error: 'Question does not belong to this round' });
       return;
     }
 
@@ -1552,6 +1683,8 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       return;
     }
 
+    const executionId = randomUUID();
+
     // Execute against candidate's specific Question DNA variant if template is mutated
     let allCases = question.testCases || [];
     const questionTemplate = await QuestionTemplate.findOne({ title: question.title, hasDnaMutation: true });
@@ -1567,7 +1700,7 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       }
     }
 
-    const results = await runTestCases(code, language, allCases, question.timeLimitMs);
+    const results = await runTestCases(code, normalizedSubmitLang, allCases, question.timeLimitMs, question.memoryLimitMb);
 
     // Compute score: sum of weight for passed cases
     let currentScore = 0;
@@ -1581,19 +1714,26 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     if (!attempt) {
       attempt = new Attempt({
         userId,
+        ...(req.user?.eventId ? { eventId: req.user.eventId } : {}),
         roundNumber,
         questionId
       });
+    }
+
+    if (!attempt.eventId && req.user?.eventId) {
+      attempt.eventId = req.user.eventId as any;
     }
 
     // Retain highest score across submissions AND preserve code for highest scoring attempt
     if (currentScore >= (attempt.score || 0)) {
       attempt.score = currentScore;
       attempt.code = code;
-      attempt.language = language;
+      attempt.language = normalizedSubmitLang;
       attempt.testCaseResults = results;
     }
     attempt.submissionCount = (attempt.submissionCount || 0) + 1;
+    attempt.lastExecutionId = executionId;
+    attempt.lastExecutionAt = new Date();
     attempt.status = 'submitted';
     attempt.lastSubmittedAt = new Date();
     await attempt.save();
@@ -1619,16 +1759,21 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
 
     // Record debugging journey milestone
     await CodeMilestone.create({
+      executionId,
       userId,
+      eventId: req.user?.eventId,
+      roundId: executionRound?._id,
       questionId,
+      attemptId: attempt._id,
       roundNumber,
       code,
-      language,
+      language: normalizedSubmitLang,
       eventType: 'submit',
       passedTestsCount: results.filter(r => r.passed).length,
       totalTestsCount: allCases.length,
-      charDelta: code.length
-    }).catch(() => {});
+      charDelta: code.length,
+      metadata: { operationId: operationId || null }
+    });
 
     const eventIdStr = req.user?.eventId ? req.user.eventId.toString() : undefined;
     const collegeIdStr = req.user?.collegeId ? req.user.collegeId.toString() : undefined;
@@ -1653,37 +1798,14 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       eventId: eventIdStr
     }, collegeIdStr, eventIdStr);
 
-    const hasCompileError = results.some(r => r.compileError || r.status === 'compile_error');
-    const hasTimeout = results.some(r => r.timeout || r.status === 'timeout');
-    const hasMemoryError = results.some(r => {
-      const err = (r.runtimeError || r.stderr || '').toLowerCase();
-      return err.includes('outofmemory') || err.includes('heap out of memory') || err.includes('bad_alloc') || err.includes('memoryerror');
-    });
-    const hasRuntimeError = !hasCompileError && !hasTimeout && !hasMemoryError && results.some(r => r.runtimeError || r.status === 'runtime_error');
-    const allPassed = results.length > 0 && results.every(r => r.passed);
+    const evaluation = summarizeTestResults(results, question.timeLimitMs || 3000);
     const visibleResults = results.filter(r => !r.isHidden);
     const hiddenResults = results.filter(r => r.isHidden);
     const visibleAllPassed = visibleResults.length > 0 && visibleResults.every(r => r.passed);
 
-    let status = 'Wrong Answer';
-    let message = 'One or more test cases failed.';
-    if (hasCompileError) {
-      status = 'Compilation Error';
-      message = 'Compilation failed. Please inspect the compiler output below.';
-    } else if (hasTimeout) {
-      status = 'Time Limit Exceeded';
-      message = `Execution exceeded the ${question.timeLimitMs || 3000}ms time limit.`;
-    } else if (hasMemoryError) {
-      status = 'Memory Limit Exceeded';
-      message = 'Execution exceeded the memory limit.';
-    } else if (hasRuntimeError) {
-      status = 'Runtime Error';
-      message = 'Program crashed during execution. Check the runtime error trace below.';
-    } else if (allPassed) {
-      status = 'Accepted';
-      message = 'Accepted! All test cases passed successfully.';
-    } else if (visibleAllPassed) {
-      status = 'Wrong Answer';
+    let status = evaluation.status;
+    let message = evaluation.message;
+    if (status === 'Wrong Answer' && visibleAllPassed) {
       const hiddenFailures = hiddenResults.filter(r => !r.passed).length;
       message = `Passed all visible sample cases, but failed ${hiddenFailures} hidden test case${hiddenFailures === 1 ? '' : 's'}.`;
     }
@@ -1699,15 +1821,6 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     const avgRuntimeMs = results.length > 0 ? Math.round(totalRuntimeMs / results.length) : 0;
     const maxRuntimeMs = results.reduce((max, r) => Math.max(max, r.runtimeMs || 0), 0);
 
-    const firstCompileError = results.find(r => r.compileError)?.compileError 
-      || results.find(r => r.status === 'compile_error')?.stderr 
-      || null;
-
-    const firstRuntimeResult = results.find(r => r.runtimeError || r.status === 'runtime_error');
-    const firstRuntimeError = firstRuntimeResult?.runtimeError 
-      || (firstRuntimeResult?.stderr ? firstRuntimeResult.stderr.trim() : null)
-      || null;
-
     const failedHiddenIndices: number[] = [];
     hiddenResults.forEach((tc, idx) => {
       if (!tc.passed) {
@@ -1718,14 +1831,24 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
     const visibleTotal = visibleResults.length;
     const visiblePassed = visibleResults.filter(r => r.passed).length;
     const visibleFailed = visibleTotal - visiblePassed;
+    const association = executionAssociation({
+      executionId,
+      eventId: req.user?.eventId,
+      roundId: executionRound?._id,
+      roundNumber,
+      questionId,
+      attemptId: attempt._id,
+      language: normalizedSubmitLang
+    });
 
     const responsePayload = {
       success: true,
       status,
       message,
+      execution: association,
       score: attempt.score,
       submissionScore: currentScore,
-      language,
+      language: normalizedSubmitLang,
       passedCount,
       totalCount,
       failedCount,
@@ -1748,8 +1871,10 @@ participantRouter.post('/submit-code', async (req: AuthenticatedRequest, res: Re
       avgRuntimeMs,
       maxRuntimeMs,
       timeLimitMs: question.timeLimitMs || 3000,
-      compileOutput: firstCompileError ? sanitizeDiagnostics(firstCompileError) : null,
-      runtimeOutput: firstRuntimeError ? sanitizeDiagnostics(firstRuntimeError) : null,
+      memoryLimitMb: question.memoryLimitMb || 256,
+      compileOutput: evaluation.compileOutput,
+      runtimeOutput: evaluation.runtimeOutput,
+      executionOutput: evaluation.executionOutput,
       results: sanitizeResultsForParticipant(results)
     };
 
@@ -1842,6 +1967,10 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
       res.status(400).json({ error: 'Round time expired. Submission is no longer accepted.' });
       return;
     }
+    if (existingProgress.status !== 'in_progress') {
+      res.status(400).json({ error: `Cannot submit round: round attempt is ${existingProgress.status}.` });
+      return;
+    }
 
     let round: any = null;
     if (req.user?.eventId) {
@@ -1854,24 +1983,72 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
       res.status(404).json({ error: 'Round not found' });
       return;
     }
+    await syncRoundStatus(round);
+    if (round.status !== 'active') {
+      res.status(400).json({ error: 'Cannot submit round: round is not active.' });
+      return;
+    }
+
+    const deadline = existingProgress.endsAt
+      ? new Date(existingProgress.endsAt).getTime()
+      : (existingProgress.startedAt
+        ? new Date(existingProgress.startedAt).getTime() + (round.durationMinutes || 30) * 60000
+        : 0);
+    if (deadline > 0 && Date.now() > deadline + 5000) {
+      res.status(400).json({ error: 'Round time expired. Submission is no longer accepted.' });
+      return;
+    }
 
     // Auto-evaluate coding questions from latest unsaved client drafts submitted with the round
     if (Array.isArray(codingSubmissions) && codingSubmissions.length > 0) {
       for (const sub of codingSubmissions) {
-        if (!sub.questionId || !sub.code) continue;
+        if (!sub || typeof sub !== 'object' || typeof sub.questionId !== 'string' || typeof sub.code !== 'string' || typeof sub.language !== 'string') {
+          res.status(400).json({ error: 'Each submitted coding draft must include questionId, code, and language.' });
+          return;
+        }
+        if (!Types.ObjectId.isValid(sub.questionId)) {
+          res.status(400).json({ error: 'A submitted coding draft has an invalid question ID.' });
+          return;
+        }
         const question = await Question.findById(sub.questionId);
-        if (!question || question.type === 'mcq') continue;
+        if (!question || !['coding', 'debugging', 'sql'].includes(question.type) || question.roundNumber !== roundNumber) {
+          res.status(400).json({ error: 'A submitted coding draft does not belong to an executable question in this round.' });
+          return;
+        }
+        if (req.user?.eventId && question.eventId && question.eventId.toString() !== req.user.eventId.toString()) {
+          res.status(403).json({ error: 'A submitted coding draft does not belong to this competition event.' });
+          return;
+        }
+
+        const lang = sub.language.toLowerCase().trim();
+        let allowedLanguages = question.allowedLanguages && question.allowedLanguages.length > 0
+          ? question.allowedLanguages
+          : (question.type === 'sql' ? ['sql'] : ['python', 'cpp', 'java', 'c', 'javascript']);
+        if (req.user?.eventId && Array.isArray(round.allowedLanguages) && round.allowedLanguages.length > 0) {
+          allowedLanguages = round.allowedLanguages;
+        }
+        if (question.type === 'sql' && !allowedLanguages.map((value: string) => value.toLowerCase()).includes('sql')) {
+          allowedLanguages = [...allowedLanguages, 'sql'];
+        }
+        if (!lang || !allowedLanguages.map((value: string) => value.toLowerCase()).includes(lang)) {
+          res.status(400).json({
+            error: `Language '${sub.language}' is not permitted for this round. Allowed: ${allowedLanguages.join(', ')}`
+          });
+          return;
+        }
 
         let attempt = await Attempt.findOne({ userId, questionId: sub.questionId, roundNumber });
         const allCases = question.testCases || [];
-        const lang = sub.language || 'python';
-        const results = await runTestCases(sub.code, lang, allCases, question.timeLimitMs);
+        const executionId = randomUUID();
+        const results = await runTestCases(sub.code, lang, allCases, question.timeLimitMs, question.memoryLimitMb);
+        const evaluation = summarizeTestResults(results, question.timeLimitMs || 3000);
         const passedCount = results.filter(r => r.passed).length;
         const currentScore = Math.round((passedCount / (allCases.length || 1)) * (question.marks || 25));
 
         if (!attempt) {
           attempt = new Attempt({
             userId,
+            ...(req.user?.eventId ? { eventId: req.user.eventId } : {}),
             questionId: sub.questionId,
             roundNumber,
             score: currentScore,
@@ -1883,6 +2060,9 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
             lastSubmittedAt: new Date()
           });
         } else {
+          if (!attempt.eventId && req.user?.eventId) {
+            attempt.eventId = req.user.eventId as any;
+          }
           if (currentScore >= (attempt.score || 0)) {
             attempt.score = currentScore;
             attempt.code = sub.code;
@@ -1893,7 +2073,26 @@ participantRouter.post('/submit-round', async (req: AuthenticatedRequest, res: R
           attempt.submissionCount = (attempt.submissionCount || 0) + 1;
           attempt.lastSubmittedAt = new Date();
         }
+        attempt.lastExecutionId = executionId;
+        attempt.lastExecutionAt = new Date();
         await attempt.save();
+
+        await CodeMilestone.create({
+          executionId,
+          userId,
+          eventId: req.user?.eventId,
+          roundId: round._id,
+          questionId: sub.questionId,
+          attemptId: attempt._id,
+          roundNumber,
+          code: sub.code,
+          language: lang,
+          eventType: 'submit',
+          passedTestsCount: passedCount,
+          totalTestsCount: allCases.length,
+          charDelta: sub.code.length,
+          metadata: { source: 'submit_round', verdict: evaluation.status }
+        });
       }
     }
 

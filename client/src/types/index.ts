@@ -144,6 +144,8 @@ export interface Question {
   type: 'mcq' | 'coding' | 'sql' | 'debugging' | 'aptitude' | 'custom';
   codingMode?: 'standard' | 'debug';
   orderIndex: number;
+  /** Server-assigned contiguous participant display position for this round. */
+  displayNumber?: number;
   title: string;
   prompt: string;
   inputFormat?: string;
@@ -207,14 +209,17 @@ export interface QuestionTemplate {
 export interface TestCaseResult {
   testNumber: number;
   passed: boolean;
-  status: 'passed' | 'failed' | 'compile_error' | 'runtime_error' | 'timeout';
+  status: 'passed' | 'failed' | 'compile_error' | 'syntax_error' | 'runtime_error' | 'timeout' | 'memory_limit' | 'execution_error';
   runtimeMs: number;
   isHidden: boolean;
   input?: string;
   expected?: string;
   actual?: string;
   compileError?: string;
+  syntaxError?: string;
   runtimeError?: string;
+  memoryError?: string;
+  executionError?: string;
 }
 
 export interface Attempt {

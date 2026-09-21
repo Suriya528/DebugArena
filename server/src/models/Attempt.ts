@@ -6,9 +6,12 @@ export interface IAttemptTestCaseResult {
   stdout?: string;
   stderr?: string;
   compileError?: string;
+  syntaxError?: string;
   runtimeError?: string;
+  memoryError?: string;
+  executionError?: string;
   timeout?: boolean;
-  status: 'passed' | 'failed' | 'compile_error' | 'runtime_error' | 'timeout';
+  status: 'passed' | 'failed' | 'compile_error' | 'syntax_error' | 'runtime_error' | 'timeout' | 'memory_limit' | 'execution_error';
   isHidden: boolean;
   input?: string;
   expected?: string;
@@ -30,6 +33,9 @@ export interface IAttempt extends Document {
   testCaseResults: IAttemptTestCaseResult[];
   status: 'unattempted' | 'saved' | 'submitted';
   submissionCount: number;
+  /** Opaque ID for the most recent judged execution recorded for this attempt. */
+  lastExecutionId?: string;
+  lastExecutionAt?: Date;
   lastSavedAt: Date;
   lastSubmittedAt?: Date;
   retentionStatus?: 'active' | 'compacted';
@@ -45,11 +51,14 @@ const AttemptTestCaseResultSchema = new Schema<IAttemptTestCaseResult>(
     stdout: { type: String },
     stderr: { type: String },
     compileError: { type: String },
+    syntaxError: { type: String },
     runtimeError: { type: String },
+    memoryError: { type: String },
+    executionError: { type: String },
     timeout: { type: Boolean, default: false },
     status: {
       type: String,
-      enum: ['passed', 'failed', 'compile_error', 'runtime_error', 'timeout'],
+      enum: ['passed', 'failed', 'compile_error', 'syntax_error', 'runtime_error', 'timeout', 'memory_limit', 'execution_error'],
       required: true
     },
     isHidden: { type: Boolean, default: false },
@@ -78,6 +87,8 @@ const AttemptSchema = new Schema<IAttempt>(
       default: 'unattempted'
     },
     submissionCount: { type: Number, default: 0 },
+    lastExecutionId: { type: String, index: true },
+    lastExecutionAt: { type: Date },
     lastSavedAt: { type: Date, default: Date.now },
     lastSubmittedAt: { type: Date },
     retentionStatus: {

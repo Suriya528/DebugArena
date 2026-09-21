@@ -102,4 +102,9 @@ const QuestionSchema = new Schema<IQuestion>(
   }
 );
 
+// Participant question retrieval is always scoped to an event/round and
+// ordered by this stable display sequence. `_id` is included as a deterministic
+// tie-breaker for older records that happened to share an orderIndex.
+QuestionSchema.index({ eventId: 1, roundNumber: 1, orderIndex: 1, _id: 1 });
+
 export const Question = mongoose.model<IQuestion>('Question', QuestionSchema);

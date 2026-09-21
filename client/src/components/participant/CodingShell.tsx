@@ -51,8 +51,10 @@ export interface SubmissionFeedbackData {
   avgRuntimeMs?: number;
   maxRuntimeMs?: number;
   timeLimitMs?: number;
+  memoryLimitMb?: number;
   compileOutput?: string | null;
   runtimeOutput?: string | null;
+  executionOutput?: string | null;
 }
 
 function extractDiagnosticLocation(diagnostic?: string | null): { line: number; col?: number } | null {
@@ -125,8 +127,14 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     runtimeMs: number;
     status: string;
     compileError?: string;
+    syntaxError?: string;
     runtimeError?: string;
+    memoryError?: string;
+    executionError?: string;
   } | null>>({});
+  // Run verdicts are intentionally separate from submission verdicts: Run
+  // evaluates visible cases only, while Submit evaluates the full suite.
+  const [runFeedback, setRunFeedback] = useState<Record<string, SubmissionFeedbackData>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saved' | 'saving' | 'offline'>>({});
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<'problem' | 'code' | 'results'>('problem');
@@ -134,6 +142,13 @@ export const CodingShell: React.FC<CodingShellProps> = ({
 
   // Token to prevent stale async runs/submissions from overwriting active view
   const activeExecutionTokenRef = useRef<string>('');
+  // A response must also belong to the same code revision. A context match on
+  // question/language alone is insufficient when the participant edits while a
+  // run or submission is still in flight.
+  const bufferRevisionRef = useRef<Record<string, number>>({});
+  const bumpBufferRevision = (bufferKey: string) => {
+    bufferRevisionRef.current[bufferKey] = (bufferRevisionRef.current[bufferKey] || 0) + 1;
+  };
 
   // Initialize from attempts or default starter code
   useEffect(() => {
@@ -173,8 +188,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       }
 
       bestScores[q._id] = existingAttempt?.score || 0;
-      if (existingAttempt?.testCaseResults) {
-        existingResults[`${q._id}_${chosenLang}`] = existingAttempt.testCaseResults;
+      if (existingAttempt?.testCaseResults && existingAttempt.language) {
+        // Persisted results belong to the language that created the attempt,
+        // not necessarily the locally selected language draft.
+        existingResults[`${q._id}_${existingAttempt.language}`] = existingAttempt.testCaseResults;
       }
     });
 
@@ -222,7 +239,27 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const qId = currentQ._id;
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const bufferKey = `${qId}_${lang}`;
+    bumpBufferRevision(bufferKey);
     setCodeBuffers(prev => ({ ...prev, [bufferKey]: newCode }));
+    // Results describe a specific code buffer revision. Clear only this
+    // question/language view when it changes so an old diagnostic cannot look
+    // like feedback for newly edited code.
+    setRunResults(prev => {
+      const { [bufferKey]: _discarded, ...remaining } = prev;
+      return remaining;
+    });
+    setRunFeedback(prev => {
+      const { [bufferKey]: _discarded, ...remaining } = prev;
+      return remaining;
+    });
+    setSubmissionFeedback(prev => {
+      const { [bufferKey]: _discarded, ...remaining } = prev;
+      return remaining;
+    });
+    setCustomOutputs(prev => {
+      const { [bufferKey]: _discarded, ...remaining } = prev;
+      return remaining;
+    });
     try {
       localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, newCode);
     } catch {}
@@ -237,6 +274,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     // 1. Flush current editor live value into buffer for prevLang before switching
     const currentLiveCode = getCurrentLiveCode(qId, prevLang);
     const prevBufferKey = `${qId}_${prevLang}`;
+    bumpBufferRevision(prevBufferKey);
     setCodeBuffers(prev => ({ ...prev, [prevBufferKey]: currentLiveCode }));
     try {
       localStorage.setItem(`debugarena_code_draft_${roundNumber}_${prevBufferKey}`, currentLiveCode);
@@ -269,6 +307,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const starter = (currentQ.starterCode && (currentQ.starterCode as any)[lang]) || '';
     const bufferKey = `${qId}_${lang}`;
+    bumpBufferRevision(bufferKey);
     setCodeBuffers(prev => ({ ...prev, [bufferKey]: starter }));
     try {
       localStorage.setItem(`debugarena_code_draft_${roundNumber}_${bufferKey}`, starter);
@@ -327,8 +366,11 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const code = getCurrentLiveCode(qId, lang);
     const bufferKey = `${qId}_${lang}`;
+    const bufferRevision = bufferRevisionRef.current[bufferKey] || 0;
     const execToken = `${bufferKey}_run_${Date.now()}_${Math.random()}`;
     activeExecutionTokenRef.current = execToken;
+    const responseIsCurrent = () => activeExecutionTokenRef.current === execToken
+      && (bufferRevisionRef.current[bufferKey] || 0) === bufferRevision;
 
     setIsRunning(true);
 
@@ -345,15 +387,29 @@ export const CodingShell: React.FC<CodingShellProps> = ({
       }
 
       const res = await api.post('/participant/run-code', payload);
-      if (res.data.success) {
+      if (res.data.success && responseMatchesContext(res.data, qId, lang) && responseIsCurrent()) {
         if (res.data.isCustom) {
           setCustomOutputs(prev => ({ ...prev, [bufferKey]: res.data.customResult }));
         } else {
           setRunResults(prev => ({ ...prev, [bufferKey]: res.data.results }));
+          setRunFeedback(prev => ({
+            ...prev,
+            [bufferKey]: {
+              status: res.data.status || 'Execution Error',
+              message: res.data.message || '',
+              language: res.data.language || lang,
+              visibleTests: res.data.visibleTests,
+              timeLimitMs: res.data.timeLimitMs ?? currentQ.timeLimitMs ?? 3000,
+              memoryLimitMb: res.data.memoryLimitMb ?? currentQ.memoryLimitMb ?? 256,
+              compileOutput: res.data.compileOutput ?? null,
+              runtimeOutput: res.data.runtimeOutput ?? null,
+              executionOutput: res.data.executionOutput ?? null
+            }
+          }));
         }
 
         // Stale async response protection: Only change active UI view if this response is still for the active execution
-        if (activeExecutionTokenRef.current === execToken) {
+        if (responseIsCurrent()) {
           if (typeof window !== 'undefined' && window.innerWidth < 1024) {
             setMobileView('results');
           }
@@ -388,8 +444,11 @@ export const CodingShell: React.FC<CodingShellProps> = ({
     const lang = selectedLanguages[qId] || (currentQ.allowedLanguages && currentQ.allowedLanguages[0]) || 'python';
     const code = getCurrentLiveCode(qId, lang);
     const bufferKey = `${qId}_${lang}`;
+    const bufferRevision = bufferRevisionRef.current[bufferKey] || 0;
     const execToken = `${bufferKey}_submit_${Date.now()}_${Math.random()}`;
     activeExecutionTokenRef.current = execToken;
+    const responseIsCurrent = () => activeExecutionTokenRef.current === execToken
+      && (bufferRevisionRef.current[bufferKey] || 0) === bufferRevision;
 
     setIsSubmittingCode(true);
     setActiveTab('results');
@@ -408,8 +467,12 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         clientTimestamp: Date.now()
       });
 
-      if (res.data.success) {
+      if (res.data.success && responseMatchesContext(res.data, qId, lang) && responseIsCurrent()) {
         setRunResults(prev => ({ ...prev, [bufferKey]: res.data.results }));
+        setRunFeedback(prev => {
+          const { [bufferKey]: _discarded, ...remaining } = prev;
+          return remaining;
+        });
         setScores(prev => ({ ...prev, [qId]: res.data.score }));
         if (res.data.status) {
           setSubmissionFeedback(prev => ({
@@ -432,8 +495,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               avgRuntimeMs: res.data.avgRuntimeMs ?? 0,
               maxRuntimeMs: res.data.maxRuntimeMs ?? 0,
               timeLimitMs: res.data.timeLimitMs ?? (currentQ.timeLimitMs || 3000),
+              memoryLimitMb: res.data.memoryLimitMb ?? (currentQ.memoryLimitMb || 256),
               compileOutput: res.data.compileOutput ?? null,
-              runtimeOutput: res.data.runtimeOutput ?? null
+              runtimeOutput: res.data.runtimeOutput ?? null,
+              executionOutput: res.data.executionOutput ?? null
             }
           }));
         }
@@ -462,12 +527,22 @@ export const CodingShell: React.FC<CodingShellProps> = ({
   const currentCode = codeBuffers[currentBufferKey] ?? '';
   const currentResults = runResults[currentBufferKey] || [];
   const currentFeedback = submissionFeedback[currentBufferKey] || null;
+  const currentRunFeedback = runFeedback[currentBufferKey] || null;
   const currentScore = scores[currentQ._id] || 0;
+  const currentDisplayNumber = currentQ.displayNumber ?? currentQIndex + 1;
 
   const currentSampleCases = (currentQ.testCases || []).filter(tc => !tc.isHidden);
   const safeCaseIdx = selectedCaseIdx < currentSampleCases.length ? selectedCaseIdx : 0;
   const visibleCases = currentResults.filter(r => !r.isHidden);
   const totalScoreAcrossQuestions = Object.values(scores).reduce((sum, s) => sum + s, 0);
+
+  const responseMatchesContext = (data: any, questionId: string, lang: string): boolean => {
+    const association = data?.execution;
+    if (!association) return true;
+    return association.questionId === questionId
+      && association.roundNumber === roundNumber
+      && String(association.language || '').toLowerCase() === lang.toLowerCase();
+  };
 
   // Map language key to Monaco editor language
   const getMonacoLang = (lang: string) => {
@@ -493,7 +568,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                     : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-800'
                 }`}
               >
-                <span>P{idx + 1}</span>
+                <span>P{q.displayNumber ?? idx + 1}</span>
                 <span className="hidden sm:inline">Problem</span>
               </button>
             );
@@ -503,7 +578,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="hidden sm:flex text-xs text-slate-400 font-mono items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Problem {currentQIndex + 1} of {questions.length}</span>
+            <span>Problem {currentDisplayNumber} of {questions.length}</span>
           </div>
 
           <button
@@ -572,7 +647,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  Question {currentQIndex + 1} of {questions.length}
+                  Question {currentDisplayNumber} of {questions.length}
                 </span>
                 <span className="text-xs font-mono text-slate-500">
                   {currentQ.timeLimitMs}ms limit
@@ -787,7 +862,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                   <span>Custom Input</span>
                 </button>
 
-                {(currentResults.length > 0 || submissionFeedback[currentQ._id]) && (
+                {(currentResults.length > 0 || currentFeedback) && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('results')}
@@ -797,16 +872,16 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                         : 'border-transparent text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {submissionFeedback[currentQ._id] ? (
+                    {currentFeedback ? (
                       <>
                         <span className={`w-2 h-2 rounded-full ${
-                          submissionFeedback[currentQ._id].status === 'Accepted'
+                          currentFeedback.status === 'Accepted'
                             ? 'bg-emerald-400 animate-pulse'
-                            : submissionFeedback[currentQ._id].status === 'Wrong Answer'
+                            : currentFeedback.status === 'Wrong Answer'
                             ? 'bg-amber-400'
                             : 'bg-rose-400'
                         }`} />
-                        <span>Submission ({submissionFeedback[currentQ._id].status})</span>
+                        <span>Submission ({currentFeedback.status})</span>
                       </>
                     ) : (
                       <span>Summary ({visibleCases.filter(c => c.passed).length}/{visibleCases.length})</span>
@@ -858,6 +933,39 @@ export const CodingShell: React.FC<CodingShellProps> = ({
               {/* 1. TEST CASES TAB (INPUT / EXPECTED / ACTUAL PER SAMPLE CASE) */}
               {!isRunning && !isSubmittingCode && activeTab === 'cases' && (
                 <div className="space-y-3">
+                  {currentRunFeedback && (
+                    <div className={`rounded-xl border p-3 font-mono text-xs ${
+                      currentRunFeedback.status === 'Accepted'
+                        ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-200'
+                        : currentRunFeedback.status === 'Wrong Answer'
+                        ? 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+                        : 'bg-rose-950/30 border-rose-800/50 text-rose-200'
+                    }`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold uppercase tracking-wide">Run: {currentRunFeedback.status}</span>
+                        <span className="text-[10px] text-slate-400">Visible sample cases only</span>
+                      </div>
+                      {currentRunFeedback.message && (
+                        <p className="mt-1 text-slate-300 font-sans">{currentRunFeedback.message}</p>
+                      )}
+                      {currentRunFeedback.compileOutput && (
+                        <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-rose-900/60 bg-slate-950 p-2.5 text-rose-300 select-text">
+                          {currentRunFeedback.compileOutput}
+                        </pre>
+                      )}
+                      {currentRunFeedback.runtimeOutput && (
+                        <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-rose-900/60 bg-slate-950 p-2.5 text-rose-300 select-text">
+                          {currentRunFeedback.runtimeOutput}
+                        </pre>
+                      )}
+                      {currentRunFeedback.executionOutput && (
+                        <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-amber-900/60 bg-slate-950 p-2.5 text-amber-200 select-text">
+                          {currentRunFeedback.executionOutput}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+
                   {/* Case Pills */}
                   <div className="flex items-center gap-2 pb-2 border-b border-slate-800/80 overflow-x-auto">
                     {currentSampleCases.map((tc, idx) => {
@@ -932,15 +1040,15 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                             </span>
                           </div>
 
-                          {visibleCases[safeCaseIdx].compileError && (
+                          {(visibleCases[safeCaseIdx].compileError || visibleCases[safeCaseIdx].syntaxError) && (
                             <div className="space-y-1 pt-1">
                               <div className="text-[11px] font-bold text-rose-400 flex items-center gap-1.5 uppercase font-mono">
                                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                                <span>Compilation Error ({currentLang})</span>
+                                <span>{visibleCases[safeCaseIdx].syntaxError ? 'Syntax Error' : 'Compilation Error'} ({currentLang})</span>
                               </div>
                               <div className="text-[10px] text-slate-400 font-mono">Compiler diagnostics (stderr):</div>
                               <pre className="text-rose-300 bg-black/60 border border-rose-900/60 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner">
-                                {visibleCases[safeCaseIdx].compileError}
+                                {visibleCases[safeCaseIdx].syntaxError || visibleCases[safeCaseIdx].compileError}
                               </pre>
                             </div>
                           )}
@@ -958,7 +1066,31 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                             </div>
                           )}
 
-                          {!visibleCases[safeCaseIdx].compileError && !visibleCases[safeCaseIdx].runtimeError && (
+                          {visibleCases[safeCaseIdx].memoryError && (
+                            <div className="space-y-1 pt-1">
+                              <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 uppercase font-mono">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Memory Limit Exceeded ({currentLang})</span>
+                              </div>
+                              <pre className="text-amber-200 bg-black/60 border border-amber-900/60 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner">
+                                {visibleCases[safeCaseIdx].memoryError}
+                              </pre>
+                            </div>
+                          )}
+
+                          {visibleCases[safeCaseIdx].executionError && (
+                            <div className="space-y-1 pt-1">
+                              <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 uppercase font-mono">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Execution Error ({currentLang})</span>
+                              </div>
+                              <pre className="text-amber-200 bg-black/60 border border-amber-900/60 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner">
+                                {visibleCases[safeCaseIdx].executionError}
+                              </pre>
+                            </div>
+                          )}
+
+                          {!visibleCases[safeCaseIdx].compileError && !visibleCases[safeCaseIdx].syntaxError && !visibleCases[safeCaseIdx].runtimeError && !visibleCases[safeCaseIdx].memoryError && !visibleCases[safeCaseIdx].executionError && (
                             <div className="space-y-1">
                               <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
                                 Actual Output:
@@ -995,10 +1127,11 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                     (() => {
                       const fb = currentFeedback;
                       const isAccepted = fb.status === 'Accepted';
-                      const isCompileError = fb.status === 'Compilation Error';
+                      const isCompileError = fb.status === 'Compilation Error' || fb.status === 'Syntax Error';
                       const isRuntimeError = fb.status === 'Runtime Error';
                       const isTimeLimit = fb.status === 'Time Limit Exceeded';
                       const isMemoryLimit = fb.status === 'Memory Limit Exceeded';
+                      const isExecutionError = fb.status === 'Execution Error';
 
                       return (
                         <div className="space-y-4">
@@ -1006,7 +1139,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                           <div className={`p-4 sm:p-5 rounded-2xl border ${
                             isAccepted
                               ? 'bg-emerald-950/40 border-emerald-500/50 shadow-lg shadow-emerald-950/30'
-                              : isCompileError || isRuntimeError
+                              : isCompileError || isRuntimeError || isExecutionError
                               ? 'bg-rose-950/40 border-rose-500/50 shadow-lg shadow-rose-950/30'
                               : isTimeLimit || isMemoryLimit
                               ? 'bg-amber-950/40 border-amber-500/50 shadow-lg shadow-amber-950/30'
@@ -1017,7 +1150,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                                   isAccepted
                                     ? 'bg-emerald-500/20 text-emerald-400'
-                                    : isCompileError || isRuntimeError
+                                    : isCompileError || isRuntimeError || isExecutionError
                                     ? 'bg-rose-500/20 text-rose-400'
                                     : 'bg-amber-500/20 text-amber-400'
                                 }`}>
@@ -1027,6 +1160,8 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                                     <Code2 className="w-6 h-6 stroke-[2.5]" />
                                   ) : isTimeLimit ? (
                                     <Clock className="w-6 h-6 stroke-[2.5]" />
+                                  ) : isMemoryLimit ? (
+                                    <AlertTriangle className="w-6 h-6 stroke-[2.5]" />
                                   ) : isRuntimeError ? (
                                     <AlertOctagon className="w-6 h-6 stroke-[2.5]" />
                                   ) : (
@@ -1038,7 +1173,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                                     <h3 className={`text-base sm:text-lg font-black tracking-tight uppercase ${
                                       isAccepted
                                         ? 'text-emerald-400'
-                                        : isCompileError || isRuntimeError
+                                        : isCompileError || isRuntimeError || isExecutionError
                                         ? 'text-rose-400'
                                         : isTimeLimit || isMemoryLimit
                                         ? 'text-amber-400'
@@ -1109,7 +1244,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                               <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
                                 <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Memory</div>
                                 <div className="text-sm font-bold text-slate-200 mt-0.5">
-                                  256 MB
+                                  {fb.memoryLimitMb ?? currentQ.memoryLimitMb ?? 256} MB
                                 </div>
                                 <div className="text-[10px] text-slate-500 mt-0.5">
                                   Execution limit
@@ -1212,10 +1347,10 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                 <span className="text-rose-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                                   <Terminal className="w-3.5 h-3.5 text-rose-400" />
-                                  Compiler Output &amp; Diagnostics
+                                  {fb.status === 'Syntax Error' ? 'Interpreter Syntax Diagnostics' : 'Compiler Output & Diagnostics'}
                                 </span>
                                 {(() => {
-                                  const diagText = fb.compileOutput || visibleCases[0]?.compileError || '';
+                                  const diagText = fb.compileOutput || visibleCases[0]?.syntaxError || visibleCases[0]?.compileError || '';
                                   const loc = extractDiagnosticLocation(diagText);
                                   return loc ? (
                                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
@@ -1228,7 +1363,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                                 </span>
                               </div>
                               <pre className="bg-slate-950 border border-rose-900/60 p-3.5 rounded-xl font-mono text-xs text-rose-300 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
-                                {fb.compileOutput || visibleCases[0]?.compileError || 'Compilation failed with non-zero exit code'}
+                                {fb.compileOutput || visibleCases[0]?.syntaxError || visibleCases[0]?.compileError || 'Compilation failed with non-zero exit code'}
                               </pre>
                             </div>
                           )}
@@ -1247,6 +1382,40 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                               </div>
                               <pre className="bg-slate-950 border border-rose-900/60 p-3.5 rounded-xl font-mono text-xs text-rose-300 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
                                 {fb.runtimeOutput || visibleCases.find(c => c.runtimeError)?.runtimeError || 'Runtime exception caught'}
+                              </pre>
+                            </div>
+                          )}
+
+                          {isMemoryLimit && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                  Memory Limit Diagnostic
+                                </span>
+                                <span className="text-slate-500 text-[10px] font-mono">
+                                  Language: {fb.language || currentLang}
+                                </span>
+                              </div>
+                              <pre className="bg-slate-950 border border-amber-900/60 p-3.5 rounded-xl font-mono text-xs text-amber-200 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
+                                {fb.runtimeOutput || visibleCases.find(c => c.memoryError)?.memoryError || 'Execution exceeded the configured memory limit.'}
+                              </pre>
+                            </div>
+                          )}
+
+                          {isExecutionError && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                  Execution Error
+                                </span>
+                                <span className="text-slate-500 text-[10px] font-mono">
+                                  Language: {fb.language || currentLang}
+                                </span>
+                              </div>
+                              <pre className="bg-slate-950 border border-amber-900/60 p-3.5 rounded-xl font-mono text-xs text-amber-200 whitespace-pre-wrap break-words overflow-x-auto select-text shadow-inner max-h-60 overflow-y-auto">
+                                {fb.executionOutput || 'The judge could not complete this execution.'}
                               </pre>
                             </div>
                           )}
@@ -1336,13 +1505,28 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                               {r.compileError}
                             </div>
                           )}
+                          {r.syntaxError && (
+                            <div className="mt-2 text-rose-300 bg-black/60 border border-rose-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
+                              {r.syntaxError}
+                            </div>
+                          )}
                           {r.runtimeError && (
                             <div className="mt-2 text-rose-300 bg-black/60 border border-rose-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
                               {r.runtimeError}
                             </div>
                           )}
+                          {r.memoryError && (
+                            <div className="mt-2 text-amber-200 bg-black/60 border border-amber-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
+                              {r.memoryError}
+                            </div>
+                          )}
+                          {r.executionError && (
+                            <div className="mt-2 text-amber-200 bg-black/60 border border-amber-900/50 p-2.5 rounded-lg text-xs font-mono whitespace-pre-wrap break-words select-text">
+                              {r.executionError}
+                            </div>
+                          )}
 
-                          {!r.compileError && !r.runtimeError && (
+                          {!r.compileError && !r.syntaxError && !r.runtimeError && !r.memoryError && !r.executionError && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 text-[11px] font-mono">
                               <div>
                                 <span className="text-slate-400 block mb-1">Expected Output:</span>
@@ -1367,7 +1551,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                     </div>
                   )}
 
-                  {visibleCases.length === 0 && !submissionFeedback[currentQ._id] && (
+                  {visibleCases.length === 0 && !currentFeedback && (
                     <div className="text-slate-500 py-6 text-center font-sans text-xs">
                       Click <strong className="text-slate-400">Run</strong> or <strong className="text-slate-400">Submit Code</strong> to evaluate your solution.
                     </div>
@@ -1402,9 +1586,9 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                 <div className="flex flex-col h-full bg-slate-900/60 rounded-xl border border-slate-800 p-2.5 overflow-hidden">
                   <div className="flex items-center justify-between mb-1.5 shrink-0">
                     <span className="text-[11px] font-bold text-slate-300">Execution Output (stdout)</span>
-                    {customOutputs[currentQ._id] && (
+                    {customOutputs[currentBufferKey] && (
                       <span className="text-[10px] text-slate-400 font-mono">
-                        Wall clock: {customOutputs[currentQ._id]?.runtimeMs}ms
+                        Wall clock: {customOutputs[currentBufferKey]?.runtimeMs}ms
                       </span>
                     )}
                   </div>
@@ -1415,29 +1599,53 @@ export const CodingShell: React.FC<CodingShellProps> = ({
                         <span className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
                         <span>Running code with custom stdin...</span>
                       </div>
-                    ) : customOutputs[currentQ._id] ? (
+                    ) : customOutputs[currentBufferKey] ? (
                       <div className="space-y-2">
-                        {customOutputs[currentQ._id]?.compileError && (
+                        {customOutputs[currentBufferKey]?.compileError && (
                           <div>
                             <div className="text-[10px] uppercase font-bold text-rose-400 mb-1">Compilation Error:</div>
                             <pre className="text-rose-400 bg-rose-950/30 border border-rose-900/40 p-2 rounded whitespace-pre-wrap">
-                              {customOutputs[currentQ._id]?.compileError}
+                              {customOutputs[currentBufferKey]?.compileError}
                             </pre>
                           </div>
                         )}
-                        {customOutputs[currentQ._id]?.runtimeError && (
+                        {customOutputs[currentBufferKey]?.syntaxError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-rose-400 mb-1">Syntax Error:</div>
+                            <pre className="text-rose-400 bg-rose-950/30 border border-rose-900/40 p-2 rounded whitespace-pre-wrap">
+                              {customOutputs[currentBufferKey]?.syntaxError}
+                            </pre>
+                          </div>
+                        )}
+                        {customOutputs[currentBufferKey]?.runtimeError && (
                           <div>
                             <div className="text-[10px] uppercase font-bold text-rose-400 mb-1">Runtime Error:</div>
                             <pre className="text-rose-400 bg-rose-950/30 border border-rose-900/40 p-2 rounded whitespace-pre-wrap">
-                              {customOutputs[currentQ._id]?.runtimeError}
+                              {customOutputs[currentBufferKey]?.runtimeError}
                             </pre>
                           </div>
                         )}
-                        {!customOutputs[currentQ._id]?.compileError && !customOutputs[currentQ._id]?.runtimeError && (
+                        {customOutputs[currentBufferKey]?.memoryError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-amber-400 mb-1">Memory Limit Exceeded:</div>
+                            <pre className="text-amber-200 bg-amber-950/30 border border-amber-900/40 p-2 rounded whitespace-pre-wrap">
+                              {customOutputs[currentBufferKey]?.memoryError}
+                            </pre>
+                          </div>
+                        )}
+                        {customOutputs[currentBufferKey]?.executionError && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-amber-400 mb-1">Execution Error:</div>
+                            <pre className="text-amber-200 bg-amber-950/30 border border-amber-900/40 p-2 rounded whitespace-pre-wrap">
+                              {customOutputs[currentBufferKey]?.executionError}
+                            </pre>
+                          </div>
+                        )}
+                        {!customOutputs[currentBufferKey]?.compileError && !customOutputs[currentBufferKey]?.syntaxError && !customOutputs[currentBufferKey]?.runtimeError && !customOutputs[currentBufferKey]?.memoryError && !customOutputs[currentBufferKey]?.executionError && (
                           <div>
                             <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Program Output:</div>
                             <pre className="text-emerald-400 whitespace-pre font-mono">
-                              {customOutputs[currentQ._id]?.actualOutput || (
+                              {customOutputs[currentBufferKey]?.actualOutput || (
                                 <span className="text-slate-500 italic">(Process completed with zero stdout output)</span>
                               )}
                             </pre>
@@ -1474,7 +1682,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="text-[11px] font-mono text-slate-400 px-1">
-            {currentQIndex + 1}/{questions.length}
+            {currentDisplayNumber}/{questions.length}
           </span>
           <button
             onClick={() => {
@@ -1535,7 +1743,7 @@ export const CodingShell: React.FC<CodingShellProps> = ({
             <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono mb-6 space-y-1.5">
               {questions.map((q, i) => (
                 <div key={q._id} className="flex justify-between text-slate-300">
-                  <span>Q{i + 1}:</span>
+                  <span>Q{q.displayNumber ?? i + 1}:</span>
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> Ready for Evaluation
                   </span>

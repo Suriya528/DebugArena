@@ -165,6 +165,7 @@ export const McqShell: React.FC<McqShellProps> = ({
 
   const isCurrentAnswered = selectedAnswers[currentQ._id] !== null && selectedAnswers[currentQ._id] !== undefined;
   const isCurrentMarked = markedForReview.has(currentQ._id);
+  const currentDisplayNumber = currentQ.displayNumber ?? currentIndex + 1;
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -176,7 +177,7 @@ export const McqShell: React.FC<McqShellProps> = ({
             <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 mb-6 gap-2">
               <div className="flex items-center gap-2 sm:gap-3">
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 whitespace-nowrap">
-                  Q{currentIndex + 1} of {totalCount}
+                  Q{currentDisplayNumber} of {totalCount}
                 </span>
                 <span className="hidden xs:inline text-[11px] text-emerald-400/80 font-mono">
                   (0 neg)
@@ -323,7 +324,7 @@ export const McqShell: React.FC<McqShellProps> = ({
           <div className="rounded-3xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl backdrop-blur-md sticky top-24">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center justify-between">
               <span>Question Palette</span>
-              <span className="text-xs text-slate-400 font-mono">{currentIndex + 1}/{totalCount}</span>
+              <span className="text-xs text-slate-400 font-mono">{currentDisplayNumber}/{totalCount}</span>
             </h3>
 
             {/* Status Legend */}
@@ -374,7 +375,7 @@ export const McqShell: React.FC<McqShellProps> = ({
                       isCurrent ? 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-900 scale-105' : 'hover:scale-102'
                     }`}
                   >
-                    <span>{idx + 1}</span>
+                    <span>{q.displayNumber ?? idx + 1}</span>
                     {isMarked && (
                       <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center shadow">
                         <Bookmark className="w-2 h-2 text-white fill-white" />
@@ -407,7 +408,7 @@ export const McqShell: React.FC<McqShellProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0 mb-4">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">Question Palette</h3>
-                <span className="text-xs text-slate-400 font-mono">({currentIndex + 1}/{totalCount})</span>
+                <span className="text-xs text-slate-400 font-mono">({currentDisplayNumber}/{totalCount})</span>
               </div>
               <button
                 onClick={() => setIsPaletteOpen(false)}
@@ -466,7 +467,7 @@ export const McqShell: React.FC<McqShellProps> = ({
                       isCurrent ? 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-900 scale-105' : 'hover:scale-102'
                     }`}
                   >
-                    <span>{idx + 1}</span>
+                    <span>{q.displayNumber ?? idx + 1}</span>
                     {isMarked && (
                       <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center shadow">
                         <Bookmark className="w-2 h-2 text-white fill-white" />

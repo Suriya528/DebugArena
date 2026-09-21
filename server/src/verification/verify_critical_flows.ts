@@ -9,6 +9,8 @@ import { adminEventRouter } from '../routes/adminEvent.js';
 import { adminQuestionBankRouter } from '../routes/adminQuestionBank.js';
 import { authRouter } from '../routes/auth.js';
 import { participantRouter } from '../routes/participant.js';
+import { Attempt } from '../models/Attempt.js';
+import { CodeMilestone } from '../models/CodeMilestone.js';
 import { isIsolatedVerificationMode, requireIsolatedVerification } from './safety.js';
 
 type HttpResult = { status: number; body: any };
@@ -222,6 +224,7 @@ export async function runCriticalFlowVerification(): Promise<void> {
     }), 200, 'read Round 1 state before participant starts');
     assert.equal(beforeStart.progress.status, 'not_started', 'participant must be initialized as not_started');
     assert.equal(beforeStart.questions.length, 2, 'runtime questions must match exact configured count');
+    assert.deepEqual(beforeStart.questions.map((question: any) => question.displayNumber), [1, 2], 'round questions must have stable contiguous server-assigned display numbers');
 
     const firstStart = requireStatus(await request(baseUrl, '/api/participant/rounds/1/start', {
       method: 'POST', token: participantOneToken
@@ -314,12 +317,31 @@ export async function runCriticalFlowVerification(): Promise<void> {
     }), 200, 'execute current editor code');
     assert.equal(currentEditorRun.results[0].actual, '999', 'run-code must execute the submitted current editor buffer');
     assert.equal(currentEditorRun.results[0].passed, false, 'current editor wrong output must fail');
+    assert.equal(currentEditorRun.execution.questionId, debugQuestionId, 'run-code result must identify its question');
+    assert.equal(currentEditorRun.execution.roundNumber, 2, 'run-code result must identify its round');
+    assert.equal(currentEditorRun.execution.language, 'javascript', 'run-code result must identify its language');
+    assert.equal(currentEditorRun.execution.eventId, eventId, 'run-code result must identify its event');
+    assert.ok(currentEditorRun.execution.roundId, 'run-code result must identify its round document');
+    assert.ok(currentEditorRun.execution.executionId, 'run-code result must carry an execution ID');
+    assert.ok(currentEditorRun.execution.attemptId, 'run-code result must carry an attempt ID');
+    const currentEditorMilestone = await CodeMilestone.findOne({ executionId: currentEditorRun.execution.executionId }).lean();
+    assert.ok(currentEditorMilestone, 'run-code must durably record its execution milestone');
+    assert.equal(String(currentEditorMilestone.eventId), eventId, 'run milestone must retain its event association');
+    assert.equal(String(currentEditorMilestone.roundId), currentEditorRun.execution.roundId, 'run milestone must retain its round association');
+    assert.equal(String(currentEditorMilestone.questionId), debugQuestionId, 'run milestone must retain its question association');
+    assert.equal(String(currentEditorMilestone.attemptId), currentEditorRun.execution.attemptId, 'run milestone must retain its attempt association');
+    assert.equal(currentEditorMilestone.language, 'javascript', 'run milestone must retain its language association');
+    const currentEditorAttempt = await Attempt.findById(currentEditorRun.execution.attemptId).lean();
+    assert.ok(currentEditorAttempt, 'run-code must create or retain the associated attempt');
+    assert.equal(currentEditorAttempt.lastExecutionId, currentEditorRun.execution.executionId, 'attempt must retain its latest execution ID');
     const javaCorrectedCode = 'import java.util.*; public class Solution { public static void main(String[] args) { Scanner s = new Scanner(System.in); System.out.println(s.nextInt() * 2); } }';
     const javaLanguageRun = requireStatus(await request(baseUrl, '/api/participant/run-code', {
       method: 'POST', token: participantOneToken,
       body: { questionId: debugQuestionId, roundNumber: 2, language: 'java', code: javaCorrectedCode }
     }), 200, 'switch to Java and execute current editor code');
     assert.equal(javaLanguageRun.results[0].passed, true, 'supported Java language selection must execute correctly');
+    assert.equal(javaLanguageRun.execution.language, 'java', 'switched-language run must retain its own language context');
+    assert.notEqual(javaLanguageRun.execution.executionId, currentEditorRun.execution.executionId, 'each run must have a distinct execution ID');
     requireStatus(await request(baseUrl, '/api/participant/run-code', {
       method: 'POST', token: participantOneToken,
       body: { questionId: debugQuestionId, roundNumber: 2, language: 'python', code: 'print(4)' }
@@ -336,9 +358,40 @@ export async function runCriticalFlowVerification(): Promise<void> {
     }), 200, 'submit corrected debug code');
     assert.equal(debugSubmit.status, 'Accepted', 'correct debug submission must pass all test cases');
     assert.equal(debugSubmit.results.length, 1, 'hidden test execution must remain hidden from participant response');
+    assert.equal(debugSubmit.execution.questionId, debugQuestionId, 'submission result must identify its question');
+    assert.equal(debugSubmit.execution.roundNumber, 2, 'submission result must identify its round');
+    assert.equal(debugSubmit.execution.language, 'javascript', 'submission result must identify its language');
+    assert.equal(debugSubmit.execution.eventId, eventId, 'submission result must identify its event');
+    assert.ok(debugSubmit.execution.roundId, 'submission result must identify its round document');
+    assert.ok(debugSubmit.execution.executionId, 'submission result must carry an execution ID');
+    assert.ok(debugSubmit.execution.attemptId, 'submission result must carry an attempt ID');
+    const submittedMilestone = await CodeMilestone.findOne({ executionId: debugSubmit.execution.executionId }).lean();
+    assert.ok(submittedMilestone, 'submit-code must durably record its execution milestone');
+    assert.equal(String(submittedMilestone.eventId), eventId, 'submission milestone must retain its event association');
+    assert.equal(String(submittedMilestone.roundId), debugSubmit.execution.roundId, 'submission milestone must retain its round association');
+    assert.equal(String(submittedMilestone.questionId), debugQuestionId, 'submission milestone must retain its question association');
+    assert.equal(String(submittedMilestone.attemptId), debugSubmit.execution.attemptId, 'submission milestone must retain its attempt association');
+    assert.equal(submittedMilestone.language, 'javascript', 'submission milestone must retain its language association');
     requireStatus(await request(baseUrl, '/api/participant/submit-round', {
-      method: 'POST', token: participantOneToken, body: { roundNumber: 2 }
-    }), 200, 'submit intermediate round');
+      method: 'POST', token: participantOneToken,
+      body: { roundNumber: 2, codingSubmissions: [{ questionId: debugQuestionId, language: 'python', code: 'print(4)' }] }
+    }), 400, 'round submission must enforce the configured coding-language policy');
+    requireStatus(await request(baseUrl, '/api/participant/submit-round', {
+      method: 'POST',
+      token: participantOneToken,
+      body: { roundNumber: 2, codingSubmissions: [{ questionId: debugQuestionId, language: 'javascript', code: correctedCode }] }
+    }), 200, 'submit intermediate round with its latest coding draft');
+    const roundSubmissionMilestone = await CodeMilestone.findOne({
+      userId: participantOneId,
+      questionId: debugQuestionId,
+      'metadata.source': 'submit_round'
+    }).sort({ timestamp: -1 }).lean();
+    assert.ok(roundSubmissionMilestone, 'submit-round must durably record each evaluated coding draft');
+    assert.equal(String(roundSubmissionMilestone.eventId), eventId, 'submit-round milestone must retain its event association');
+    assert.equal(String(roundSubmissionMilestone.questionId), debugQuestionId, 'submit-round milestone must retain its question association');
+    assert.equal(roundSubmissionMilestone.language, 'javascript', 'submit-round milestone must retain its language association');
+    assert.ok(roundSubmissionMilestone.executionId, 'submit-round milestone must retain its execution ID');
+    assert.ok(roundSubmissionMilestone.attemptId, 'submit-round milestone must retain its attempt association');
     requireStatus(await request(baseUrl, `/api/admin/events/${eventId}/rounds/2/lock`, {
       method: 'POST', token: adminToken
     }), 200, 'complete intermediate round');

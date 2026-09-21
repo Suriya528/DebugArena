@@ -1259,9 +1259,9 @@ adminEventRouter.put('/:eventId/rounds/:roundNumber/questions', async (req: Auth
     }
 
     const requiredCount = round.questionCount;
-    if (questionIds.length > requiredCount) {
+    if (questionIds.length !== requiredCount) {
       res.status(400).json({
-        error: `Round quota exceeded. Maximum allowed is ${requiredCount} questions, but ${questionIds.length} were provided.`,
+        error: `Round requires exactly ${requiredCount} questions, but ${questionIds.length} were provided.`,
         requiredCount,
         providedCount: questionIds.length
       });
@@ -1845,10 +1845,13 @@ adminEventRouter.post('/sandbox-run', async (req: AuthenticatedRequest, res: Res
           stdout: execResult.stdout,
           stderr: execResult.stderr,
           compileError: execResult.compileError,
+          syntaxError: execResult.syntaxError,
           runtimeError: execResult.runtimeError,
+          memoryError: execResult.memoryError,
+          executionError: execResult.executionError,
           timeout: execResult.timeout,
           runtimeMs: execResult.runtimeMs,
-          status: execResult.compileError ? 'compile_error' : execResult.timeout ? 'timeout' : execResult.runtimeError ? 'runtime_error' : 'success'
+          status: execResult.verdict
         }
       });
       return;
@@ -1863,7 +1866,7 @@ adminEventRouter.post('/sandbox-run', async (req: AuthenticatedRequest, res: Res
       }
 
       const testCases = question.testCases || [];
-      const testResults = await runTestCases(code, language, testCases, question.timeLimitMs || 3000);
+      const testResults = await runTestCases(code, language, testCases, question.timeLimitMs || 3000, question.memoryLimitMb);
 
       const passedCount = testResults.filter(r => r.passed).length;
       res.json({
@@ -1889,4 +1892,3 @@ adminEventRouter.post('/sandbox-run', async (req: AuthenticatedRequest, res: Res
     res.status(500).json({ error: err.message || 'Failed to execute code' });
   }
 });
-

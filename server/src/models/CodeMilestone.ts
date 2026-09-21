@@ -1,9 +1,15 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface ICodeMilestone extends Document {
+  /** Opaque ID generated for one run/submit evaluation. */
+  executionId?: string;
   userId: Types.ObjectId;
   eventId?: Types.ObjectId;
+  /** DynamicRound or legacy Round document associated with this evaluation. */
+  roundId?: Types.ObjectId;
   questionId: Types.ObjectId;
+  /** Attempt document when one exists; runs are allowed before an attempt is saved. */
+  attemptId?: Types.ObjectId;
   roundNumber: number;
   code: string;
   language: string;
@@ -18,9 +24,12 @@ export interface ICodeMilestone extends Document {
 
 const CodeMilestoneSchema = new Schema<ICodeMilestone>(
   {
+    executionId: { type: String, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     eventId: { type: Schema.Types.ObjectId, ref: 'Event', index: true },
+    roundId: { type: Schema.Types.ObjectId, index: true },
     questionId: { type: Schema.Types.ObjectId, ref: 'Question', required: true, index: true },
+    attemptId: { type: Schema.Types.ObjectId, ref: 'Attempt', index: true },
     roundNumber: { type: Number, required: true },
     code: { type: String, required: true },
     language: { type: String, required: true },

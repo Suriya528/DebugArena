@@ -7,6 +7,53 @@ import { ENV } from '../config/env.js';
 import { ITestCase } from '../models/Question.js';
 import { IAttemptTestCaseResult } from '../models/Attempt.js';
 
+/**
+ * A participant-facing outcome for one program execution.  Keep this separate
+ * from HTTP success: a 200 only means the judge completed its work, not that
+ * the submitted program succeeded.
+ */
+export type JudgeVerdict =
+  | 'accepted'
+  | 'wrong_answer'
+  | 'compilation_error'
+  | 'syntax_error'
+  | 'runtime_error'
+  | 'time_limit_exceeded'
+  | 'memory_limit_exceeded'
+  | 'execution_error';
+
+export interface JudgeExecutionResult {
+  stdout: string;
+  stderr: string;
+  compileError?: string;
+  /** Interpreter parse/indentation diagnostic; also mirrored in compileError for compatibility. */
+  syntaxError?: string;
+  runtimeError?: string;
+  memoryError?: string;
+  executionError?: string;
+  timeout: boolean;
+  runtimeMs: number;
+  exitCode: number;
+  verdict: JudgeVerdict;
+}
+
+type LocalExecutionResult = Omit<JudgeExecutionResult, 'runtimeMs'>;
+
+interface ProcessResult {
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  exitCode: number;
+  spawnError?: string;
+  outputLimitExceeded: boolean;
+}
+
+const DEFAULT_MEMORY_LIMIT_MB = 256;
+const COMPILATION_TIMEOUT_MS = 10_000;
+const MAX_CAPTURED_STDOUT_BYTES = Math.max(32_768, Number.parseInt(process.env.JUDGE_MAX_STDOUT_BYTES || '1048576', 10) || 1_048_576);
+const MAX_CAPTURED_STDERR_BYTES = Math.max(8_192, Number.parseInt(process.env.JUDGE_MAX_STDERR_BYTES || '65536', 10) || 65_536);
+const MAX_PARTICIPANT_DIAGNOSTIC_CHARS = Math.max(4_096, Number.parseInt(process.env.JUDGE_MAX_DIAGNOSTIC_CHARS || '24000', 10) || 24_000);
+
 // Augment process.env.PATH with installed compiler directories (MinGW g++, Tableau OpenJDK 17)
 const EXTRA_COMPILER_PATHS = [
   'C:\\Users\\Admin\\AppData\\Local\\Microsoft\\WinGet\\Packages\\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\llvm-mingw-20260616-ucrt-x86_64\\bin',
@@ -114,7 +161,7 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed Python system module or API call (${pattern.source})` };
+        return { safe: false, reason: 'This submission uses an API that is not permitted by the execution environment.' };
       }
     }
   } else if (normLang === 'javascript' || normLang === 'js' || normLang === 'node') {
@@ -133,7 +180,7 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed Node.js system API call (${pattern.source})` };
+        return { safe: false, reason: 'This submission uses an API that is not permitted by the execution environment.' };
       }
     }
   } else if (normLang === 'java') {
@@ -145,7 +192,7 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed Java system execution (${pattern.source})` };
+        return { safe: false, reason: 'This submission uses an API that is not permitted by the execution environment.' };
       }
     }
   } else if (normLang === 'cpp' || normLang === 'c++' || normLang === 'c') {
@@ -159,7 +206,7 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed C/C++ system call (${pattern.source})` };
+        return { safe: false, reason: 'This submission uses an API that is not permitted by the execution environment.' };
       }
     }
   } else if (normLang === 'sql') {
@@ -178,12 +225,12 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
     ];
 
     if (!readQueryStart.test(code)) {
-      return { safe: false, reason: 'Security Restriction: SQL submissions must be a read-only SELECT or WITH query.' };
+      return { safe: false, reason: 'SQL submissions must be a read-only SELECT or WITH query.' };
     }
 
     for (const pattern of forbiddenPatterns) {
       if (pattern.test(code)) {
-        return { safe: false, reason: `Security Restriction: Disallowed SQL write or administrative command (${pattern.source})` };
+        return { safe: false, reason: 'SQL submissions may not contain write or administrative commands.' };
       }
     }
   }
@@ -191,91 +238,362 @@ export function validateCodeSecurity(code: string, language: string): { safe: bo
   return { safe: true };
 }
 
-// Low-level helper to execute a CLI process with stdin, timeout, and process cleanup
+// Low-level helper to execute a CLI process with stdin, bounded output, timeout,
+// and cross-platform cleanup. The outcome deliberately records a spawn failure
+// separately so a missing runtime is never presented as a participant syntax error.
 function runCommand(
   cmd: string,
   args: string[],
   stdinText: string = '',
   timeoutMs: number = 3000,
   cwd?: string
-): Promise<{ stdout: string; stderr: string; timedOut: boolean; exitCode: number }> {
+): Promise<ProcessResult> {
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let outputLimitExceeded = false;
+    let settled = false;
+    let child: ReturnType<typeof spawn> | undefined;
 
-    const child = spawn(cmd, args, {
-      windowsHide: true,
-      cwd: cwd || process.cwd(),
-      env: process.env
-    });
+    const finish = (result: ProcessResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      // child.kill maps to TerminateProcess on Windows and is the primary,
-      // synchronous best-effort termination path. taskkill remains a fallback
-      // for a compiler/runtime that spawned descendants. Previously Windows
-      // relied only on taskkill and an infinite Node process could survive.
+    const append = (current: string, chunk: Buffer | string, limit: number, streamName: string): { value: string; exceeded: boolean } => {
+      if (Buffer.byteLength(current, 'utf8') >= limit) {
+        return { value: current, exceeded: true };
+      }
+
+      const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk;
+      const remaining = limit - Buffer.byteLength(current, 'utf8');
+      if (Buffer.byteLength(text, 'utf8') <= remaining) {
+        return { value: current + text, exceeded: false };
+      }
+
+      const truncated = Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8');
+      return {
+        value: `${current}${truncated}\n[${streamName} output truncated by judge safety limit]`,
+        exceeded: true
+      };
+    };
+
+    const terminate = () => {
+      if (!child) return;
       try {
         child.kill('SIGKILL');
       } catch {
-        // The process may already have exited between the timer and kill.
+        // The process can exit between the limit/timeout check and termination.
       }
       if (process.platform === 'win32' && child.pid) {
         const killer = spawn('taskkill', ['/F', '/T', '/PID', child.pid.toString()], { windowsHide: true });
         killer.on('error', () => {
           try {
-            child.kill('SIGKILL');
+            child?.kill('SIGKILL');
           } catch {
-            // The primary kill attempt is sufficient when the process is gone.
+            // The direct kill above is already the primary cleanup path.
           }
         });
       }
-    }, timeoutMs);
+    };
 
-    child.stdout?.on('data', (d) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d) => { stderr += d.toString(); });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, Math.max(1, timeoutMs));
+
+    try {
+      child = spawn(cmd, args, {
+        windowsHide: true,
+        cwd: cwd || process.cwd(),
+        env: process.env
+      });
+    } catch (error) {
+      finish({
+        stdout: '',
+        stderr: error instanceof Error ? error.message : String(error),
+        timedOut: false,
+        exitCode: 1,
+        spawnError: error instanceof Error ? error.message : String(error),
+        outputLimitExceeded: false
+      });
+      return;
+    }
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const next = append(stdout, chunk, MAX_CAPTURED_STDOUT_BYTES, 'stdout');
+      stdout = next.value;
+      if (next.exceeded && !outputLimitExceeded) {
+        outputLimitExceeded = true;
+        terminate();
+      }
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      const next = append(stderr, chunk, MAX_CAPTURED_STDERR_BYTES, 'stderr');
+      stderr = next.value;
+      if (next.exceeded && !outputLimitExceeded) {
+        outputLimitExceeded = true;
+        terminate();
+      }
+    });
 
     child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, timedOut, exitCode: code ?? 0 });
+      finish({
+        stdout,
+        stderr,
+        timedOut,
+        exitCode: code ?? 1,
+        outputLimitExceeded
+      });
     });
 
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ stdout: '', stderr: err.message, timedOut: false, exitCode: 1 });
+    child.on('error', (error) => {
+      finish({
+        stdout,
+        stderr: stderr || (error instanceof Error ? error.message : String(error)),
+        timedOut: false,
+        exitCode: 1,
+        spawnError: error instanceof Error ? error.message : String(error),
+        outputLimitExceeded
+      });
     });
 
-    if (stdinText && child.stdin) {
-      child.stdin.write(stdinText);
+    // A process that exits before stdin is written can emit EPIPE. It is not a
+    // separate judge failure; the process outcome above is authoritative.
+    child.stdin?.on('error', () => {});
+    try {
+      if (stdinText && child.stdin) child.stdin.write(stdinText);
+      child.stdin?.end();
+    } catch {
+      // The close/error handlers classify the process outcome.
     }
-    child.stdin?.end();
   });
 }
 
-// Sanitize compiler and runtime diagnostics (remove server paths and internals while preserving line/column and compiler error messages)
+function truncateParticipantDiagnostic(text: string): string {
+  if (text.length <= MAX_PARTICIPANT_DIAGNOSTIC_CHARS) return text;
+  return `${text.slice(0, MAX_PARTICIPANT_DIAGNOSTIC_CHARS)}\n[Diagnostic output truncated by judge safety limit]`;
+}
+
+// Sanitize compiler and runtime diagnostics without altering useful source
+// locations, error messages, or caret context. Compiler output is untrusted:
+// it can include temp paths, service URLs, or secrets injected by an execution
+// environment, none of which belong in a participant response.
 export function sanitizeDiagnostics(output?: string | null, tempDir?: string): string {
   if (!output) return '';
-  let sanitized = output;
+  let sanitized = String(output).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   if (tempDir) {
-    const normBackslash = tempDir.replace(/\//g, '\\');
-    const normForwardSlash = tempDir.replace(/\\/g, '/');
-    sanitized = sanitized.split(normBackslash).join('');
-    sanitized = sanitized.split(normForwardSlash).join('');
+    const paths = new Set([
+      tempDir,
+      tempDir.replace(/\\/g, '/'),
+      tempDir.replace(/\//g, '\\')
+    ]);
+    for (const tempPath of paths) {
+      sanitized = sanitized.split(tempPath).join('');
+    }
   }
 
-  // Strip absolute directories, leaving only the filename (e.g. Solution.java:12: error)
-  sanitized = sanitized.replace(/[A-Za-z]:\\[^:\n\r]+[\\/]([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))/gi, '$1');
-  sanitized = sanitized.replace(/(?:\/[^:\n\r\s]+)+\/([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))/gi, '$1');
+  // Preserve the participant-safe source filename while dropping every parent
+  // component from Windows and POSIX source paths.
+  sanitized = sanitized.replace(/[A-Za-z]:[\\/](?:[^:\n\r\\/]+[\\/])*([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|cc|cxx|js|mjs|ts|sql))/gi, '$1');
+  sanitized = sanitized.replace(/(?:\/(?:[^:\n\r\/]+))+\/([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|cc|cxx|js|mjs|ts|sql))/gi, '$1');
 
-  // Remove internal server/user paths
-  sanitized = sanitized.replace(/[A-Za-z]:\\(?:Users|Documents|Program Files|Windows)[^:\n\r]*/gi, '');
-  sanitized = sanitized.replace(/\/home\/[^:\n\r]*/gi, '');
-  sanitized = sanitized.replace(/\/tmp\/[^:\n\r]*/gi, '');
-  sanitized = sanitized.replace(/["']?[\/\\]+([A-Za-z0-9_.-]+\.(?:py|java|cpp|c|js|ts|sql))["']?/gi, '"$1"');
+  // Remaining absolute paths are infrastructure details rather than source
+  // references that a participant can act on.
+  sanitized = sanitized.replace(/\b[A-Za-z]:\\[^\n\r:]*/g, '[internal path]');
+  sanitized = sanitized.replace(/\/(?:home|tmp|var|srv|opt|app|workspace|internal|usr)\/[\w@%+.,=~\-\/]*/gi, '[internal path]');
 
-  return sanitized.trim();
+  // Do not return service endpoints or credentials should a tool echo its
+  // environment. This intentionally leaves normal compiler text untouched.
+  sanitized = sanitized.replace(/\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|redis):\/\/[^\s'"`]+/gi, '[redacted connection string]');
+  sanitized = sanitized.replace(/\bhttps?:\/\/[^\s'"`]+/gi, '[redacted URL]');
+  sanitized = sanitized.replace(/\b(password|passwd|secret|token|api[_-]?key|authorization)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]');
+
+  return truncateParticipantDiagnostic(sanitized.trim());
+}
+
+function diagnosticFromProcess(result: ProcessResult, tempDir?: string): string {
+  const streams = [result.stderr, result.stdout].filter(Boolean);
+  return sanitizeDiagnostics(streams.join(streams.length > 1 ? '\n' : ''), tempDir);
+}
+
+function isMemoryLimitDiagnostic(diagnostic: string): boolean {
+  return /\b(?:out\s+of\s+memory|heap\s+out\s+of\s+memory|java\.lang\.outofmemoryerror|outofmemoryerror|memoryerror|std::bad_alloc|bad_alloc|cannot allocate memory|allocation failed|reached heap limit)\b/i.test(diagnostic);
+}
+
+function isPythonSyntaxDiagnostic(diagnostic: string): boolean {
+  return /\b(?:syntaxerror|indentationerror|taberror)\b/i.test(diagnostic);
+}
+
+function isJavaScriptSyntaxDiagnostic(diagnostic: string): boolean {
+  return /\bsyntaxerror\b/i.test(diagnostic);
+}
+
+function safeRemoveTempDir(tempDir: string): void {
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch {
+    // A failed best-effort cleanup must not replace an otherwise valid verdict.
+  }
+}
+
+function executionEnvironmentError(message: string, exitCode = 1): LocalExecutionResult {
+  const diagnostic = sanitizeDiagnostics(message) || 'The execution environment could not start the selected language runtime.';
+  return {
+    stdout: '',
+    stderr: diagnostic,
+    executionError: diagnostic,
+    timeout: false,
+    exitCode,
+    verdict: 'execution_error'
+  };
+}
+
+function resolvedMemoryLimitMb(memoryLimitMb?: number): number {
+  const requested = Number(memoryLimitMb);
+  if (!Number.isFinite(requested) || requested <= 0) return DEFAULT_MEMORY_LIMIT_MB;
+  // Avoid an unusable Node/Java heap while honoring a question's configured cap.
+  return Math.max(16, Math.floor(requested));
+}
+
+function runtimeOutcome(result: ProcessResult, tempDir?: string): LocalExecutionResult {
+  const diagnostic = diagnosticFromProcess(result, tempDir);
+  const stdout = result.stdout.trim();
+
+  if (result.spawnError) {
+    return executionEnvironmentError(diagnostic || 'The selected language runtime is unavailable.', result.exitCode);
+  }
+  if (result.timedOut) {
+    return {
+      stdout,
+      stderr: diagnostic,
+      timeout: true,
+      exitCode: result.exitCode,
+      verdict: 'time_limit_exceeded'
+    };
+  }
+  if (result.outputLimitExceeded) {
+    const message = diagnostic || 'Program output exceeded the judge safety limit.';
+    return {
+      stdout,
+      stderr: message,
+      executionError: message,
+      timeout: false,
+      exitCode: result.exitCode,
+      verdict: 'execution_error'
+    };
+  }
+  if (isMemoryLimitDiagnostic(diagnostic)) {
+    const message = diagnostic || 'The program exceeded its configured memory limit.';
+    return {
+      stdout,
+      stderr: message,
+      memoryError: message,
+      timeout: false,
+      exitCode: result.exitCode,
+      verdict: 'memory_limit_exceeded'
+    };
+  }
+  if (result.exitCode !== 0) {
+    const message = diagnostic || `Process exited with code ${result.exitCode}.`;
+    return {
+      stdout,
+      stderr: message,
+      runtimeError: message,
+      timeout: false,
+      exitCode: result.exitCode,
+      verdict: 'runtime_error'
+    };
+  }
+
+  return {
+    stdout,
+    stderr: diagnostic,
+    timeout: false,
+    exitCode: result.exitCode,
+    verdict: 'accepted'
+  };
+}
+
+function compilationOutcome(result: ProcessResult, languageLabel: string, tempDir?: string): LocalExecutionResult | null {
+  if (result.exitCode === 0 && !result.timedOut && !result.spawnError && !result.outputLimitExceeded) {
+    return null;
+  }
+
+  const diagnostic = diagnosticFromProcess(result, tempDir);
+  if (result.spawnError) {
+    return executionEnvironmentError(diagnostic || `The configured ${languageLabel} compiler is unavailable.`, result.exitCode);
+  }
+  if (result.timedOut || result.outputLimitExceeded) {
+    const message = diagnostic || `${languageLabel} compilation could not complete within the judge safety limits.`;
+    return {
+      stdout: '',
+      stderr: message,
+      executionError: message,
+      timeout: false,
+      exitCode: result.exitCode,
+      verdict: 'execution_error'
+    };
+  }
+
+  const message = diagnostic || `${languageLabel} compiler exited with code ${result.exitCode} without emitting a diagnostic.`;
+  return {
+    stdout: '',
+    stderr: message,
+    compileError: message,
+    timeout: false,
+    exitCode: result.exitCode,
+    verdict: 'compilation_error'
+  };
+}
+
+function syntaxValidationOutcome(
+  result: ProcessResult,
+  languageLabel: string,
+  isSyntaxDiagnostic: (diagnostic: string) => boolean,
+  tempDir?: string
+): LocalExecutionResult | null {
+  if (result.exitCode === 0 && !result.timedOut && !result.spawnError && !result.outputLimitExceeded) {
+    return null;
+  }
+
+  const diagnostic = diagnosticFromProcess(result, tempDir);
+  if (result.spawnError) {
+    return executionEnvironmentError(diagnostic || `The configured ${languageLabel} runtime is unavailable.`, result.exitCode);
+  }
+  if (result.timedOut || result.outputLimitExceeded || !isSyntaxDiagnostic(diagnostic)) {
+    const message = diagnostic || `${languageLabel} syntax validation could not complete in the execution environment.`;
+    return {
+      stdout: '',
+      stderr: message,
+      executionError: message,
+      timeout: false,
+      exitCode: result.exitCode,
+      verdict: 'execution_error'
+    };
+  }
+
+  return {
+    stdout: '',
+    stderr: diagnostic,
+    compileError: diagnostic,
+    syntaxError: diagnostic,
+    timeout: false,
+    exitCode: result.exitCode,
+    verdict: 'syntax_error'
+  };
+}
+
+function cleanPythonStderr(stderr: string): string {
+  return stderr
+    .split('\n')
+    .filter(line => !line.includes('Could not find platform independent libraries'))
+    .join('\n')
+    .trim();
 }
 
 // Multi-Language Native Local Runner
@@ -283,11 +601,16 @@ async function executeLocal(
   code: string,
   language: string,
   stdinText: string,
-  timeoutMs: number
-): Promise<{ stdout: string; stderr: string; compileError?: string; runtimeError?: string; timeout: boolean; exitCode: number }> {
+  timeoutMs: number,
+  memoryLimitMb?: number
+): Promise<LocalExecutionResult> {
   const norm = (language || '').toLowerCase().trim();
 
-  // 1. Python Execution
+  try {
+
+  // 1. Python: perform a genuine parser validation before execution.  Looking
+  // only for "SyntaxError" in a runtime traceback would misclassify valid code
+  // such as `raise SyntaxError(...)`.
   if (norm === 'python' || norm === 'py') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_py_'));
     const scriptFile = path.join(tempDir, 'solution.py');
@@ -295,55 +618,38 @@ async function executeLocal(
 
     try {
       const pyCmd = process.platform === 'win32' ? 'py' : 'python3';
-      const pyArgs = process.platform === 'win32' ? ['-3', scriptFile] : [scriptFile];
-      const res = await runCommand(pyCmd, pyArgs, stdinText, timeoutMs, tempDir);
-      // Filter out benign Windows Python initialization messages
-      const cleanStderr = res.stderr
-        .split('\n')
-        .filter(line => !line.includes('Could not find platform independent libraries'))
-        .join('\n')
-        .trim();
+      const prefixArgs = process.platform === 'win32' ? ['-3'] : [];
+      const syntaxCheck = await runCommand(pyCmd, [...prefixArgs, '-m', 'py_compile', scriptFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      syntaxCheck.stderr = cleanPythonStderr(syntaxCheck.stderr);
+      const syntaxFailure = syntaxValidationOutcome(syntaxCheck, 'Python', isPythonSyntaxDiagnostic, tempDir);
+      if (syntaxFailure) return syntaxFailure;
 
-      const isSyntaxError = cleanStderr.includes('SyntaxError') || cleanStderr.includes('IndentationError');
-      const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
-      const sanitizedStderr = sanitizeDiagnostics(cleanStderr, tempDir);
-
-      return {
-        stdout: res.stdout.trim(),
-        stderr: sanitizedStderr,
-        compileError: isSyntaxError ? sanitizedStderr : undefined,
-        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : sanitizedStderr || `Process exited with code ${res.exitCode}`) : undefined,
-        timeout: res.timedOut,
-        exitCode: res.exitCode
-      };
+      const runResult = await runCommand(pyCmd, [...prefixArgs, scriptFile], stdinText, timeoutMs, tempDir);
+      runResult.stderr = cleanPythonStderr(runResult.stderr);
+      return runtimeOutcome(runResult, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
-  // 2. JavaScript / Node.js Execution
+  // 2. JavaScript / Node.js: Node's --check runs the parser without executing
+  // participant code, preserving the distinction between parse and runtime
+  // SyntaxError instances.
   if (norm === 'javascript' || norm === 'js' || norm === 'node') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'judge_js_'));
     const scriptFile = path.join(tempDir, 'solution.js');
     fs.writeFileSync(scriptFile, code, 'utf-8');
 
     try {
-      const res = await runCommand('node', ['--max-old-space-size=256', scriptFile], stdinText, timeoutMs, tempDir);
-      const cleanStderr = res.stderr.trim();
-      const isSyntaxError = cleanStderr.includes('SyntaxError');
-      const isRuntimeError = !isSyntaxError && (res.exitCode !== 0 || res.timedOut);
-      const sanitizedStderr = sanitizeDiagnostics(cleanStderr, tempDir);
+      const syntaxCheck = await runCommand('node', ['--check', scriptFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      const syntaxFailure = syntaxValidationOutcome(syntaxCheck, 'JavaScript', isJavaScriptSyntaxDiagnostic, tempDir);
+      if (syntaxFailure) return syntaxFailure;
 
-      return {
-        stdout: res.stdout.trim(),
-        stderr: sanitizedStderr,
-        compileError: isSyntaxError ? sanitizedStderr : undefined,
-        runtimeError: isRuntimeError ? (res.timedOut ? 'Time Limit Exceeded' : sanitizedStderr || `Process exited with code ${res.exitCode}`) : undefined,
-        timeout: res.timedOut,
-        exitCode: res.exitCode
-      };
+      const memoryLimit = resolvedMemoryLimitMb(memoryLimitMb);
+      const runResult = await runCommand('node', [`--max-old-space-size=${memoryLimit}`, scriptFile], stdinText, timeoutMs, tempDir);
+      return runtimeOutcome(runResult, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
@@ -366,33 +672,16 @@ async function executeLocal(
 
     try {
       // Step A: Compilation
-      const compileRes = await runCommand('javac', [sourceFile], '', 10000, tempDir);
-      if (compileRes.exitCode !== 0) {
-        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'Java compilation failed';
-        return {
-          stdout: '',
-          stderr: sanitizedErr,
-          compileError: sanitizedErr,
-          timeout: false,
-          exitCode: compileRes.exitCode
-        };
-      }
+      const compileRes = await runCommand('javac', [sourceFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      const compilationFailure = compilationOutcome(compileRes, 'Java', tempDir);
+      if (compilationFailure) return compilationFailure;
 
       // Step B: Execution
-      const runRes = await runCommand('java', ['-Xmx256m', '-cp', tempDir, className], stdinText, timeoutMs, tempDir);
-      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
-      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
-
-      return {
-        stdout: runRes.stdout.trim(),
-        stderr: sanitizedRunErr,
-        compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
-        timeout: runRes.timedOut,
-        exitCode: runRes.exitCode
-      };
+      const memoryLimit = resolvedMemoryLimitMb(memoryLimitMb);
+      const runRes = await runCommand('java', [`-Xmx${memoryLimit}m`, '-cp', tempDir, className], stdinText, timeoutMs, tempDir);
+      return runtimeOutcome(runRes, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
@@ -405,33 +694,15 @@ async function executeLocal(
 
     try {
       // Step A: Compilation
-      const compileRes = await runCommand('g++', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
-      if (compileRes.exitCode !== 0) {
-        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'C++ compilation failed';
-        return {
-          stdout: '',
-          stderr: sanitizedErr,
-          compileError: sanitizedErr,
-          timeout: false,
-          exitCode: compileRes.exitCode
-        };
-      }
+      const compileRes = await runCommand('g++', ['-O2', sourceFile, '-o', exeFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      const compilationFailure = compilationOutcome(compileRes, 'C++', tempDir);
+      if (compilationFailure) return compilationFailure;
 
       // Step B: Execution
       const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
-      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
-      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
-
-      return {
-        stdout: runRes.stdout.trim(),
-        stderr: sanitizedRunErr,
-        compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
-        timeout: runRes.timedOut,
-        exitCode: runRes.exitCode
-      };
+      return runtimeOutcome(runRes, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
@@ -444,33 +715,15 @@ async function executeLocal(
 
     try {
       // Step A: Compilation
-      const compileRes = await runCommand('gcc', ['-O2', sourceFile, '-o', exeFile], '', 10000, tempDir);
-      if (compileRes.exitCode !== 0) {
-        const sanitizedErr = sanitizeDiagnostics(compileRes.stderr.trim(), tempDir) || 'C compilation failed';
-        return {
-          stdout: '',
-          stderr: sanitizedErr,
-          compileError: sanitizedErr,
-          timeout: false,
-          exitCode: compileRes.exitCode
-        };
-      }
+      const compileRes = await runCommand('gcc', ['-O2', sourceFile, '-o', exeFile], '', COMPILATION_TIMEOUT_MS, tempDir);
+      const compilationFailure = compilationOutcome(compileRes, 'C', tempDir);
+      if (compilationFailure) return compilationFailure;
 
       // Step B: Execution
       const runRes = await runCommand(exeFile, [], stdinText, timeoutMs, tempDir);
-      const isRuntimeError = runRes.exitCode !== 0 || runRes.timedOut;
-      const sanitizedRunErr = sanitizeDiagnostics(runRes.stderr.trim(), tempDir);
-
-      return {
-        stdout: runRes.stdout.trim(),
-        stderr: sanitizedRunErr,
-        compileError: undefined,
-        runtimeError: isRuntimeError ? (runRes.timedOut ? 'Time Limit Exceeded' : sanitizedRunErr || `Process exited with code ${runRes.exitCode}`) : undefined,
-        timeout: runRes.timedOut,
-        exitCode: runRes.exitCode
-      };
+      return runtimeOutcome(runRes, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
@@ -518,69 +771,52 @@ except Exception as e:
       const pyCmd = process.platform === 'win32' ? 'py' : 'python3';
       const pyArgs = process.platform === 'win32' ? ['-3', runnerScript] : [runnerScript];
       const res = await runCommand(pyCmd, pyArgs, stdinText, timeoutMs, tempDir);
-      const cleanStderr = res.stderr
-        .split('\n')
-        .filter(line => !line.includes('Could not find platform independent libraries'))
-        .join('\n')
-        .trim();
-
-      const isSqlError = res.exitCode !== 0 || res.timedOut;
-
-      return {
-        stdout: res.stdout.trim(),
-        stderr: cleanStderr,
-        compileError: undefined,
-        runtimeError: isSqlError ? (res.timedOut ? 'Time Limit Exceeded' : cleanStderr || `SQL execution failed`) : undefined,
-        timeout: res.timedOut,
-        exitCode: res.exitCode
-      };
+      res.stderr = cleanPythonStderr(res.stderr);
+      return runtimeOutcome(res, tempDir);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      safeRemoveTempDir(tempDir);
     }
   }
 
-  // Unsupported Language
-  return {
-    stdout: '',
-    stderr: `Unsupported language: '${language}'`,
-    compileError: `Unsupported language: '${language}'`,
-    timeout: false,
-    exitCode: 1
-  };
+    // Unsupported languages are configuration/execution failures, not a
+    // participant compiler error.
+    return executionEnvironmentError('The selected language is not configured for execution.');
+  } catch (error) {
+    return executionEnvironmentError(
+      error instanceof Error ? `The execution environment could not prepare this submission: ${error.message}` : 'The execution environment could not prepare this submission.'
+    );
+  }
 }
 
 export async function executeSingleTestCase(
   code: string,
   langKey: string,
   input: string,
-  timeLimitMs: number = 3000
-): Promise<{
-  stdout: string;
-  stderr: string;
-  compileError?: string;
-  runtimeError?: string;
-  timeout: boolean;
-  runtimeMs: number;
-  exitCode: number;
-}> {
+  timeLimitMs: number = 3000,
+  memoryLimitMb?: number
+): Promise<JudgeExecutionResult> {
   const normLang = (langKey || '').toLowerCase().trim();
   const langConfig = LANGUAGE_MAP[normLang] || { language: normLang, version: '*' };
 
-  // Enforce pre-execution AST & regex security scan
+  // A security-policy rejection is neither a compiler nor a runtime failure in
+  // participant code. Keep it in the explicit Execution Error category.
   const securityCheck = validateCodeSecurity(code, normLang);
   if (!securityCheck.safe) {
+    const diagnostic = sanitizeDiagnostics(securityCheck.reason || 'This submission cannot be executed by the configured judge policy.');
     return {
       stdout: '',
-      stderr: securityCheck.reason || 'Restricted code execution blocked by security policy',
-      compileError: securityCheck.reason || 'Restricted code execution blocked by security policy',
+      stderr: diagnostic,
+      executionError: diagnostic,
       timeout: false,
       runtimeMs: 0,
-      exitCode: 1
+      exitCode: 1,
+      verdict: 'execution_error'
     };
   }
 
   return queue.enqueue(async () => {
     const startTime = Date.now();
+    const memoryLimit = resolvedMemoryLimitMb(memoryLimitMb);
 
     // 1. Try external Piston judge first (if configured with custom non-emkc URL)
     if (ENV.PISTON_URL && !ENV.PISTON_URL.includes('emkc.org')) {
@@ -590,7 +826,9 @@ export async function executeSingleTestCase(
           version: langConfig.version,
           files: [{ name: normLang === 'java' ? 'Solution.java' : undefined, content: code }],
           stdin: input,
-          run_timeout: Math.max(1000, timeLimitMs)
+          compile_timeout: COMPILATION_TIMEOUT_MS,
+          run_timeout: Math.max(1000, timeLimitMs),
+          run_memory_limit: memoryLimit * 1024 * 1024
         };
 
         const response = await axios.post<PistonRunResponse>(
@@ -603,46 +841,71 @@ export async function executeSingleTestCase(
         const data = response.data;
 
         if (data.compile && data.compile.code !== 0) {
+          const diagnostic = sanitizeDiagnostics(data.compile.stderr || data.compile.stdout || data.compile.output);
+          const isInterpretedSyntax = (normLang === 'python' || normLang === 'py')
+            ? isPythonSyntaxDiagnostic(diagnostic)
+            : (normLang === 'javascript' || normLang === 'js' || normLang === 'node') && isJavaScriptSyntaxDiagnostic(diagnostic);
           return {
             stdout: '',
-            stderr: data.compile.stderr || data.compile.output || 'Compilation failed',
-            compileError: data.compile.stderr || data.compile.output || 'Compilation error',
+            stderr: diagnostic || `The configured compiler exited with code ${data.compile.code} without emitting a diagnostic.`,
+            compileError: diagnostic || `The configured compiler exited with code ${data.compile.code} without emitting a diagnostic.`,
+            ...(isInterpretedSyntax ? { syntaxError: diagnostic || `The configured interpreter reported a syntax error.` } : {}),
             timeout: false,
             runtimeMs: elapsed,
-            exitCode: data.compile.code
+            exitCode: data.compile.code,
+            verdict: isInterpretedSyntax ? 'syntax_error' : 'compilation_error'
           };
         }
 
         const run = data.run;
         if (run) {
-          const timeout = run.signal === 'SIGKILL' || run.signal === 'SIGTERM';
-          const isRuntimeError = run.code !== 0 && !timeout;
+          // A Piston run-stage exception is runtime by definition. In
+          // particular, a program which throws SyntaxError must not be called a
+          // parser error merely because that word appears in its stack trace.
+          const remoteOutcome = runtimeOutcome({
+            stdout: run.stdout || '',
+            stderr: run.stderr || run.output || '',
+            timedOut: run.signal === 'SIGKILL' || run.signal === 'SIGTERM',
+            exitCode: typeof run.code === 'number' ? run.code : 1,
+            outputLimitExceeded: false
+          });
           return {
-            stdout: (run.stdout || '').trim(),
-            stderr: (run.stderr || '').trim(),
-            runtimeError: isRuntimeError ? run.stderr || `Exited with code ${run.code}` : undefined,
-            timeout,
+            ...remoteOutcome,
             runtimeMs: elapsed,
-            exitCode: run.code
           };
         }
+
+        const diagnostic = sanitizeDiagnostics(data.message || 'The configured execution service returned no program result.');
+        return {
+          stdout: '',
+          stderr: diagnostic,
+          executionError: diagnostic,
+          timeout: false,
+          runtimeMs: elapsed,
+          exitCode: 1,
+          verdict: 'execution_error'
+        };
       } catch (err: any) {
         console.warn('External judge returned error, falling back to local runner:', err.message);
       }
     }
 
     // 2. Native Multi-Language Local Runner (Python, Node.js, Java, C++, C, SQL)
-    const localRes = await executeLocal(code, normLang, input, timeLimitMs);
+    const localRes = await executeLocal(code, normLang, input, timeLimitMs, memoryLimit);
     const elapsed = Date.now() - startTime;
 
     return {
       stdout: localRes.stdout,
       stderr: localRes.stderr,
       compileError: localRes.compileError,
+      syntaxError: localRes.syntaxError,
       runtimeError: localRes.runtimeError,
+      memoryError: localRes.memoryError,
+      executionError: localRes.executionError,
       timeout: localRes.timeout,
       runtimeMs: elapsed,
-      exitCode: localRes.exitCode
+      exitCode: localRes.exitCode,
+      verdict: localRes.verdict
     };
   });
 }
@@ -721,22 +984,25 @@ export async function runTestCases(
   code: string,
   language: string,
   testCases: ITestCase[],
-  timeLimitMs: number = 3000
+  timeLimitMs: number = 3000,
+  memoryLimitMb?: number
 ): Promise<IAttemptTestCaseResult[]> {
   const results: IAttemptTestCaseResult[] = [];
-  let earlyCompileError: string | undefined;
+  let earlyPreparationFailure: Pick<IAttemptTestCaseResult, 'status' | 'stderr' | 'compileError' | 'syntaxError' | 'executionError'> | undefined;
 
   for (let i = 0; i < testCases.length; i++) {
     const tc = testCases[i];
 
-    if (earlyCompileError) {
+    if (earlyPreparationFailure) {
       results.push({
         passed: false,
-        status: 'compile_error',
+        status: earlyPreparationFailure.status,
         runtimeMs: 0,
         stdout: '',
-        stderr: earlyCompileError,
-        compileError: earlyCompileError,
+        stderr: earlyPreparationFailure.stderr,
+        compileError: earlyPreparationFailure.compileError,
+        syntaxError: earlyPreparationFailure.syntaxError,
+        executionError: earlyPreparationFailure.executionError,
         timeout: false,
         isHidden: tc.isHidden,
         input: tc.isHidden ? undefined : tc.input,
@@ -746,22 +1012,51 @@ export async function runTestCases(
       continue;
     }
 
-    const execRes = await executeSingleTestCase(code, language, tc.input, timeLimitMs);
+    const execRes = await executeSingleTestCase(code, language, tc.input, timeLimitMs, memoryLimitMb);
     const passed = compareOutputs(execRes.stdout, tc.expectedOutput);
 
     let status: IAttemptTestCaseResult['status'] = 'failed';
 
-    if (execRes.compileError) {
-      status = 'compile_error';
-      earlyCompileError = execRes.compileError;
-    } else if (execRes.timeout) {
-      status = 'timeout';
-    } else if (execRes.runtimeError) {
-      status = 'runtime_error';
-    } else if (passed) {
-      status = 'passed';
-    } else {
-      status = 'failed';
+    switch (execRes.verdict) {
+      case 'compilation_error':
+        status = 'compile_error';
+        earlyPreparationFailure = {
+          status,
+          stderr: execRes.stderr,
+          compileError: execRes.compileError
+        };
+        break;
+      case 'syntax_error':
+        status = 'syntax_error';
+        earlyPreparationFailure = {
+          status,
+          stderr: execRes.stderr,
+          compileError: execRes.compileError,
+          syntaxError: execRes.syntaxError || execRes.compileError
+        };
+        break;
+      case 'time_limit_exceeded':
+        status = 'timeout';
+        break;
+      case 'memory_limit_exceeded':
+        status = 'memory_limit';
+        break;
+      case 'execution_error':
+        status = 'execution_error';
+        earlyPreparationFailure = {
+          status,
+          stderr: execRes.stderr,
+          executionError: execRes.executionError
+        };
+        break;
+      case 'runtime_error':
+        status = 'runtime_error';
+        break;
+      case 'accepted':
+        status = passed ? 'passed' : 'failed';
+        break;
+      default:
+        status = 'failed';
     }
 
     results.push({
@@ -771,7 +1066,10 @@ export async function runTestCases(
       stdout: execRes.stdout,
       stderr: execRes.stderr,
       compileError: execRes.compileError,
+      syntaxError: execRes.syntaxError,
       runtimeError: execRes.runtimeError,
+      memoryError: execRes.memoryError,
+      executionError: execRes.executionError,
       timeout: execRes.timeout,
       isHidden: tc.isHidden,
       input: tc.isHidden ? undefined : tc.input,
@@ -781,6 +1079,121 @@ export async function runTestCases(
   }
 
   return results;
+}
+
+export type ParticipantExecutionStatus =
+  | 'Accepted'
+  | 'Wrong Answer'
+  | 'Compilation Error'
+  | 'Syntax Error'
+  | 'Runtime Error'
+  | 'Time Limit Exceeded'
+  | 'Memory Limit Exceeded'
+  | 'Execution Error';
+
+/**
+ * Convert low-level per-test outcomes into the single participant verdict used
+ * by both Run and Submit. Hidden-test privacy remains the route's policy; this
+ * helper intentionally receives no question, expected output, or source code.
+ */
+export function summarizeTestResults(
+  results: IAttemptTestCaseResult[],
+  timeLimitMs: number = 3000
+): {
+  status: ParticipantExecutionStatus;
+  message: string;
+  compileOutput: string | null;
+  runtimeOutput: string | null;
+  executionOutput: string | null;
+} {
+  const visibleResults = results.filter(result => !result.isHidden);
+  // Compile/parser diagnostics are generated before stdin is supplied, so they
+  // remain safe even if the first configured case is hidden. Runtime and
+  // execution diagnostics can contain participant-controlled echoes of stdin;
+  // only return those when they came from a visible case.
+  const compileOutput = results.find(result => result.compileError)?.compileError
+    || results.find(result => result.syntaxError)?.syntaxError
+    || null;
+  const runtimeOutput = visibleResults.find(result => result.runtimeError)?.runtimeError
+    || visibleResults.find(result => result.memoryError)?.memoryError
+    || null;
+  const executionOutput = visibleResults.find(result => result.executionError)?.executionError || null;
+
+  // Judge setup/parse failures are global to a submission, so they take
+  // precedence over per-test outcomes. The rest use a deterministic severity
+  // order rather than test-case order.
+  if (results.some(result => result.status === 'syntax_error')) {
+      return {
+        status: 'Syntax Error',
+        message: 'The interpreter could not parse this submission. Inspect the diagnostic below.',
+        compileOutput: compileOutput ? sanitizeDiagnostics(compileOutput) : null,
+        runtimeOutput: null,
+        executionOutput: null
+      };
+  }
+  if (results.some(result => result.status === 'compile_error')) {
+      return {
+        status: 'Compilation Error',
+        message: 'Compilation failed. Inspect the compiler diagnostic below.',
+        compileOutput: compileOutput ? sanitizeDiagnostics(compileOutput) : null,
+        runtimeOutput: null,
+        executionOutput: null
+      };
+  }
+  if (results.some(result => result.status === 'execution_error')) {
+      return {
+        status: 'Execution Error',
+        message: 'The judge could not complete this execution.',
+        compileOutput: null,
+        runtimeOutput: null,
+        executionOutput: executionOutput ? sanitizeDiagnostics(executionOutput) : null
+      };
+  }
+  if (results.some(result => result.status === 'memory_limit')) {
+      return {
+        status: 'Memory Limit Exceeded',
+        message: 'Execution exceeded the configured memory limit.',
+        compileOutput: null,
+        runtimeOutput: runtimeOutput ? sanitizeDiagnostics(runtimeOutput) : null,
+        executionOutput: null
+      };
+  }
+  if (results.some(result => result.status === 'timeout')) {
+      return {
+        status: 'Time Limit Exceeded',
+        message: `Execution exceeded the ${timeLimitMs}ms time limit.`,
+        compileOutput: null,
+        runtimeOutput: null,
+        executionOutput: null
+      };
+  }
+  if (results.some(result => result.status === 'runtime_error')) {
+      return {
+        status: 'Runtime Error',
+        message: 'Program terminated during execution. Inspect the runtime diagnostic below.',
+        compileOutput: null,
+        runtimeOutput: runtimeOutput ? sanitizeDiagnostics(runtimeOutput) : null,
+        executionOutput: null
+      };
+  }
+
+  if (results.length > 0 && results.every(result => result.passed)) {
+    return {
+      status: 'Accepted',
+      message: 'Accepted! All evaluated test cases passed.',
+      compileOutput: null,
+      runtimeOutput: null,
+      executionOutput: null
+    };
+  }
+
+  return {
+    status: 'Wrong Answer',
+    message: 'One or more evaluated test cases produced different output.',
+    compileOutput: null,
+    runtimeOutput: null,
+    executionOutput: null
+  };
 }
 
 export function sanitizeResultsForParticipant(
@@ -798,7 +1211,11 @@ export function sanitizeResultsForParticipant(
       isHidden: false,
       input: r.input,
       expected: r.expected,
+      actual: r.actual,
       compileError: r.compileError ? sanitizeDiagnostics(r.compileError) : undefined,
-      runtimeError: r.runtimeError ? sanitizeDiagnostics(r.runtimeError) : undefined
+      syntaxError: r.syntaxError ? sanitizeDiagnostics(r.syntaxError) : undefined,
+      runtimeError: r.runtimeError ? sanitizeDiagnostics(r.runtimeError) : undefined,
+      memoryError: r.memoryError ? sanitizeDiagnostics(r.memoryError) : undefined,
+      executionError: r.executionError ? sanitizeDiagnostics(r.executionError) : undefined
     }));
 }
